@@ -60,3 +60,27 @@ jobs:
         with:
           name: paper-pdf
           path: paper/main.pdf
+
+  sim:
+    name: Simulator (libqueuingsim)
+    # Pinned to the glibc the paper tables were generated with: a last-bit
+    # difference in libm `ln` can change a simulated trajectory.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain (libqueuingsim/rust-toolchain.toml)
+        working-directory: libqueuingsim
+        run: rustup toolchain install && cargo --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: libqueuingsim
+      - name: Lean names, fmt, clippy, tests, validation report
+        run: scripts/check_sim.sh
+      - name: Publish report to job summary
+        if: always()
+        run: cat libqueuingsim/validation-report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sim-validation-report
+          path: libqueuingsim/validation-report.md

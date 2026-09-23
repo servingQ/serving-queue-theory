@@ -3,12 +3,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p "$HOME/.local/bin"
-export PATH="$HOME/.elan/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.elan/bin:$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 
 if ! command -v elan >/dev/null; then
   echo "== installing elan"
   curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
     | sh -s -- -y --default-toolchain none
+fi
+
+if ! command -v rustup >/dev/null; then
+  echo "== installing rustup (toolchain pinned by libqueuingsim/rust-toolchain.toml)"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
 fi
 
 if ! command -v tectonic >/dev/null; then
@@ -25,6 +31,9 @@ fi
 echo "== Lean toolchain + Mathlib cache"
 ( cd lean && lake exe cache get >/dev/null && lake build 2>&1 | tail -1 )
 
+echo "== Rust toolchain + libqueuingsim build"
+( cd libqueuingsim && rustup toolchain install >/dev/null && cargo build --release --quiet )
+
 echo
-echo "elan $(elan --version | cut -d' ' -f2) | $(cd lean && lean --version) | $(tectonic --version) | $(uv --version)"
+echo "$(cd libqueuingsim && cargo --version) | elan $(elan --version | cut -d' ' -f2) | $(cd lean && lean --version) | $(tectonic --version) | $(uv --version)"
 echo "OK. Try: make check"

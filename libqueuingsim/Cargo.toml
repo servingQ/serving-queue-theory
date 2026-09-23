@@ -1,0 +1,17 @@
+[package]
+name = "libqueuingsim"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Discrete-event simulator that tests the serving-queue-theory propositions outside their assumptions"
+publish = false
+
+[dependencies]
+rand = "0.9"
+
+# Statistical tests simulate millions of customers; run them optimised.
+[profile.test]
+opt-level = 3
+
+[profile.dev.package."*"]
+opt-level = 3

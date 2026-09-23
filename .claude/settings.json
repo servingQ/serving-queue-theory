@@ -1,20 +1,4 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(make *)",
-      "Bash(make)",
-      "Bash(lake *)",
-      "Bash(cd lean && lake *)",
-      "Bash(tectonic *)",
-      "Bash(cd paper && tectonic *)",
-      "Bash(scripts/*)",
-      "Bash(./scripts/*)",
-      "Bash(uv run *)",
-      "Bash(git status*)",
-      "Bash(git diff*)",
-      "Bash(git log*)"
-    ]
-  },
   "hooks": {
     "PostToolUse": [
       {
@@ -24,7 +8,7 @@
             "type": "command",
             "command": "scripts/hooks/post-edit.sh",
             "timeout": 300,
-            "statusMessage": "Rebuilding Lean / checking paper refs…"
+            "statusMessage": "Rebuilding Lean / linting Rust / checking paper refs…"
           }
         ]
       }

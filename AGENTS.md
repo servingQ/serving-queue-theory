@@ -14,6 +14,7 @@ and eviction, program-aware routing). The deliverables are:
 |------|-------------|
 | `paper/main.tex` | ICML-2026-format paper draft (tectonic, two-column) |
 | `lean/ServingQueueTheory/` | Lean 4 + Mathlib proofs of every proposition in the paper |
+| `libqueuingsim/` | Rust discrete-event simulator; seeded checks of each proposition in and beyond its model |
 | `scripts/` | CI checks that bind the two together |
 | `.github/workflows/ci.yml` | Runs the checks on push/PR |
 
@@ -47,7 +48,12 @@ latency reproduction is secondary.
 6. **Keep statements close to the prose.** Lean statements should be
    readable next to the paper proposition so a human can check the
    correspondence, which CI cannot.
-7. **Do not commit or push unless asked.** Never commit `lean/.lake/`,
+7. **Simulator results are not measurements.** `libqueuingsim` output
+   comes from synthetic workloads. Do not put it in §6 `\tbd{}` cells or
+   state it as a property of real systems. It goes in the paper only via
+   `paper/simulation.tex`, whose numbers are generated into `paper/sim/`
+   by `libqueuingsim/examples/paper_tables.rs`; never type them by hand.
+8. **Do not commit or push unless asked.** Never commit `lean/.lake/`,
    `*.log`, or `paper/main.pdf` (all gitignored). Server-side branch
    protection is unavailable on this private Free-plan repo; the
    `.githooks/pre-push` hook (enable with `git config core.hooksPath
@@ -57,15 +63,18 @@ latency reproduction is secondary.
 ## Environment and commands
 
 Toolchain is user-local (no sudo): `~/.elan` (Lean), `~/.local/bin/tectonic`
-(LaTeX), `~/.local/bin/uv` (Python tooling). `scripts/setup.sh` installs
-all of it idempotently.
+(LaTeX), `~/.local/bin/uv` (Python tooling), `~/.cargo` (Rust, pinned by
+`libqueuingsim/rust-toolchain.toml`). `scripts/setup.sh` installs all of it
+idempotently.
 
 ```bash
 make setup     # install/refresh toolchain + Mathlib cache (first run ~2 min)
 make lean      # lake build + sorry check + axiom audit   (scripts/check_lean.sh)
 make refs      # paper \leanref{} ↔ Lean consistency       (scripts/check_lean_refs.sh)
 make paper     # compile paper/main.pdf with tectonic
-make check     # all three — run before saying "done"
+make sim       # simulator: Lean-name check, fmt, clippy, tests, report (scripts/check_sim.sh)
+make report    # print the simulator validation report
+make check     # all four; run before saying "done"
 make preview   # render PDF pages to PNG in /tmp for visual inspection
 ```
 
@@ -85,10 +94,13 @@ lean/ServingQueueTheory/{MM1,PollaczekKhinchine,CacheReuse,OptionValue,
 lean/scripts/AxiomAudit.lean   `#print axioms` for every paper-facing theorem
 scripts/check_lean.sh          build + sorry + axiom audit
 scripts/check_lean_refs.sh     \leanref ↔ Lean name check
+scripts/check_sim.sh           simulator: cited Lean names exist + cargo fmt/clippy/test
+libqueuingsim/src/validation.rs  one named check per proposition (tests + report)
 scripts/hooks/post-edit.sh     Claude Code hook: rebuild after edits
 docs/add-proposition.md        step-by-step workflow for a new result
 docs/research-plan.md          status of every result and experiment; read before paper work
-docs/simulation-design.md      design of the (not yet built) discrete-event simulator
+docs/simulation-design.md      libqueuingsim: design, validation-ladder status, roadmap to the calibrated simulator
+paper/simulation.tex           §6.9 uncalibrated simulation; numbers \input from paper/sim/ (generated)
 ```
 
 ## How to add or change a result
@@ -101,14 +113,18 @@ Follow `docs/add-proposition.md`. Short version:
 3. In the paper, state the proposition in a `proposition` box, end it with
    `\provedby{\leanref{name}, ...}` (underscores escaped as `\_`), and add
    a human-readable proof to Appendix A.
-4. `make check`.
+4. If the result can be simulated, add a check to
+   `libqueuingsim/src/validation.rs` (see `libqueuingsim/README.md`).
+5. `make check`.
 
 ## Paper conventions
 
 - ICML two-column; do not change fonts, margins, or the `.sty`.
-- Structure: §2 model (with cited standard theorems), §§3–6 one section
-  per decision (congestion, KV state, PD, routing), §7 experiments, App. A
-  proofs. Do not reintroduce a "layered" framing, a section that collects
+- Structure: §2 model (with cited standard theorems), §§3–5 one section
+  per decision (congestion, KV state, routing), §6 experiments, App. A
+  proofs, App. B prefill/decode (PD) disaggregation. PD results are
+  deferred to a follow-up paper: keep them, their E5 plan and their
+  simulation paragraphs in App. B, not in the main text. Do not reintroduce a "layered" framing, a section that collects
   all propositions, or a separate section for other papers' claims.
 - Propositions sit in the section whose decision they inform. Formal
   statement only, enumerated with `(\roman*)`. Do not interleave
@@ -124,9 +140,11 @@ Follow `docs/add-proposition.md`. Short version:
   claim" / "Reading the claim" paragraphs. Quote or paraphrase exactly what
   they say, cite the section/figure, and do not imply we re-ran their
   experiments (the intro states once that we did not).
-- §7 Experiments uses `\tbd` placeholders. Fill cells only with measured
+- §6 Experiments uses `\tbd` placeholders. Fill cells only with measured
   values; keep `docs/research-plan.md` in sync with what each table
-  measures.
+  measures. The last subsection of §6 (`sec:sim`, `paper/simulation.tex`)
+  reports uncalibrated simulation and is the only main-text place
+  simulator numbers appear (App. B.4 holds the PD ones, also generated).
 - Prose style: short sentences, no em-dashes, numbers in tables or examples
   rather than running text where possible.
 
@@ -150,6 +168,7 @@ Follow `docs/add-proposition.md`. Short version:
   (ICML 2026). Agentic trace statistics are from the vLLM AgentX (2026-09-08)
   and vLLM×Mooncake (2026-05-06) blog posts.
 - The research plan, result status and experiment order are in
-  `docs/research-plan.md`; experiments E1–E7 are laid out in paper §7. E1
-  (service-time calibration) gates everything; E2 (per-turn CV²) is the
-  first result to report.
+  `docs/research-plan.md`. Validation runs in three phases: uncalibrated
+  simulation (done, paper §6.9), empirical E1–E7 (paper §6; E1
+  calibration gates everything, E2 per-turn CV² is the first result to
+  report), then the calibrated simulator scored in E7.

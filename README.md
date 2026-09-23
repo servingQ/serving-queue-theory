@@ -7,6 +7,7 @@ whose paper ↔ proof correspondence is enforced by CI.
 ```
 paper/   ICML-2026-format LaTeX draft (main.tex, refs.bib, icml2026.sty); proofs in Appendix A
 lean/    Lean 4 project `ServingQueueTheory` (Mathlib v4.34.0)
+libqueuingsim/  Rust discrete-event simulator that checks each proposition by simulation
 scripts/ CI checks (see below)
 ```
 
@@ -40,8 +41,8 @@ result. `make check` is the one command every agent runs before reporting.
 ## Local build
 
 ```bash
-make setup   # one-time: elan + tectonic + uv + Mathlib cache
-make check   # lean + refs + paper
+make setup   # one-time: elan + rustup + tectonic + uv + Mathlib cache
+make check   # lean + refs + paper + sim
 ```
 
 Or by hand:
@@ -68,6 +69,10 @@ scripts/check_lean_refs.sh
 2. **refs** — every `\leanref{Name}` in `paper/main.tex` names an existing
    Lean declaration, and every referenced theorem is in the axiom audit.
 3. **paper** — the ICML PDF compiles; uploaded as an artifact.
+4. **sim** — `scripts/check_sim.sh`: every Lean theorem cited by a simulator
+   check exists; `cargo fmt --check`, `clippy -D warnings`, `cargo test`;
+   the validation report (`libqueuingsim/validation-report.md`) is uploaded
+   and posted to the job summary. See `libqueuingsim/README.md`.
 
 CI does **not** check that a Lean statement faithfully formalises the informal
 proposition. That step is a human review; statements are kept deliberately

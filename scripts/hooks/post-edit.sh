@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Claude Code PostToolUse hook (Edit|Write). Reads the tool payload on stdin,
-# and if a Lean or paper file changed, runs the matching check and reports
+# and if a Lean, Rust or paper file changed, runs the matching check and reports
 # problems back to the model as additionalContext. Never blocks.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-export PATH="$HOME/.elan/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.elan/bin:$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 
 f=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("tool_input",{}).get("file_path") or d.get("tool_response",{}).get("filePath") or "")' 2>/dev/null)
 [ -z "$f" ] && exit 0
@@ -18,6 +18,12 @@ case "$f" in
     out=$(cd lean && lake build 2>&1 | grep -vE "^(✔|⚠ \[|trace:)" | grep -E "error|sorry|warning: .*unused|Build completed" | head -30)
     if echo "$out" | grep -qE "error|sorry"; then
       emit "lake build after editing ${f#$PWD/}:"$'\n'"$out"
+    fi
+    ;;
+  */libqueuingsim/*.rs)
+    out=$(cd libqueuingsim && cargo clippy --all-targets --quiet --message-format short 2>&1 | grep -E "(error|warning)" | head -30)
+    if [ -n "$out" ]; then
+      emit "cargo clippy after editing ${f#$PWD/}:"$'\n'"$out"
     fi
     ;;
   */paper/main.tex)

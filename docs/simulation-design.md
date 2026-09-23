@@ -1,151 +1,170 @@
-# Simulator design
+# Simulator design (`libqueuingsim`)
 
-Design of the discrete-event simulator used in paper §7. Status: design
-only, nothing implemented. Read `docs/research-plan.md` first.
+Design and status of the discrete-event simulator. Read
+`docs/research-plan.md` first: the simulator is the first validation
+phase, and the empirical programme (E1–E7) follows it.
 
-## 1. Why a simulator, and where it is not needed
+Status (2026-09-23): the **uncalibrated** simulator exists in
+`libqueuingsim/` (Rust). It covers validation-ladder steps 1–4 and reports
+in paper §6.9 (`sec:sim`). The **calibrated** simulator of paper §6
+(continuous batching, block-level KV, trace replay, E1 service fits) is
+the roadmap in §6 below and is not built.
 
-The closed-form model (paper §§2–6) ignores continuous batching,
-correlated turn arrivals, block-level KV fragmentation, and bandwidth
-sharing on transfers. The testbed has all of these, but it is slow to
-sweep and cannot compute counterfactuals. For example, it cannot run the
-exact eviction optimum on the same arrival sequence. The simulator sits
-between the two.
+## 1. Why a simulator
 
-| Experiment | Simulator needed? | Reason |
-|------------|-------------------|--------|
-| E1 calibration | no | testbed profiling only; the simulator *consumes* E1 |
-| E2 variance | yes, for the hit-rate sweep | the testbed measures CV² at the natural hit rate; the simulator sweeps `p` by forcing evictions on identical traces |
-| E3 offloading | yes | concurrency × policy × tier bandwidth grid is too large for the testbed; the testbed checks 2–3 points |
-| E4 eviction | cost/OPT: no (offline); TTFT: yes | exact optimum needs replay of identical arrival sequences |
-| E5 PD | no | few configurations; measured parameters feed a closed-form test |
-| E6 routing | yes | the inversion load needs a fine load sweep |
-| E7 scorecard | yes | the simulator is one of the two models being scored |
+The closed-form model (paper §§2–6) ignores correlated turn arrivals,
+emergent hit rates, tandem pools, bandwidth sharing and continuous
+batching. The testbed has all of these but is slow to sweep and cannot
+compute counterfactuals. For example, it cannot run the exact eviction
+optimum on the same arrival sequence. The simulator sits between the
+two, in two roles:
+
+1. **Before the testbed (now).** Check each proposition in its own model,
+   then drop one assumption at a time and ask whether the decision it
+   implies survives. The results shape which hypotheses E2–E6 test and
+   what they must record (§5 of the research plan).
+2. **After E1.** With measured service curves, be the second model scored
+   in E7 against the testbed.
+
+| Experiment | Simulator role | Reason |
+|------------|----------------|--------|
+| E1 calibration | none | testbed profiling only; the simulator *consumes* E1 |
+| E2 variance | hit-rate sweep | the testbed measures CV² at its natural hit rate; the simulator sweeps `p` on identical arrivals |
+| E3 offloading | grid | concurrency × policy × tier bandwidth × fetch mode is too large for the testbed; it checks 2–3 points |
+| E4 eviction | end-to-end TTFT | cost/OPT is offline; end-to-end needs replay of identical arrivals |
+| E5 PD | latency at equal capacity | the win condition is closed form; latency is not |
+| E6 routing | inversion load | needs a fine load sweep |
+| E7 scorecard | second model | the calibrated simulator is scored against the testbed |
+
+## 2. What exists
+
+Rust 2024, toolchain pinned by `libqueuingsim/rust-toolchain.toml`, one
+dependency (`rand`). Single-threaded event loop; everything is seeded,
+and a seed gives bit-identical output on the same libm (CI runs on
+`ubuntu-22.04` for that reason).
+
+| Module | Contents |
+|--------|----------|
+| `engine` | future-event list (`BinaryHeap`, ties broken by insertion order), clock, `Model` trait, `run` |
+| `dist` | Deterministic, Exponential, Erlang, balanced H2, Uniform, Discrete, HitMiss; exact mean and second moment for each |
+| `stats` | Welford moments, time averages, batch means (20 batches), replication CIs, quantiles |
+| `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `mixtureCV2`, `pdFullCapacity`, `lookaheadCost`, …) |
+| `models::queue` | open G/G/c FIFO; separate RNG streams for arrivals and service; Lindley cross-check |
+| `models::agentic` | closed or open agent programs on one replica with a finite KV pool; eviction, offload and fetch-mode policies |
+| `models::eviction` | offline instances; SF (and the literal Lean `shortestFirst`), density, exact DP optimum |
+| `models::pd` | aggregated pool vs prefill → KV link → decode tandem; saturated (capacity) or Poisson (latency) load |
+| `models::routing` | replicas with per-program KV locality; affinity, least-loaded, KV-aware myopic, lookahead with migration |
+| `validation` | named checks, one or more per proposition; shared by tests, report and paper tables |
+
+### Modelling choices in the agentic model
+
+- **Service time** per turn: `s0 + a·new + b·new·(cached + new/2) + d·out`.
+  A miss re-prefills the whole context, so its cost is quadratic in
+  context length (ThunderAgent Lemma 4.1). The replica serves one turn at
+  a time; per-turn costs are amortised, not batched.
+- **Resume uncertainty.** Whether a program issues another turn is drawn
+  when its tool call returns. A suspended program therefore holds KV that
+  may never be reused; this is what gives `p_i` a role in eviction.
+- **Eviction scope.** Programs in a tool call are evicted first, queued
+  programs only if that is not enough. Policies: shortest-first,
+  longest-first, LRU, random, density `p_i ΔS_i / c_i`.
+- **Offload.** Never, always, or selective (per-program argmin of
+  transfer time vs recompute, with the congestion factor of Eq. utility).
+  Reads and writes share one FIFO tier link.
+- **Fetch mode.** `Async`: the fetch completes before the turn queues.
+  `Blocking`: the replica waits for the tier. The two give opposite
+  answers to "is always-offload harmful?" (paper Table `tab:sim-offload`),
+  so E3 must record which one the real stack does.
+
+### Checks, reports and paper tables
+
+- `src/validation.rs`: 22 checks. *In-model* checks keep a proposition's
+  assumptions, so a failure means a bug. *Beyond-model* checks drop one
+  assumption and test the decision. `observations()` prints results with
+  no asserted prediction.
+- `tests/propositions.rs`: one test per check (a guard test fails if a
+  check has no test). `tests/lean_examples.rs`: `analytic` at every
+  numeric instance proved in Lean.
+- `examples/validate.rs`: Markdown report (CI job summary and artifact).
+- `examples/paper_tables.rs`: writes `paper/sim/*.tex`, which
+  `paper/simulation.tex` inputs. No simulator number is typed by hand.
+- `scripts/check_sim.sh` (`make sim`): cited Lean names exist, `cargo fmt`,
+  `clippy -D warnings`, tests, report, and a diff that fails if
+  `paper/sim/` is stale.
+
+## 3. Validation ladder
+
+The simulator is trusted for a use only after the steps below it pass.
+
+| Step | Check(s) | Status |
+|------|----------|--------|
+| 1. M/M/1: `W = 1/(μ−λ)` at λ ∈ {5, 8, 9}, μ = 10 (M/M/1 closed form) | `mm1_response_time`, `mm1_blowup` | pass |
+| 2. M/G/1: PK for D, E4, H2, two-point service; ratio `(1+CV²)/2` (`eq:pk`, `eq:cv2`) | `pk_formula`, `variance_orders_delay`, `cache_reuse_lowers_delay`, `cv2_ratio` | pass |
+| 3. Closed network: `R = N/X − Z`; throughput non-decreasing in N with fixed demand, below `min(N/(D+Z), 1/D)` | `interactive_response_time_law`, `closed_throughput_nondecreasing_fixed_demand` | pass |
+| 4. PD capacity: saturated tandem matches `min(N_P g_P/s_P, N_D g_D/s_D, B/E[K])` (`prop:pd`) | `pd_capacity_matches`, `pd_no_gain` | pass |
+| 5. Calibrated vs testbed: with E1 fits, TTFT and throughput at the E7 held-out points; report MAPE (`tab:scorecard`) | none yet | needs E1 and M5 |
+
+Also covered, outside the ladder: Little's law, Lindley vs DES (bit-level),
+DP optimum vs brute force, Rust `shortest_first` vs the Lean definition.
+
+## 4. Results that feed the empirical plan
+
+From `make report` (synthetic workloads; not measurements):
+
+- Bursty arrivals make PK underestimate the wait; Kingman's bound holds.
+  E2 should report the interarrival CV² next to the PK ratio.
+- With finite KV the hit rate, and with it throughput, falls with N; with
+  ample KV throughput follows the asymptotic bound. The collapse needs
+  memory pressure, not agentic service times per se.
+- Always-offload is harmful only with blocking fetches. With async
+  fetches the tier queue acts as admission control.
+- Offline, density beats SF by a wide margin when `p_i` vary. In the
+  closed system the two are within seed noise and LRU is worse. E4 must
+  report end-to-end metrics, not only cost/OPT.
+- PD at the rate-matched split has equal capacity but higher latency
+  than aggregation (pooling). E5 should report latency too.
+- Strict affinity collapses when the hot replica saturates; lookahead with
+  cheap migration stays flat. E6 must measure migration cost, which moves
+  the inversion load.
+
+## 5. Out of scope
+
+Collective contention inside a model-parallel group, kernel-launch
+jitter, allocator behaviour beyond block counts, network head-of-line
+blocking. Where the E7 error decomposition blames these, report the gap
+rather than model them.
+
+## 6. Roadmap to the calibrated simulator
+
+Each item is a new module or an extension, in Rust, behind the existing
+`Model`/`Scheduler` engine. Every new model gets in-model checks in
+`validation.rs` before it is used for a beyond-model question.
+
+| Item | Where | Needed for |
+|------|-------|------------|
+| Continuous batching with a token budget per iteration, chunked prefill; `IterationStart`/`IterationEnd` events | new `models::engine_batched` (or `replica`) | E2, E3, E6, E7 |
+| Service model from E1 fits `S_prefill(L,K,B)`, `S_decode(B,KV)` evaluated per iteration, optional residual noise | new `service` module; fit files under `data/` | M5 |
+| Block-level KV pool per device and tier; residency map program → location | extend `agentic` | E3, E4 |
+| Links with fair-share bandwidth (replace FIFO tier and migration links) | new `transfer` module | E3, E6 |
+| Trace replay (per-turn arrivals, tokens, tool time, resume events) | new `workload` module | E2, E4, E7 |
+| Oracle eviction using realised future resumes (DP over blocks) | extend `eviction` + `agentic` | E4 lower bound |
+| Dynamic PD with per-turn append-prefill routing (`eq:append`) | extend `pd` / `routing` | E5, E6 |
+| Per-turn records (program, turn, arrival, first token, finish, hit length, replica, bytes, decisions) to CSV or Parquet; runs keyed by (config hash, seed); ≥ 5 seeds per point | new `records` module + CLI example | all |
 
 If E1 shows that service curves are simple (for example, linear in new
-and cached tokens with a batch term), consider whether a semi-analytical
-model such as MVA with load-dependent servers would answer E3 and E6
-without a full simulator. Try that first if it is cheaper.
+and cached tokens with a batch term), try a semi-analytical model (MVA
+with load-dependent servers) for E3 and E6 before building batching.
 
-## 2. Scope
+## 7. Milestones
 
-**In scope**
-- Program-level workload: multi-turn programs with tool think-time,
-  from trace replay or a synthetic generator.
-- Replicas and pools: aggregated replicas, static PD pools, and dynamic
-  PD with per-turn append-prefill routing.
-- Continuous batching with a token budget per iteration, and chunked
-  prefill.
-- KV management at block granularity per device, a host or shared tier,
-  and pluggable eviction, offload and prefetch policies.
-- Transfers: device↔device and device↔tier links, with bandwidth shared
-  among concurrent transfers.
-- Pluggable routers: myopic, KV-aware, program-aware lookahead, strict
-  affinity.
+| M | Deliverable | Depends on | Status |
+|---|-------------|------------|--------|
+| M0 | engine, distributions, statistics, open queue; ladder steps 1–2 | none | done |
+| M1 | closed agent programs with tool time and finite KV; ladder step 3 | M0 | done |
+| M2 | eviction policies, offline exact optimum; oracle with realised resumes | M1, trace format | offline done; oracle open |
+| M3 | offload tier, fetch modes, selective policy | M2 | done (FIFO link); fair-share links open |
+| M4 | PD pools and routers; ladder step 4 | M3 | done (static PD); dynamic PD open |
+| M5 | continuous batching, block KV, trace replay, E1 fits; ladder step 5; E7 | E1 data | not started |
 
-**Out of scope** (matches the paper's scope statement): collective
-contention inside a model-parallel group, kernel-launch jitter, allocator
-behaviour beyond block counts, network head-of-line blocking. Where the
-E7 error decomposition blames these, report the gap rather than model
-them.
-
-## 3. Architecture
-
-A single-threaded event loop over a `heapq` priority queue. No SimPy
-dependency, so the core stays small and deterministic.
-
-```
-sim/
-  core.py         event loop, clock, seeded RNG streams
-  workload.py     Program, Turn; TraceReplay and SyntheticGenerator
-  service.py      calibrated service-time models from E1 (fit files in data/)
-  engine.py       Replica: iteration-level batching, prefill/decode queues
-  kv.py           BlockPool per device and tier; residency map program→location
-  transfer.py     Link with fair-share bandwidth; transfer completion events
-  policies/
-    eviction.py   LRU, hit-ratio, shortest-first, density (p_i c_i), utility (`eq:utility`), oracle
-    offload.py    never, always, selective argmin
-    routing.py    myopic, kv_aware, lookahead, affinity, append_prefill
-  cluster.py      wires replicas, pools, tiers and links from a config
-  metrics.py      per-turn records → TTFT/TPOT/p99, throughput, hit rate, CV²
-  run.py          CLI: config (TOML) + seed → parquet of per-turn records
-tests/
-  test_closed_forms.py   validation ladder, steps 1–3
-```
-
-Tooling: Python 3.12 via `uv`; numpy, pandas or polars, pyarrow. Add
-`make sim-test` once code exists.
-
-### Events
-`TurnArrival`, `IterationStart`/`IterationEnd` (per replica),
-`TransferDone`, `ToolDone` (next turn of the program becomes ready),
-`ProgramEnd`. Policies are called synchronously at decision points:
-router on `TurnArrival`, eviction when an allocation fails, offload at
-`IterationEnd` for programs entering tool phase.
-
-### Service model
-`S_prefill(L, K, B)` and `S_decode(B, KV)` are the E1 fits, evaluated per
-iteration for the batch composition, not per request. This is the main
-fidelity gain over the closed forms. Optional multiplicative noise uses
-the E1 residual distribution.
-
-### Policy interface
-```python
-class EvictionPolicy(Protocol):
-    def choose(self, resident: list[ProgramState], need_blocks: int, now: float) -> list[ProgramId]: ...
-
-class Router(Protocol):
-    def route(self, turn: Turn, cluster: ClusterView, now: float) -> ReplicaId: ...
-```
-`ProgramState` exposes `c_i` (context length), resident location, phase,
-time since suspension, and an estimated resume probability `p_i`. The
-estimate is part of the policy, so a policy may be wrong about it.
-
-The `oracle` eviction policy solves the eviction problem (`eq:evict`) exactly (small instances,
-integer programming or DP over blocks), using realised future resumes.
-It is an unattainable lower bound for E4.
-
-## 4. Validation ladder
-
-The simulator is trusted only after each step passes. Steps 1–3 are
-unit tests against the paper's closed forms, so any bug that breaks a
-proposition's prediction is caught mechanically.
-
-1. **M/M/1.** One replica, batch size 1, exponential service, Poisson
-   arrivals. Mean response time is within 2 % of `1/(μ−λ)` at
-   ρ ∈ {0.5, 0.8, 0.9} (`prop:mm1`).
-2. **M/G/1.** Deterministic, then two-point hit/miss service. Mean wait
-   is within 3 % of PK (`eq:pk`). The ratio to exponential is
-   `(1+CV²)/2` (`eq:cv2`).
-3. **Closed network.** N programs with exponential think time. Check the
-   interactive response-time law `R = N/X − Z` exactly (it is an
-   identity, so any deviation is a bug), and check that throughput is
-   non-decreasing in N when demands are fixed.
-4. **PD capacity.** Saturated static PD with no batching effects. The
-   measured capacity matches `min(N_P/s_P, N_D/s_D)` (`prop:pd`).
-5. **Calibrated vs testbed.** With E1 fits, reproduce testbed TTFT and
-   throughput at the E7 held-out points. Report MAPE. This step is
-   itself a row of the paper's scorecard table (`tab:scorecard`).
-
-## 5. Outputs
-
-One parquet file per run with a row per turn: program id, turn index,
-arrival, first-token and finish times, hit length, replica, transfer
-bytes, and the policy decisions taken. All paper tables are computed from
-these files by scripts in `sim/analysis/`, so every `\tbd` in §7 has one
-reproducible source. Runs are keyed by (config hash, seed). Use at least
-5 seeds per point and report 95 % intervals.
-
-## 6. Milestones
-
-| M | Deliverable | Depends on |
-|---|-------------|------------|
-| M0 | core, workload (synthetic), single replica, metrics, ladder steps 1–2 | none |
-| M1 | closed-network programs with tool time, ladder step 3 | M0 |
-| M2 | KV block pool, eviction policies, oracle; E4 end-to-end | M1, trace format |
-| M3 | tiers, transfers, offload policies; E3 | M2 |
-| M4 | PD pools and routers; ladder step 4; E6 | M3 |
-| M5 | E1 service fits plugged in; ladder step 5; E7 | E1 data |
-
-M0 to M4 can proceed on synthetic workloads before testbed data exists.
-M5 cannot.
+M0–M4 run on synthetic workloads and feed paper §6.9. M5 cannot start
+before E1.

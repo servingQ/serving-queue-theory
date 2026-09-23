@@ -30,8 +30,8 @@
 \newcommand{\tbd}{\textcolor{tbdcolor}{\textsf{TBD}}}
 
 \theoremstyle{plain}
-\newtheorem{theorem}{Theorem}[section]
-\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
 \newtheorem{lemma}[theorem]{Lemma}
 \newtheorem{corollary}[theorem]{Corollary}
 \theoremstyle{definition}
@@ -77,16 +77,15 @@ utilisation approaches saturation. We model agentic serving as a chain of
 dependent quantities. The KV eviction policy sets the prefix-cache hit
 rate. The hit rate sets the service-time distribution. The distribution
 sets utilisation and queueing delay. Delay enters the cost that routing
-and eviction decisions minimise. On this chain we prove results for four
+and eviction decisions minimise. On this chain we prove results for three
 decisions an agentic serving system makes. Enabling KV offloading never
-increases the optimal cost, although always offloading can. Static
-prefill/decode (PD) disaggregation cannot beat aggregation without phase
-specialisation, and we give the exact condition under which it wins.
+increases the optimal cost, although always offloading can.
 Shortest-context-first eviction is not optimal; it is a 2-approximation
 when every suspended program resumes, and arbitrarily bad when resume
 probabilities differ. Strict session affinity is not optimal at high
-load. These results explain, and delimit, three recently published claims
-about agentic serving. We then design experiments on a rack-scale NPU
+load. These results explain, and delimit, two recently published claims
+about agentic serving. Results on prefill/decode disaggregation are
+collected in an appendix and will be developed in follow-up work. We then design experiments on a rack-scale NPU
 testbed and a calibrated simulator whose success criterion is
 \emph{decision faithfulness}: agreement with the real system on which
 policy is better, rather than cycle-accurate latency.
@@ -104,7 +103,7 @@ queueing delay plus service time. Hardware benchmarks measure~$S$; users
 experience~$T$. Near saturation $W_q$ dominates, and it does so
 \emph{non-linearly}: in the simplest Markovian model a 10\,\% increase in
 arrival rate (from $\rho = 0.90$ to $\rho = 0.99$) multiplies response time
-by ten (Proposition~\ref{prop:mm1}; with $\mu=10$\,req/s, $W$ goes
+by ten (with $W=1/(\mu-\lambda)$ and $\mu=10$\,req/s, $W$ goes
 from $1$\,s to $10$\,s).\provedby{\leanref{mm1Wait\_example\_ratio}} This single fact reframes most serving
 questions. ``How many tokens/s does this NPU deliver?'' becomes ``at what
 utilisation does p99~TTFT cross the SLA, and which control knob moves that
@@ -128,15 +127,16 @@ policy, the hit rate, the service-time distribution, queueing delay and
 the control cost. It is assembled from standard results (Little's law,
 the Pollaczek--Khinchine formula, Kingman's bound, the interactive
 response-time law), which we state and cite.
-\item \textbf{Results for four decisions} (\S\S\ref{sec:congestion}--\ref{sec:routing}):
+\item \textbf{Results for three decisions} (\S\S\ref{sec:congestion}--\ref{sec:routing}):
 how the hit/miss mixture drives delay, when offloading helps, how to
-choose what to evict, when PD disaggregation wins, and when session
-affinity fails. Each result is placed next to the published claim it
-bears on. Three claims from ThunderAgent \citep{thunderagent} are
-re-examined: that KV offloading is ineffective, that PD disaggregation is
+choose what to evict, and when session affinity fails. Each result is
+placed next to the published claim it bears on. Two claims from
+ThunderAgent \citep{thunderagent} are re-examined: that KV offloading is
 ineffective, and that shortest-context-first eviction is optimal. The
-first two hold only in identifiable regimes. The third is false, and we
-bound how far from optimal the heuristic can be.
+first holds only in an identifiable regime. The second is false, and we
+bound how far from optimal the heuristic can be. Appendix~\ref{app:pd}
+states our results on prefill/decode (PD) disaggregation, a third
+ThunderAgent claim, which a follow-up paper will treat in detail.
 \item \textbf{An experimental design} (\S\ref{sec:exp}) whose primary
 metric is decision faithfulness. Result tables are laid out with
 placeholders; no measurement is reported in this draft.
@@ -271,36 +271,14 @@ fails.
 \section{Congestion and the Hit/Miss Mixture}\label{sec:congestion}
 % ===========================================================================
 
-We first record the exact form of the M/M/1 blow-up, because later
-results (Proposition~\ref{prop:routing}) use its unboundedness.
-
-\begin{proposition}[M/M/1 latency blow-up]\label{prop:mm1}
-Let $\mu>0$ and $W(\lambda)=1/(\mu-\lambda)$ on $0\le\lambda<\mu$, with
-$\rho=\lambda/\mu$. Then
-\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
-\item $W(\lambda) = \dfrac{1/\mu}{1-\rho}$;
-\item $W$ is strictly increasing on $[0,\mu)$;
-\item $W$ is unbounded: for every $M$ there is a stable load $\lambda<\mu$
-      with $W(\lambda)>M$.
-\end{enumerate}
-\provedby{\leanref{mm1Wait\_eq\_rho\_form}, \leanref{mm1Wait\_strictMono}, \leanref{mm1Wait\_unbounded}}
-\end{proposition}
-
-
 Theorem~\ref{thm:pk} makes the second moment of service time, not only
 its mean, a first-class quantity.
 
 \begin{proposition}[Variance drives queueing delay]\label{prop:pk}
-Let $S$ have a finite discrete distribution and let $\E[W_q]$ be given
-by~\eqref{eq:pk}.
-\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
-\item $\E[S^2]=\mathrm{Var}[S]+\E[S]^2$;
-\item for fixed $\lambda>0$ and $\rho<1$, $\E[W_q]$ is strictly increasing
-      in $\E[S^2]$;
-\item if two workloads have equal mean and $\mathrm{Var}[S_A]<\mathrm{Var}[S_B]$,
-      then $\E[W_q^A]<\E[W_q^B]$ at every stable load.
-\end{enumerate}
-\provedby{\leanref{secondMoment\_eq\_variance\_add\_sq}, \leanref{pkWait\_strictMono\_secondMoment}, \leanref{pkWait\_lt\_of\_variance\_lt}}
+Let $S_A$ and $S_B$ have finite discrete distributions with equal mean
+and $\mathrm{Var}[S_A]<\mathrm{Var}[S_B]$, and let $\E[W_q]$ be given
+by~\eqref{eq:pk}. Then $\E[W_q^A]<\E[W_q^B]$ at every stable load.
+\provedby{\leanref{pkWait\_lt\_of\_variance\_lt}}
 \end{proposition}
 
 
@@ -308,12 +286,9 @@ Raising the hit rate lowers both moments at once.
 
 \begin{proposition}[Cache reuse empties the queue]\label{prop:cache}
 Let $0\le S^{\mathrm{hit}}\le S^{\mathrm{miss}}$, let a request hit with
-probability~$p$, and let $\rho=\lambda\E[S]$ with $\lambda>0$. Then
-\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
-\item $\E[S]$, $\E[S^2]$ and $\rho$ are non-increasing in $p$;
-\item for $p\le q$ in $[0,1]$, if the system is stable at hit rate~$p$,
-      the PK delay at~$q$ is at most the PK delay at~$p$.
-\end{enumerate}
+probability~$p$, and let $\rho=\lambda\E[S]$ with $\lambda>0$. For
+$p\le q$ in $[0,1]$, if the system is stable at hit rate~$p$, the PK
+delay at~$q$ is at most the PK delay at~$p$.
 \provedby{\leanref{meanService\_antitone}, \leanref{utilization\_antitone}, \leanref{secondMomentService\_antitone}, \leanref{pkWait\_mixture\_antitone}}
 \end{proposition}
 
@@ -384,19 +359,15 @@ and every miss pays the transfer. The falling throughput is also what
 The observation is consistent with the model. What it supports is a
 statement about a policy, not about a mechanism.
 
-\begin{proposition}[Option value of a mechanism]\label{prop:option}
-For finite non-empty action sets $A_0\subseteq A_1$ and any cost $J$,
-\[
-  \min_{a\in A_1}J(a)\;\le\;\min_{a\in A_0}J(a).
-\]
-In particular, with $A_0=\{\text{keep},\text{recompute}\}$ and
-$A_1=A_0\cup\{\text{offload}\}$, \emph{enabling} offloading never increases
-the optimal cost, while there exist costs $J$ for which
-\emph{always} offloading is strictly worse than the $A_0$ optimum.
-\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{enabling\_offload\_never\_hurts}, \leanref{always\_offload\_can\_be\_worse}}
-\end{proposition}
+Offloading enlarges the action set of a KV controller from
+$A_0=\{\text{keep},\text{recompute}\}$ to $A_1=A_0\cup\{\text{offload}\}$.
+A minimum over a larger set is never larger, so \emph{enabling}
+offloading never increases the optimal cost. \emph{Always} offloading
+can still be strictly worse than the $A_0$ optimum, for instance when
+$J(\text{keep})=1$, $J(\text{recompute})=5$ and
+$J(\text{offload})=10$.\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{enabling\_offload\_never\_hurts}, \leanref{always\_offload\_can\_be\_worse}}
 
-\paragraph{Reading the claim.} By Proposition~\ref{prop:option}, the
+\paragraph{Reading the claim.} Hence the
 reported numbers show that \emph{always-offload} is a bad policy at that
 operating point, not that enabling offloading is harmful. A controller
 that chooses $a_i^\ast = \argmin\{J_{\mathrm{keep}},
@@ -476,70 +447,6 @@ agent traces decides which regime of Proposition~\ref{prop:evict}
 applies, and is measured in \S\ref{sec:exp-evict}.
 
 % ===========================================================================
-\section{Prefill/Decode Disaggregation}\label{sec:pd}
-% ===========================================================================
-
-\paragraph{The claim.} ThunderAgent \citep[App.~A.2, Fig.~7]{thunderagent}
-reports that static PD splits of 1:3, 2:2 and 3:1 reach 87.1, 160.1 and
-183.2 step/min, against 214.9 for aggregated serving. It attributes the
-gap to a smaller effective HBM pool for prefill (``PD disaggregation
-exacerbates thrashing'').
-
-\paragraph{The model.} We treat each pool as a capacity and ask when a
-split beats aggregation.
-
-\begin{proposition}[PD disaggregation: no-gain theorem and exact win condition]\label{prop:pd}
-Let $N$ identical devices serve requests with prefill work $s_P>0$ and
-decode work $s_D>0$ (device-seconds). Ideal aggregation has capacity
-$\mu_A=N/(s_P+s_D)$; a static split $N_P+N_D=N$ has capacity
-$\mu_{PD}=\min(N_P/s_P,\,N_D/s_D)$.
-\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
-\item $\mu_{PD}\le\mu_A$ for every split.
-\item Equality holds at the rate-matched split $N_P=Ns_P/(s_P+s_D)$,
-      which is therefore optimal.
-\item Let aggregation pay an interference overhead~$I$, let dedicated pools
-      realise specialisation gains $g_P,g_D$, and let PD be further capped
-      by KV-transfer capacity $B_{\mathrm{net}}/\E[K]$ and memory caps
-      $\mu_{P,\mathrm{mem}},\mu_{D,\mathrm{mem}}$. Then
-      \begin{multline*}
-        \mu_{PD} > \mu_A \iff
-        \frac{N}{s_P+s_D+I} < \\
-        \min\Bigl[\tfrac{N}{s_P/g_P+s_D/g_D},\;
-                  \tfrac{B_{\mathrm{net}}}{\E[K]},\;
-                  \mu_{P,\mathrm{mem}},\;\mu_{D,\mathrm{mem}}\Bigr],
-      \end{multline*}
-      i.e.\ PD wins iff \emph{each} of its four bottlenecks exceeds the
-      aggregated capacity. With $g_P=g_D=1$ and $I=0$ the compute term
-      equals $\mu_A$, recovering~(i).
-\end{enumerate}
-\provedby{\leanref{pd\_le\_agg}, \leanref{pd\_eq\_agg\_at\_rate\_match}, \leanref{rate\_match\_optimal}, \leanref{pd\_beats\_agg\_iff}, \leanref{pdCompute\_eq\_agg\_of\_no\_gain}}
-\end{proposition}
-
-
-\paragraph{Reading the claim.} Proposition~\ref{prop:pd}(i)--(ii) says the
-reported result is what the model predicts under the paper's conditions:
-same hardware, no phase specialisation ($g_P=g_D=1$), and a memory-bound
-prefill pool (a smaller HBM pool thrashes sooner, i.e.\
-$\mu_{P,\mathrm{mem}}$ binds). Nothing specific to agentic workloads is
-needed; the bound is a rate-matching identity. Proposition~\ref{prop:pd}(iii)
-gives the condition under which the conclusion flips. PD is deployed in
-practice \citep{vllm-agentx,mooncake-vllm} with long-context prefill
-parallelism ($g_P>1$), wide expert-parallel decode ($g_D>1$), measurable
-prefill/decode interference ($I>0$), a fast interconnect
-($B_{\mathrm{net}}/\E[K]$ not binding), and a shared KV tier that removes
-$\mu_{P,\mathrm{mem}}$ as a constraint. That is the regime the condition
-identifies. The supported statement is regime-dependent: static PD
-without specialisation and with a memory-bound prefill pool cannot beat
-aggregation. The generalisation that PD does not help agentic serving is
-not supported.
-
-A second issue is the request shape. For turn $t\ge2$ a request is
-``$10^5$ cached tokens $+\,500$ new tokens''. Routing it through the
-prefill pool and shipping the whole KV to a decode node is often the
-wrong path. Static PD is therefore the wrong abstraction for multi-turn
-programs, and \S\ref{sec:routing} makes the per-turn alternative precise.
-
-% ===========================================================================
 \section{Program-Aware Routing}\label{sec:routing}
 % ===========================================================================
 
@@ -549,47 +456,26 @@ the migration cost $M_j$ and the expected future cost $F_j$ of the
 program's remaining turns, a one-step approximation of
 $\E[V(X_{t+1})\mid p,j]$ in~\eqref{eq:mdp}. Session affinity (always stay
 where the state is) is the extreme case $M_j=\infty$ for every other node.
+Let node~1 hold a program's state and node~2 be a candidate. With
+$M_1=0$, the lookahead rule $\min_j W_j+S_j+M_j+F_j$ prefers node~1 iff
+\begin{equation}\label{eq:lookahead}
+  (W_1+S_1)-(W_2+S_2) < M_2+(F_2-F_1).
+\end{equation}
+\provedby{\leanref{lookahead\_prefers\_iff}}
 
 \begin{proposition}[Program-aware routing and the limit of affinity]\label{prop:routing}
-Let node~1 hold a program's state and node~2 be a candidate, with queueing
-delays $W_j$, service times $S_j$, migration cost $M_2$ and expected future
-costs $F_j$.
-\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
-\item The lookahead rule $\min_j W_j+S_j+M_j+F_j$ (with $M_1=0$) prefers
-      node~1 iff $(W_1+S_1)-(W_2+S_2) < M_2+(F_2-F_1)$.
-\item For \emph{any} finite $M,F\ge0$ there is a stable load $\lambda<\mu$
-      at which the M/M/1 response time of the affinity node exceeds
-      $1/\mu+M+F$, the cost of moving to an idle node of the same speed.
-      Hence strict session affinity is not an optimal policy.
-\end{enumerate}
-\provedby{\leanref{lookahead\_prefers\_iff}, \leanref{affinity\_not\_always\_optimal}}
+For \emph{any} finite $M,F\ge0$ there is a stable load $\lambda<\mu$ at
+which the M/M/1 response time of the affinity node exceeds $1/\mu+M+F$,
+the cost of moving to an idle node of the same speed. Hence strict
+session affinity is not an optimal policy.
+\provedby{\leanref{affinity\_not\_always\_optimal}, \leanref{mm1Wait\_unbounded}}
 \end{proposition}
 
-Applied to PD pools, the same comparison decides where a follow-up turn
-is prefilled. Let $W_P,S_P$ be the prefill pool's wait and append service,
-$T_{\mathrm{KV}}$ the transfer of the program's KV to the decode node,
-$W_D$ the decode wait, $S_D$ the append service on the decode node, and
-$I$ the interference it inflicts on co-located decodes.
+Session affinity and KV-aware routing are both one-step approximations
+of~\eqref{eq:mdp}. Proposition~\ref{prop:routing} says that the
+approximation which ignores queueing entirely fails at high load.
+Appendix~\ref{app:pd} applies the comparison~\eqref{eq:lookahead} to prefill and decode pools.
 
-\begin{proposition}[Append-prefill rule]\label{prop:append}
-Decode-local processing of turn $t\ge2$ has lower cost than the
-prefill-pool path iff
-\[
-  S_D+I < W_P+S_P+T_{\mathrm{KV}} .
-\]
-\provedby{\leanref{append\_prefill\_rule}}
-\end{proposition}
-
-
-Proposition~\ref{prop:append} is the append-prefill rule of PPD
-\citep{ppd} written as a cost comparison. Together with
-Proposition~\ref{prop:pd} it says that the useful form of PD for agentic
-serving is \emph{dynamic}: first-turn prefills go to the prefill pool, and
-follow-up turns are routed per turn by comparing the two sides of
-Proposition~\ref{prop:append}. Session affinity, KV-aware routing and
-PPD-style routing are all one-step approximations of~\eqref{eq:mdp};
-Proposition~\ref{prop:routing}(ii) says that the approximation which
-ignores queueing entirely fails at high load.
 
 % ===========================================================================
 \section{Experiments}\label{sec:exp}
@@ -641,7 +527,8 @@ Resume probability $p_i$ & --    & \tbd & \tbd \\
 
 \begin{table}[t]
 \caption{Experiments, the result each tests, and where it runs
-(T = testbed, S = simulator, O = offline on traces).}
+(T = testbed, S = simulator, O = offline on traces). E5 (PD
+disaggregation) is described in Appendix~\ref{app:pd}.}
 \label{tab:exp-overview}
 \centering\small
 \begin{tabular}{@{}llll@{}}
@@ -650,10 +537,9 @@ Exp. & Tests & Where & Primary metric \\
 \midrule
 E1 & calibration              & T    & held-out MAPE \\
 E2 & Prop.~\ref{prop:pk}, Eq.~\eqref{eq:cv2} & T, S & $\mathrm{CV}^2$ share \\
-E3 & Prop.~\ref{prop:option}  & T, S & step/min \\
+E3 & \S\ref{sec:offload}  & T, S & step/min \\
 E4 & Prop.~\ref{prop:evict}, Eq.~\eqref{eq:utility} & O, S & cost / OPT \\
-E5 & Prop.~\ref{prop:pd}      & T    & winner agreement \\
-E6 & Props.~\ref{prop:routing}, \ref{prop:append} & T, S & inversion load \\
+E6 & Prop.~\ref{prop:routing} & T, S & inversion load \\
 E7 & decision faithfulness    & T, S & Kendall $\tau$ \\
 \bottomrule
 \end{tabular}
@@ -751,7 +637,7 @@ $\E[W_q]$ measured / PK, $\rho=0.9$               & \tbd \\
 
 \subsection{E3: Selective offloading}\label{sec:exp-offload}
 
-\emph{Hypothesis} (Prop.~\ref{prop:option}): a per-program $\argmin$ over
+\emph{Hypothesis} (\S\ref{sec:offload}): a per-program $\argmin$ over
 $\{\text{keep},\text{offload},\text{recompute}\}$ is never below
 never-offload, while always-offload falls below it once the tier
 saturates. We sweep concurrency over the range used by ThunderAgent and
@@ -807,34 +693,9 @@ Utility \eqref{eq:utility} & \tbd & \tbd & \tbd \\
 \end{tabular}
 \end{table}
 
-\subsection{E5: PD win condition}\label{sec:exp-pd}
-
-\emph{Hypothesis} (Prop.~\ref{prop:pd}): the inequality in
-Prop.~\ref{prop:pd}(iii), evaluated from independently measured
-parameters, predicts which of aggregated and rate-matched PD serving has
-higher throughput. We measure $s_P, s_D, I, g_P, g_D$,
-$B_{\mathrm{net}}/\E[K]$ and the memory caps, evaluate the condition, and
-run both deployments. We repeat with a shared KV tier and with per-turn
-append-prefill routing (dynamic PD).
-
-\begin{table}[t]
-\caption{E5: predicted vs.\ observed winner. $\mu$ in requests/s.}
-\label{tab:pd}
-\centering\small
-\begin{tabular}{@{}lccc@{}}
-\toprule
-Configuration & $\mu_A$ & $\min[\cdot]$ & Pred.\ / Obs. \\
-\midrule
-Static PD, local KV      & \tbd & \tbd & \tbd{} / \tbd \\
-Static PD, shared tier   & \tbd & \tbd & \tbd{} / \tbd \\
-Dynamic PD (append)      & \tbd & \tbd & \tbd{} / \tbd \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 \subsection{E6: Routing}\label{sec:exp-routing}
 
-\emph{Hypothesis} (Props.~\ref{prop:routing} and \ref{prop:append}): strict
+\emph{Hypothesis} (Prop.~\ref{prop:routing}): strict
 affinity wins at low load and loses above a load that the lookahead rule
 predicts from measured $W_j$, $M_j$ and $F_j$. We compare myopic,
 KV-aware, program-aware (one-step lookahead) and strict-affinity routing.
@@ -876,13 +737,14 @@ Decision & \multicolumn{2}{c}{Analytical} & \multicolumn{2}{c}{Simulator} \\
 \midrule
 Offloading     & \tbd & \tbd & \tbd & \tbd \\
 Eviction       & \tbd & \tbd & \tbd & \tbd \\
-PD split       & \tbd & \tbd & \tbd & \tbd \\
 Routing        & \tbd & \tbd & \tbd & \tbd \\
 \midrule
 TTFT MAPE      & \multicolumn{2}{c}{\tbd} & \multicolumn{2}{c}{\tbd} \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\input{simulation}
 
 % ===========================================================================
 \section{Related Work}\label{sec:related}
@@ -893,9 +755,10 @@ Queueing foundations: \citet{kleinrock1975}; the PK formula and M/G/1
 GI/G/1 bounds \citep{kingman1962}; SRPT optimality \citep{schrage1968};
 closed and interactive networks \citep{lazowska1984}. Knapsack relaxation
 and covering knapsack: \citet{dantzig1957,csirik1991,carnes2008}. Agentic
-serving: ThunderAgent \citep{thunderagent}; PPD append-prefill
-\citep{ppd}; production traces and PD rate matching
-\citep{vllm-agentx}; distributed KV pools \citep{mooncake-vllm}.
+serving: ThunderAgent \citep{thunderagent}; production traces
+\citep{vllm-agentx}; distributed KV pools \citep{mooncake-vllm}. PPD
+append-prefill \citep{ppd} and PD rate matching \citep{vllm-agentx} bear
+on Appendix~\ref{app:pd}.
 
 % ===========================================================================
 \section{Limitations}\label{sec:limits}
@@ -903,14 +766,13 @@ serving: ThunderAgent \citep{thunderagent}; PPD append-prefill
 
 The propositions are about the model, not the world. Their empirical
 force depends on the experiments of \S\ref{sec:exp}, which have not been
-carried out. Propositions~\ref{prop:mm1}--\ref{prop:cache} assume Poisson
+carried out. Propositions~\ref{prop:pk} and~\ref{prop:cache} assume Poisson
 arrivals and a single server. Agentic arrivals are bursty and correlated,
 and Theorem~\ref{thm:kingman} shows that arrival variability adds to the
 delay rather than cancelling service variability, so the PK formula can
 underestimate it. We have not measured the service-time variance of a
 real agentic deployment; \S\ref{sec:congestion} argues where it should
-come from, and E2 measures it. The PD model treats capacity as a scalar
-bottleneck and ignores batching dynamics inside each pool. The
+come from, and E2 measures it. The
 ThunderAgent statements we discuss were checked against
 arXiv:2602.13692v3; we have not reproduced its experiments.
 
@@ -935,23 +797,8 @@ formalised and machine-checked in Lean~4 with Mathlib; the development is
 in the supplementary material. The proofs below are written for human
 readers and do not follow the formal proofs step by step.
 
-\begin{proof}[Proof of Proposition~\ref{prop:mm1}]
-(i) Divide numerator and denominator of $1/(\mu-\lambda)$ by $\mu>0$ to get
-$(1/\mu)/(1-\lambda/\mu)$.
-
-(ii) If $0\le a<b<\mu$ then $0<\mu-b<\mu-a$, and $x\mapsto1/x$ is
-decreasing on $(0,\infty)$, so $1/(\mu-a)<1/(\mu-b)$.
-
-(iii) Given $M$, choose $\varepsilon$ with $0<\varepsilon\le\mu$ and
-$\varepsilon<1/(|M|+1)$, for instance $\varepsilon=\min(\mu,1/(|M|+2))$.
-The load $\lambda=\mu-\varepsilon$ lies in $[0,\mu)$ and gives
-$W(\lambda)=1/\varepsilon>|M|+1>M$.
-
-The numbers in \S\ref{sec:intro} are $1/(10-9)=1$ and $1/(10-9.9)=10$.
-\end{proof}
-
 \begin{proof}[Proof of Proposition~\ref{prop:pk}]
-(i) Let $S$ take value $s_i$ with probability $q_i$, and let
+Let $S$ take value $s_i$ with probability $q_i$, and let
 $m=\E[S]=\sum_iq_is_i$. Expanding the square,
 \begin{align*}
 \mathrm{Var}[S]&=\sum_iq_i(s_i-m)^2\\
@@ -959,27 +806,26 @@ $m=\E[S]=\sum_iq_is_i$. Expanding the square,
 &=\E[S^2]-m^2 .
 \end{align*}
 
-(ii) For fixed $\lambda>0$ and $\rho<1$, Eq.~\eqref{eq:pk} is the linear
-function $\E[S^2]\mapsto c\,\E[S^2]$ with slope
-$c=\lambda/(2(1-\rho))>0$.
-
-(iii) By (i), $\E[S_A^2]=\mathrm{Var}[S_A]+m^2<\mathrm{Var}[S_B]+m^2
+Hence $\E[S_A^2]=\mathrm{Var}[S_A]+m^2<\mathrm{Var}[S_B]+m^2
 =\E[S_B^2]$ when the means are both $m$. The loads are equal because
-$\rho=\lambda m$ in both cases, so (ii) applies.
+$\rho=\lambda m$ in both cases, and for fixed $\lambda>0$ and $\rho<1$
+Eq.~\eqref{eq:pk} is linear in $\E[S^2]$ with slope
+$\lambda/(2(1-\rho))>0$.
 \end{proof}
 
 \begin{proof}[Proof of Proposition~\ref{prop:cache}]
 Write $h=S^{\mathrm{hit}}$ and $m=S^{\mathrm{miss}}$.
 
-(i) For $p\le q$,
+For $p\le q$,
 $\E[S](q)-\E[S](p)=(q-p)(h-m)\le0$ because $h\le m$. The same computation
 with $h^2$ and $m^2$ gives the claim for $\E[S^2]$, since $0\le h\le m$
-implies $h^2\le m^2$. Finally $\rho=\lambda\E[S]$ with $\lambda>0$.
+implies $h^2\le m^2$, and $\rho=\lambda\E[S]$ with $\lambda>0$ is
+non-increasing too.
 
-(ii) The PK delay at hit rate $x$ is $\lambda\E[S^2](x)/(2(1-\rho(x)))$.
+The PK delay at hit rate $x$ is $\lambda\E[S^2](x)/(2(1-\rho(x)))$.
 For $q\in[0,1]$ both terms of $\E[S^2](q)=qh^2+(1-q)m^2$ are
-non-negative, so the numerator at $q$ is non-negative, and by (i) it is
-at most the numerator at $p$. By (i) again $\rho(q)\le\rho(p)<1$, so the
+non-negative, so the numerator at $q$ is non-negative, and it is
+at most the numerator at $p$. Also $\rho(q)\le\rho(p)<1$, so the
 denominator at $q$ is positive and at least the denominator at $p$. A
 non-negative numerator that shrinks over a positive denominator that
 grows gives a smaller ratio.
@@ -989,14 +835,6 @@ ratio of PK expressions at equal $\lambda$ and $\rho$ is
 $\E[S^2]/(2\E[S]^2)=(1+\mathrm{CV}^2)/2$. With $p=0.96$, $h=0.05$ and
 $m=5$: $\E[S]=0.248$, $\E[S^2]=1.0024$ and $\mathrm{CV}^2\approx15.3$. With
 $m=0.1$: $\E[S]=0.052$, $\E[S^2]=0.0028$ and $\mathrm{CV}^2\approx0.036$.
-\end{proof}
-
-\begin{proof}[Proof of Proposition~\ref{prop:option}]
-Every $a\in A_0$ also lies in $A_1$, so $\min_{A_1}J\le J(a)$. Taking the
-minimum over $a\in A_0$ gives $\min_{A_1}J\le\min_{A_0}J$. For the second
-claim take $J(\text{keep})=1$, $J(\text{recompute})=5$ and
-$J(\text{offload})=10$. Then $\min_{A_0}J=1<10=J(\text{offload})$, while
-$\min_{A_1}J=1$ by the first claim.
 \end{proof}
 
 \begin{proof}[Proof of Proposition~\ref{prop:evict}]
@@ -1042,6 +880,14 @@ enough memory at expected cost $M^2/M^3=1/M$. Choosing $M>R/4$ and
 $M\ge2$ makes $4>R/M$.
 \end{proof}
 
+\begin{proof}[Proof of Proposition~\ref{prop:routing}]
+An idle node of service rate $\mu$ has response time $1/\mu$, so moving
+there costs $B=1/\mu+M+F$. The M/M/1 response time $W(\lambda)=1/(\mu-\lambda)$
+is unbounded on $[0,\mu)$: the load $\lambda=\mu-\varepsilon$ with
+$\varepsilon=\min(\mu,1/(|B|+2))$ gives $W(\lambda)=1/\varepsilon>B$. At that load a policy that
+always stays is beaten by one that moves.
+\end{proof}
+
 \begin{proof}[Proof of Proposition~\ref{prop:pd}]
 (i) Let $m=\min(N_P/s_P,N_D/s_D)$. Then $ms_P\le N_P$ and $ms_D\le N_D$.
 Adding, $m(s_P+s_D)\le N_P+N_D=N$, i.e.\ $m\le N/(s_P+s_D)$.
@@ -1056,22 +902,164 @@ $N/(s_P+s_D)=\mu_A$, and the strict inequality cannot hold, which is (i)
 again.
 \end{proof}
 
-\begin{proof}[Proof of Proposition~\ref{prop:routing}]
-(i) With $M_1=0$, node~1 is preferred iff
-$W_1+S_1+F_1<W_2+S_2+M_2+F_2$. Subtracting $W_2+S_2+F_1$ from both sides
-gives the stated inequality.
 
-(ii) An idle node of service rate $\mu$ has response time $W(0)=1/\mu$,
-so moving there costs $1/\mu+M+F$. By Proposition~\ref{prop:mm1}(iii)
-applied with bound $1/\mu+M+F$, some stable load $\lambda<\mu$ makes the
-affinity node's response time exceed it. At that load a policy that
-always stays is beaten by one that moves.
-\end{proof}
+% ===========================================================================
+\section{Prefill/Decode Disaggregation}\label{app:pd}
+% ===========================================================================
 
-\begin{proof}[Proof of Proposition~\ref{prop:append}]
+This appendix collects our results on prefill/decode (PD)
+disaggregation. They use the model of \S\ref{sec:model} and are proved
+in Appendix~\ref{app:proofs}. A fuller treatment, including batching
+inside each pool, is left to follow-up work.
+
+\subsection{Static PD splits}\label{sec:pd}
+
+\paragraph{The claim.} ThunderAgent \citep[App.~A.2, Fig.~7]{thunderagent}
+reports that static PD splits of 1:3, 2:2 and 3:1 reach 87.1, 160.1 and
+183.2 step/min, against 214.9 for aggregated serving. It attributes the
+gap to a smaller effective HBM pool for prefill (``PD disaggregation
+exacerbates thrashing'').
+
+\paragraph{The model.} We treat each pool as a capacity and ask when a
+split beats aggregation.
+
+\begin{proposition}[PD disaggregation: no-gain theorem and exact win condition]\label{prop:pd}
+Let $N$ identical devices serve requests with prefill work $s_P>0$ and
+decode work $s_D>0$ (device-seconds). Ideal aggregation has capacity
+$\mu_A=N/(s_P+s_D)$; a static split $N_P+N_D=N$ has capacity
+$\mu_{PD}=\min(N_P/s_P,\,N_D/s_D)$.
+\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
+\item $\mu_{PD}\le\mu_A$ for every split.
+\item Equality holds at the rate-matched split $N_P=Ns_P/(s_P+s_D)$,
+      which is therefore optimal.
+\item Let aggregation pay an interference overhead~$I$, let dedicated pools
+      realise specialisation gains $g_P,g_D$, and let PD be further capped
+      by KV-transfer capacity $B_{\mathrm{net}}/\E[K]$ and memory caps
+      $\mu_{P,\mathrm{mem}},\mu_{D,\mathrm{mem}}$. Then
+      \begin{multline*}
+        \mu_{PD} > \mu_A \iff
+        \frac{N}{s_P+s_D+I} < \\
+        \min\Bigl[\tfrac{N}{s_P/g_P+s_D/g_D},\;
+                  \tfrac{B_{\mathrm{net}}}{\E[K]},\;
+                  \mu_{P,\mathrm{mem}},\;\mu_{D,\mathrm{mem}}\Bigr],
+      \end{multline*}
+      i.e.\ PD wins iff \emph{each} of its four bottlenecks exceeds the
+      aggregated capacity. With $g_P=g_D=1$ and $I=0$ the compute term
+      equals $\mu_A$, recovering~(i).
+\end{enumerate}
+\provedby{\leanref{pd\_le\_agg}, \leanref{pd\_eq\_agg\_at\_rate\_match}, \leanref{rate\_match\_optimal}, \leanref{pd\_beats\_agg\_iff}, \leanref{pdCompute\_eq\_agg\_of\_no\_gain}}
+\end{proposition}
+
+
+\paragraph{Reading the claim.} Proposition~\ref{prop:pd}(i)--(ii) says the
+reported result is what the model predicts under the paper's conditions:
+same hardware, no phase specialisation ($g_P=g_D=1$), and a memory-bound
+prefill pool (a smaller HBM pool thrashes sooner, i.e.\
+$\mu_{P,\mathrm{mem}}$ binds). Nothing specific to agentic workloads is
+needed; the bound is a rate-matching identity. Proposition~\ref{prop:pd}(iii)
+gives the condition under which the conclusion flips. PD is deployed in
+practice \citep{vllm-agentx,mooncake-vllm} with long-context prefill
+parallelism ($g_P>1$), wide expert-parallel decode ($g_D>1$), measurable
+prefill/decode interference ($I>0$), a fast interconnect
+($B_{\mathrm{net}}/\E[K]$ not binding), and a shared KV tier that removes
+$\mu_{P,\mathrm{mem}}$ as a constraint. That is the regime the condition
+identifies. The supported statement is regime-dependent: static PD
+without specialisation and with a memory-bound prefill pool cannot beat
+aggregation. The generalisation that PD does not help agentic serving is
+not supported.
+
+A second issue is the request shape. For turn $t\ge2$ a request is
+``$10^5$ cached tokens $+\,500$ new tokens''. Routing it through the
+prefill pool and shipping the whole KV to a decode node is often the
+wrong path. Static PD is therefore the wrong abstraction for multi-turn
+programs. The routing comparison of \S\ref{sec:routing} makes the
+per-turn alternative precise.
+
+\subsection{Per-turn routing between pools}\label{sec:pd-append}
+
+Applied to PD pools, the comparison~\eqref{eq:lookahead} decides where a follow-up turn
+is prefilled. Let $W_P,S_P$ be the prefill pool's wait and append service,
+$T_{\mathrm{KV}}$ the transfer of the program's KV to the decode node,
+$W_D$ the decode wait, $S_D$ the append service on the decode node, and
+$I$ the interference it inflicts on co-located decodes.
+
 The decode-local path costs $W_D+S_D+I$ and the prefill-pool path costs
-$W_P+S_P+T_{\mathrm{KV}}+W_D$. The decode wait $W_D$ appears on both sides
-and cancels.
-\end{proof}
+$W_P+S_P+T_{\mathrm{KV}}+W_D$. The decode wait cancels, so decode-local
+processing of turn $t\ge2$ is cheaper iff
+\begin{equation}\label{eq:append}
+  S_D+I < W_P+S_P+T_{\mathrm{KV}} .
+\end{equation}
+\provedby{\leanref{append\_prefill\_rule}}
+
+
+Rule~\eqref{eq:append} is the append-prefill rule of PPD
+\citep{ppd} written as a cost comparison. Together with
+Proposition~\ref{prop:pd} it says that the useful form of PD for agentic
+serving is \emph{dynamic}: first-turn prefills go to the prefill pool, and
+follow-up turns are routed per turn by comparing the two sides of
+\eqref{eq:append}. PPD-style routing is, like session
+affinity and KV-aware routing, a one-step approximation
+of~\eqref{eq:mdp}.
+
+\subsection{Planned experiment E5: PD win condition}\label{sec:exp-pd}
+
+\emph{Hypothesis} (Prop.~\ref{prop:pd}): the inequality in
+Prop.~\ref{prop:pd}(iii), evaluated from independently measured
+parameters, predicts which of aggregated and rate-matched PD serving has
+higher throughput. We measure $s_P, s_D, I, g_P, g_D$,
+$B_{\mathrm{net}}/\E[K]$ and the memory caps, evaluate the condition, and
+run both deployments. We repeat with a shared KV tier and with per-turn
+append-prefill routing (dynamic PD).
+
+\begin{table}[t]
+\caption{E5: predicted vs.\ observed winner. $\mu$ in requests/s.}
+\label{tab:pd}
+\centering\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Configuration & $\mu_A$ & $\min[\cdot]$ & Pred.\ / Obs. \\
+\midrule
+Static PD, local KV      & \tbd & \tbd & \tbd{} / \tbd \\
+Static PD, shared tier   & \tbd & \tbd & \tbd{} / \tbd \\
+Dynamic PD (append)      & \tbd & \tbd & \tbd{} / \tbd \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+E5 uses the testbed and protocol of \S\ref{sec:exp}. Its decision
+agreement will be scored as in \S\ref{sec:exp-scorecard}.
+
+\subsection{Uncalibrated simulation}\label{sec:sim-pd}
+
+The simulator of \S\ref{sec:sim} also models aggregated and
+disaggregated pools. As in \S\ref{sec:sim}, every number below is a
+property of the simulated model under a synthetic workload, not a
+measurement.
+
+\input{sim/tab-pd-inmodel}
+
+\paragraph{In-model.} Table~\ref{tab:sim-pd-inmodel} shows that the
+saturated throughput of the aggregated pool and of a disaggregated
+tandem matches the scalar capacities of Proposition~\ref{prop:pd}. This
+confirms the simulator, not the proposition.
+
+\input{sim/tab-pd}
+
+\paragraph{Win condition and latency.} On a grid of interference $I$,
+prefill gain $g_P$ and link capacity $B_{\mathrm{net}}/\E[K]$ ($N=16$),
+we compare the simulated winner (aggregation, or the best integer split)
+with the condition of Proposition~\ref{prop:pd}(iii). Cells within
+3\,\% of the boundary are skipped. The two agree in \simPdAgree{} of
+\simPdCells{} decisive cells. The scalar model says nothing about
+latency. Table~\ref{tab:sim-pd} shows that at the rate-matched split,
+where the capacities are equal, disaggregated serving has a higher mean
+latency, and the gap grows with load. A single pool of $N$ servers
+queues less than a tandem of two smaller pools, a classical pooling
+effect. A comparison of PD and aggregation at equal capacity therefore
+has to report latency as well as throughput.
+
+\paragraph{Limitations.} The PD model treats capacity as a scalar
+bottleneck and ignores batching dynamics inside each pool. The simulator
+does not model memory caps on PD pools.
 
 \end{document}

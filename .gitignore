@@ -6,3 +6,4 @@ lean/axioms.log
 paper/*.aux paper/*.log paper/*.out paper/*.bbl paper/*.blg paper/*.fls paper/*.fdb_latexmk paper/*.toc paper/*.synctex.gz
 paper/main.pdf
 paper/_build/
+.claude/settings.local.json
