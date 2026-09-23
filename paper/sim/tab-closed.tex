@@ -3,7 +3,7 @@
 \begin{table}[t]
 \caption{Closed agent programs sharing one replica with a 600k-token KV pool (shortest-first eviction, no offload). The hit rate is not an input: it results from memory pressure. Last column: residual of the interactive response-time law, $|N-X(R+Z)|/N$.}
 \label{tab:sim-closed}
-\centering\small
+\centering\small\setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}rccccc@{}}
 \toprule
 $N$ & $X$ (turn/s) & Hit rate & $\E[S]$ (s) & $\mathrm{CV}^2$ & IRTL (\%) \\

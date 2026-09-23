@@ -1,4 +1,4 @@
-//! Open G/G/c FIFO service centre (paper §2.1, §3).
+//! Open G/G/c FIFO service centre (paper §2.1–2.2).
 //!
 //! With exponential interarrivals and `servers = 1` this is the M/G/1 queue
 //! of the PK formula; with exponential service it is M/M/1. Non-Poisson

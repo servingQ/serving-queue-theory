@@ -1,0 +1,178 @@
+% Prefill/decode disaggregation material removed from the paper on 2026-09-23
+% for a follow-up paper. Not \input anywhere. Lean proofs (PDDisaggregation.lean)
+% and simulator checks (models/pd.rs) remain in the repository.
+
+\begin{proof}[Proof of Proposition~\ref{prop:pd}]
+(i) Let $m=\min(N_P/s_P,N_D/s_D)$. Then $ms_P\le N_P$ and $ms_D\le N_D$.
+Adding, $m(s_P+s_D)\le N_P+N_D=N$, i.e.\ $m\le N/(s_P+s_D)$.
+
+(ii) At $N_P=Ns_P/(s_P+s_D)$ and $N_D=Ns_D/(s_P+s_D)$ both arguments of
+the minimum equal $N/(s_P+s_D)$, so the bound in (i) is attained and no
+split does better.
+
+(iii) A number is below a minimum of four terms exactly when it is below
+each of them. With $g_P=g_D=1$ and $I=0$ the compute term is
+$N/(s_P+s_D)=\mu_A$, and the strict inequality cannot hold, which is (i)
+again.
+\end{proof}
+
+
+% ===========================================================================
+\section{Prefill/Decode Disaggregation}\label{app:pd}
+% ===========================================================================
+
+This appendix collects our results on prefill/decode (PD)
+disaggregation. They use the model of \S\ref{sec:model} and are proved
+in Appendix~\ref{app:proofs}. A fuller treatment, including batching
+inside each pool, is left to follow-up work.
+
+\subsection{Static PD splits}\label{sec:pd}
+
+\paragraph{The claim.} ThunderAgent \citep[App.~A.2, Fig.~7]{thunderagent}
+reports that static PD splits of 1:3, 2:2 and 3:1 reach 87.1, 160.1 and
+183.2 step/min, against 214.9 for aggregated serving. It attributes the
+gap to a smaller effective HBM pool for prefill (``PD disaggregation
+exacerbates thrashing'').
+
+\paragraph{The model.} We treat each pool as a capacity and ask when a
+split beats aggregation.
+
+\begin{proposition}[PD disaggregation: no-gain theorem and exact win condition]\label{prop:pd}
+Let $N$ identical devices serve requests with prefill work $s_P>0$ and
+decode work $s_D>0$ (device-seconds). Ideal aggregation has capacity
+$\mu_A=N/(s_P+s_D)$; a static split $N_P+N_D=N$ has capacity
+$\mu_{PD}=\min(N_P/s_P,\,N_D/s_D)$.
+\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
+\item $\mu_{PD}\le\mu_A$ for every split.
+\item Equality holds at the rate-matched split $N_P=Ns_P/(s_P+s_D)$,
+      which is therefore optimal.
+\item Let aggregation pay an interference overhead~$I$, let dedicated pools
+      realise specialisation gains $g_P,g_D$, and let PD be further capped
+      by KV-transfer capacity $B_{\mathrm{net}}/\E[K]$ and memory caps
+      $\mu_{P,\mathrm{mem}},\mu_{D,\mathrm{mem}}$. Then
+      \begin{multline*}
+        \mu_{PD} > \mu_A \iff
+        \frac{N}{s_P+s_D+I} < \\
+        \min\Bigl[\tfrac{N}{s_P/g_P+s_D/g_D},\;
+                  \tfrac{B_{\mathrm{net}}}{\E[K]},\;
+                  \mu_{P,\mathrm{mem}},\;\mu_{D,\mathrm{mem}}\Bigr],
+      \end{multline*}
+      i.e.\ PD wins iff \emph{each} of its four bottlenecks exceeds the
+      aggregated capacity. With $g_P=g_D=1$ and $I=0$ the compute term
+      equals $\mu_A$, recovering~(i).
+\end{enumerate}
+\provedby{\leanref{pd\_le\_agg}, \leanref{pd\_eq\_agg\_at\_rate\_match}, \leanref{rate\_match\_optimal}, \leanref{pd\_beats\_agg\_iff}, \leanref{pdCompute\_eq\_agg\_of\_no\_gain}}
+\end{proposition}
+
+
+\paragraph{Reading the claim.} Proposition~\ref{prop:pd}(i)--(ii) says the
+reported result is what the model predicts under the paper's conditions:
+same hardware, no phase specialisation ($g_P=g_D=1$), and a memory-bound
+prefill pool (a smaller HBM pool thrashes sooner, i.e.\
+$\mu_{P,\mathrm{mem}}$ binds). Nothing specific to agentic workloads is
+needed; the bound is a rate-matching identity. Proposition~\ref{prop:pd}(iii)
+gives the condition under which the conclusion flips. PD is deployed in
+practice \citep{vllm-agentx,mooncake-vllm} with long-context prefill
+parallelism ($g_P>1$), wide expert-parallel decode ($g_D>1$), measurable
+prefill/decode interference ($I>0$), a fast interconnect
+($B_{\mathrm{net}}/\E[K]$ not binding), and a shared KV tier that removes
+$\mu_{P,\mathrm{mem}}$ as a constraint. That is the regime the condition
+identifies. The supported statement is regime-dependent: static PD
+without specialisation and with a memory-bound prefill pool cannot beat
+aggregation. The generalisation that PD does not help agentic serving is
+not supported.
+
+A second issue is the request shape. For turn $t\ge2$ a request is
+``$10^5$ cached tokens $+\,500$ new tokens''. Routing it through the
+prefill pool and shipping the whole KV to a decode node is often the
+wrong path. Static PD is therefore the wrong abstraction for multi-turn
+programs. The routing comparison of \S\ref{sec:routing} makes the
+per-turn alternative precise.
+
+\subsection{Per-turn routing between pools}\label{sec:pd-append}
+
+Applied to PD pools, the comparison~\eqref{eq:lookahead} decides where a follow-up turn
+is prefilled. Let $W_P,S_P$ be the prefill pool's wait and append service,
+$T_{\mathrm{KV}}$ the transfer of the program's KV to the decode node,
+$W_D$ the decode wait, $S_D$ the append service on the decode node, and
+$I$ the interference it inflicts on co-located decodes.
+
+The decode-local path costs $W_D+S_D+I$ and the prefill-pool path costs
+$W_P+S_P+T_{\mathrm{KV}}+W_D$. The decode wait cancels, so decode-local
+processing of turn $t\ge2$ is cheaper iff
+\begin{equation}\label{eq:append}
+  S_D+I < W_P+S_P+T_{\mathrm{KV}} .
+\end{equation}
+\provedby{\leanref{append\_prefill\_rule}}
+
+
+Rule~\eqref{eq:append} is the append-prefill rule of PPD
+\citep{ppd} written as a cost comparison. Together with
+Proposition~\ref{prop:pd} it says that the useful form of PD for agentic
+serving is \emph{dynamic}: first-turn prefills go to the prefill pool, and
+follow-up turns are routed per turn by comparing the two sides of
+\eqref{eq:append}. PPD-style routing is, like session
+affinity and KV-aware routing, a one-step approximation
+of~\eqref{eq:mdp}.
+
+\subsection{Planned experiment E5: PD win condition}\label{sec:exp-pd}
+
+\emph{Hypothesis} (Prop.~\ref{prop:pd}): the inequality in
+Prop.~\ref{prop:pd}(iii), evaluated from independently measured
+parameters, predicts which of aggregated and rate-matched PD serving has
+higher throughput. We measure $s_P, s_D, I, g_P, g_D$,
+$B_{\mathrm{net}}/\E[K]$ and the memory caps, evaluate the condition, and
+run both deployments. We repeat with a shared KV tier and with per-turn
+append-prefill routing (dynamic PD).
+
+\begin{table}[t]
+\caption{E5: predicted vs.\ observed winner. $\mu$ in requests/s.}
+\label{tab:pd}
+\centering\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Configuration & $\mu_A$ & $\min[\cdot]$ & Pred.\ / Obs. \\
+\midrule
+Static PD, local KV      & \tbd & \tbd & \tbd{} / \tbd \\
+Static PD, shared tier   & \tbd & \tbd & \tbd{} / \tbd \\
+Dynamic PD (append)      & \tbd & \tbd & \tbd{} / \tbd \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+E5 uses the testbed and protocol of \S\ref{sec:exp}. Its decision
+agreement will be scored as in \S\ref{sec:exp-scorecard}.
+
+\subsection{Uncalibrated simulation}\label{sec:sim-pd}
+
+The simulator of \S\ref{sec:sim} also models aggregated and
+disaggregated pools. As in \S\ref{sec:sim}, every number below is a
+property of the simulated model under a synthetic workload, not a
+measurement.
+
+\input{sim/tab-pd-inmodel}
+
+\paragraph{In-model.} Table~\ref{tab:sim-pd-inmodel} shows that the
+saturated throughput of the aggregated pool and of a disaggregated
+tandem matches the scalar capacities of Proposition~\ref{prop:pd}. This
+confirms the simulator, not the proposition.
+
+\input{sim/tab-pd}
+
+\paragraph{Win condition and latency.} On a grid of interference $I$,
+prefill gain $g_P$ and link capacity $B_{\mathrm{net}}/\E[K]$ ($N=16$),
+we compare the simulated winner (aggregation, or the best integer split)
+with the condition of Proposition~\ref{prop:pd}(iii). Cells within
+3\,\% of the boundary are skipped. The two agree in \simPdAgree{} of
+\simPdCells{} decisive cells. The scalar model says nothing about
+latency. Table~\ref{tab:sim-pd} shows that at the rate-matched split,
+where the capacities are equal, disaggregated serving has a higher mean
+latency, and the gap grows with load. A single pool of $N$ servers
+queues less than a tandem of two smaller pools, a classical pooling
+effect. A comparison of PD and aggregation at equal capacity therefore
+has to report latency as well as throughput.
+
+\paragraph{Limitations.} The PD model treats capacity as a scalar
+bottleneck and ignores batching dynamics inside each pool. The simulator
+does not model memory caps on PD pools.
+

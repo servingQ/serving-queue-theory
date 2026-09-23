@@ -29,9 +29,8 @@ latency reproduction is secondary.
    `\provedby{\leanref{...}}`; a derived number stated in prose carries an
    inline `\provedby{}` too,
    and every name must be a theorem that compiles. Established results from
-   the literature may be stated as a `\begin{theorem}` with a
-   citation and no Lean proof; they are not our claims and need no
-   `\provedby`. Anything else you cannot prove is a conjecture or an
+   the literature are stated in prose with a citation and no Lean proof;
+   they are not our claims and need no `\provedby`. Anything else you cannot prove is a conjecture or an
    empirical question, never a proposition.
 2. **No `sorry`, no new axioms.** `scripts/check_lean.sh` fails on either.
    Do not add `axiom` declarations or `set_option` escapes to silence errors.
@@ -44,12 +43,18 @@ latency reproduction is secondary.
 5. **Do not assert workload properties without data.** In particular, do not
    write that agentic workloads are "high variance" or "long-tailed" as a
    fact; the paper's stance is that variance comes from the hit/miss
-   mixture and must be measured (see §3, Eq. `eq:cv2`).
+   mixture and must be measured (see §2.3, Eq. `eq:cv2`); it is a
+   property of prefill work and touches TTFT (the FIFO prefill queue,
+   `prop:pk`), not the decode stage (PS, insensitive, `prop:decode`).
+   Do not describe whole-turn service times as differing by orders of
+   magnitude between hit and miss; decode dominates a hit turn. Likewise do not claim that KV
+   footprint variance helps or hurts batch size in general
+   (`prop:footprint`).
 6. **Keep statements close to the prose.** Lean statements should be
    readable next to the paper proposition so a human can check the
    correspondence, which CI cannot.
 7. **Simulator results are not measurements.** `libqueuingsim` output
-   comes from synthetic workloads. Do not put it in §6 `\tbd{}` cells or
+   comes from synthetic workloads. Do not put it in §4.2 `\tbd{}` cells or
    state it as a property of real systems. It goes in the paper only via
    `paper/simulation.tex`, whose numbers are generated into `paper/sim/`
    by `libqueuingsim/examples/paper_tables.rs`; never type them by hand.
@@ -85,7 +90,7 @@ A first `lake build` without the cache would take hours — always run
 ## Repository layout
 
 ```
-paper/main.tex          paper; propositions (ours) and theorems (cited) share the plain amsthm style
+paper/main.tex          paper; propositions are ours; cited results appear in prose
 paper/refs.bib          bibliography (verified 2026-09-23; see notes in entries)
 paper/icml2026.sty      ICML style; [preprint] option in use
 lean/lakefile.toml      Mathlib pinned to v4.34.0 (lean-toolchain matches)
@@ -100,7 +105,7 @@ scripts/hooks/post-edit.sh     Claude Code hook: rebuild after edits
 docs/add-proposition.md        step-by-step workflow for a new result
 docs/research-plan.md          status of every result and experiment; read before paper work
 docs/simulation-design.md      libqueuingsim: design, validation-ladder status, roadmap to the calibrated simulator
-paper/simulation.tex           §6.9 uncalibrated simulation; numbers \input from paper/sim/ (generated)
+paper/simulation.tex           §4.1 uncalibrated simulation; numbers \input from paper/sim/ (generated)
 ```
 
 ## How to add or change a result
@@ -120,12 +125,29 @@ Follow `docs/add-proposition.md`. Short version:
 ## Paper conventions
 
 - ICML two-column; do not change fonts, margins, or the `.sty`.
-- Structure: §2 model (with cited standard theorems), §§3–5 one section
-  per decision (congestion, KV state, routing), §6 experiments, App. A
-  proofs, App. B prefill/decode (PD) disaggregation. PD results are
-  deferred to a follow-up paper: keep them, their E5 plan and their
-  simulation paragraphs in App. B, not in the main text. Do not reintroduce a "layered" framing, a section that collects
-  all propositions, or a separate section for other papers' claims.
+- Structure: §1 intro states the thesis (the price of a miss); §2 problem
+  formulation (§2.1 sessions: Poisson session arrivals, closed turn/tool
+  loop inside a session, BCMP, M/G/∞ memory pressure; §2.2 the replica
+  as two resources plus a memory pool: prefill = FIFO queue served from
+  the budget the decode batch leaves (chunking protects decode, not
+  prefill order), decode = bandwidth PS with demand ∝ o·K,
+  `prop:footprint`; §2.3 prefill work under KV reuse (hit/miss lives in
+  prefill only; the CV² numbers are prefill times); §2.4 the KV-state
+  problem with the memory shadow price θ; §2.5 `prop:price` (prefill
+  queue, central) and `prop:decode` (PS, prices only work)); §3 congestion-priced
+  scheduling (eviction, offloading, routing), where each published claim
+  is read as a special case of the formulation; §4 experiments (§4.1
+  uncalibrated simulation, §4.2 evaluation on a real system); App. A
+  proofs. Prefill/decode (PD) disaggregation is out of this paper
+  (follow-up); its text is in paper/pd-followup.tex, not \input. Do not
+  reintroduce it into the main text or an appendix. Do not reintroduce a "layered" framing, a section that collects
+  all propositions, a separate section for other papers' claims, or a
+  "special cases" section; claims are refuted where the formulation
+  meets them.
+- Standard results from the literature are stated in prose with a
+  citation, keeping their assumptions in a clause. Display a formula
+  only when a proposition or proof refers to it (e.g. `eq:pk`); do not
+  put textbook results in `theorem` boxes.
 - Propositions sit in the section whose decision they inform. Formal
   statement only, enumerated with `(\roman*)`. Do not interleave
   `example` blocks; if a concrete number carries the argument, state it
@@ -140,11 +162,11 @@ Follow `docs/add-proposition.md`. Short version:
   claim" / "Reading the claim" paragraphs. Quote or paraphrase exactly what
   they say, cite the section/figure, and do not imply we re-ran their
   experiments (the intro states once that we did not).
-- §6 Experiments uses `\tbd` placeholders. Fill cells only with measured
-  values; keep `docs/research-plan.md` in sync with what each table
-  measures. The last subsection of §6 (`sec:sim`, `paper/simulation.tex`)
-  reports uncalibrated simulation and is the only main-text place
-  simulator numbers appear (App. B.4 holds the PD ones, also generated).
+- §4.2 (real-system evaluation) uses `\tbd` placeholders. Fill cells only
+  with measured values; keep `docs/research-plan.md` in sync with what
+  each table measures. §4.1 (`sec:sim`, `paper/simulation.tex`) reports
+  uncalibrated simulation and is the only main-text place simulator
+  numbers appear.
 - Prose style: short sentences, no em-dashes, numbers in tables or examples
   rather than running text where possible.
 
@@ -161,7 +183,17 @@ Follow `docs/add-proposition.md`. Short version:
 
 ## Research context worth knowing
 
-- Claims re-examined in §§4–5 come from ThunderAgent (arXiv:2602.13692 v3):
+- The paper's thesis is the price of a miss (`prop:price`, §2.5): the
+  total TTFT one KV miss adds at the prefill queue, with a head-of-line
+  term (∝ miss²) that chunked prefill does not remove because prefills
+  are served in order. The decode stage (`prop:decode`) prices only work
+  and is insensitive to the miss. The scheduler compares the price per
+  byte-second `u_i = p_i Φ_i /(c_i τ_i)` with one memory shadow price θ
+  (`prop:memory`) for eviction, offloading and admission. Do not write
+  that chunking makes the eviction key load-independent (a v0.5 claim,
+  withdrawn). §3 builds the
+  scheduler on it; do not re-centre the paper on critiques of other work.
+- Claims re-examined in §3 come from ThunderAgent (arXiv:2602.13692 v3):
   Lemma 4.1 / Def. 4.1 / App. F.3 (shortest-first eviction theorem, refuted
   by our Prop. on eviction), App. A.2 + Fig. 7 (offloading and PD numbers),
   App. A.4 (v3 only: offloading is "orthogonal"). PPD is arXiv:2603.13358
@@ -169,6 +201,6 @@ Follow `docs/add-proposition.md`. Short version:
   and vLLM×Mooncake (2026-05-06) blog posts.
 - The research plan, result status and experiment order are in
   `docs/research-plan.md`. Validation runs in three phases: uncalibrated
-  simulation (done, paper §6.9), empirical E1–E7 (paper §6; E1
+  simulation (done, paper §4.1; thrashing dominates, admission matters), empirical E1–E6 (paper §4.2; E1
   calibration gates everything, E2 per-turn CV² is the first result to
-  report), then the calibrated simulator scored in E7.
+  report), then the calibrated simulator scored in E6. Result-table layouts live in docs/research-plan.md §4.2a, not in the paper; PD material is in paper/pd-followup.tex (not \input).

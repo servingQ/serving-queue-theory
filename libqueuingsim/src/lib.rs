@@ -9,6 +9,7 @@
 //! | Module | Paper result it exercises |
 //! |--------|---------------------------|
 //! | [`models::queue`]    | Props. mm1, pk, cache; Ex. cv2; Kingman; Little |
+//! | [`models::batch`]    | batching and two-resource replica: PS insensitivity, BCMP sessions, Props. price, decode, memory, footprint |
 //! | [`models::agentic`]  | §2 chain (eviction → p → E\[S\] → ρ), IRTL, Prop. option |
 //! | [`models::eviction`] | Prop. evict (offline, exact optimum) |
 //! | [`models::pd`]       | Prop. pd |

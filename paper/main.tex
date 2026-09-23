@@ -19,7 +19,7 @@
 % example ends with \provedby{\leanref{Name}, ...}, naming the Lean theorems in
 % lean/ServingQueueTheory/ that prove it.  scripts/check_lean_refs.sh checks
 % that each name exists and is axiom-audited; scripts/check_lean.sh checks the
-% proofs.  Cited standard results (`theorem` environments) carry no
+% proofs.  Cited standard results are stated in prose and carry no
 % \provedby.  Escape underscores as \_.
 % ---------------------------------------------------------------------------
 \newcommand{\leanref}[1]{}
@@ -47,12 +47,12 @@
 % icml2026.sty rejects running heads whose box height exceeds 6.25pt; with
 % tectonic/XeTeX metrics every \small\bf line is slightly taller, so we cap the
 % reported height explicitly.
-\icmltitlerunning{\raisebox{0pt}[6pt][0pt]{Decision-Faithful Queueing Models for Agentic LLM Serving}}
+\icmltitlerunning{\raisebox{0pt}[6pt][0pt]{The Price of a Miss in Agentic LLM Serving}}
 
 \begin{document}
 
 \twocolumn[
-  \icmltitle{Decision-Faithful Queueing Models for Agentic LLM Serving}
+  \icmltitle{The Price of a Miss: Congestion-Priced KV Scheduling\\ for Agentic LLM Serving}
 
   \begin{icmlauthorlist}
     \icmlauthor{Jinhwan Suk}{rbln}
@@ -67,47 +67,38 @@
   \vskip 0.3in
 ]
 
-\printAffiliationsAndNotice{Working draft v0.2. Experimental results
+\printAffiliationsAndNotice{Working draft v0.6. Experimental results
 (Section~\ref{sec:exp}) are pending and marked \tbd.}
 
 \begin{abstract}
-Benchmarks of LLM serving systems report kernel latency and tokens per
-second, but the latency users see is dominated by queueing once
-utilisation approaches saturation. We model agentic serving as a chain of
-dependent quantities. The KV eviction policy sets the prefix-cache hit
-rate. The hit rate sets the service-time distribution. The distribution
-sets utilisation and queueing delay. Delay enters the cost that routing
-and eviction decisions minimise. On this chain we prove results for three
-decisions an agentic serving system makes. Enabling KV offloading never
-increases the optimal cost, although always offloading can.
-Shortest-context-first eviction is not optimal; it is a 2-approximation
-when every suspended program resumes, and arbitrarily bad when resume
-probabilities differ. Strict session affinity is not optimal at high
-load. These results explain, and delimit, two recently published claims
-about agentic serving. Results on prefill/decode disaggregation are
-collected in an appendix and will be developed in follow-up work. We then design experiments on a rack-scale NPU
-testbed and a calibrated simulator whose success criterion is
-\emph{decision faithfulness}: agreement with the real system on which
-policy is better, rather than cycle-accurate latency.
+An agentic LLM server keeps the KV cache of suspended programs across
+tool calls, and every KV decision asks what losing one of these states
+costs. We model sessions looping through turns and tool calls on a replica
+with a prefill queue, a decode batch and one memory pool, and derive the
+\emph{price of a miss}: the total time to first token it adds across
+all turns. Beyond its own recompute time, a miss
+holds up every prefill queued behind it, a term quadratic in its length
+that chunked prefill does not remove, and it raises the load that
+stretches every wait. The price is exact to first order and unbounded
+near capacity, so no fixed rule, shortest-context-first included, ranks
+states correctly at every load. We propose congestion-priced
+scheduling, where one shadow price of memory decides eviction,
+offloading and admission. An uncalibrated simulation checks the
+propositions and finds that memory thrashing, not eviction order,
+decides throughput.
 \end{abstract}
 
 % ===========================================================================
 \section{Introduction}\label{sec:intro}
 % ===========================================================================
 
-Response time of a serving system decomposes as
-\[
-  T = W_q + S ,
-\]
-queueing delay plus service time. Hardware benchmarks measure~$S$; users
-experience~$T$. Near saturation $W_q$ dominates, and it does so
-\emph{non-linearly}: in the simplest Markovian model a 10\,\% increase in
-arrival rate (from $\rho = 0.90$ to $\rho = 0.99$) multiplies response time
-by ten (with $W=1/(\mu-\lambda)$ and $\mu=10$\,req/s, $W$ goes
-from $1$\,s to $10$\,s).\provedby{\leanref{mm1Wait\_example\_ratio}} This single fact reframes most serving
-questions. ``How many tokens/s does this NPU deliver?'' becomes ``at what
-utilisation does p99~TTFT cross the SLA, and which control knob moves that
-point?''
+Response time is queueing delay plus service time, $T=W_q+S$.
+Hardware benchmarks measure~$S$; users experience~$T$. Near saturation
+$W_q$ dominates and grows without bound: in the simplest Markovian
+model, raising the load from $\rho=0.90$ to $0.99$ multiplies response
+time by ten.\provedby{\leanref{mm1Wait\_example\_ratio}} The serving
+question is therefore not how many tokens per second a device delivers
+but which control knob moves the point where TTFT crosses its SLA.
 
 Agentic workloads sharpen the problem. In production coding-agent traces
 the median session has 43 LLM turns, a median input of 142K tokens, a
@@ -115,272 +106,453 @@ median output of 444 tokens and a prefix-cache hit rate above 96\,\%
 \citep{vllm-agentx}. Each turn appends a few hundred tokens to a context of
 $10^5$ tokens, interleaved with tool calls of unpredictable duration. The
 unit of work that matters is the \emph{program} (a multi-turn session with
-persistent KV state), not the request \citep{thunderagent}. Whether a
-program's KV cache is kept, offloaded or recomputed, and on which replica
-the next turn runs, determines the service-time distribution that feeds
-the queue.
+persistent KV state), not the request \citep{thunderagent}. While a
+program waits for a tool, its KV cache occupies device memory without
+doing work.
+
+Every KV decision in such a system asks one question: what does it cost
+to lose a suspended program's state? The obvious answer is the time to
+recompute it. In a queue that answer is incomplete. A miss is long work
+added to a shared server, and every other request pays for it. How much
+they pay depends on how loaded the system already is, and on whether the
+miss shares the batch or blocks it. Near saturation the payment is what
+matters, and it is where fixed heuristics are least reliable.
+
+Queueing models of LLM serving have so far asked when a server is
+stable and which schedulers are throughput-optimal, with output length
+as the source of variability
+\citep{yang2024mg1,dai2025workconserving,ao2025fluid,nie2026stability}.
+Agentic serving systems, for their part, keep or evict the KV of
+suspended programs by rules of thumb such as recency, time-to-live or
+idleness \citep{li2025continuum,xia2026mori,thunderagent}. We connect
+the two: the variability that matters here comes from the hit/miss
+mixture that the KV policy creates, and the marginal cost of one miss
+can be priced and used as the policy's decision variable.
 
 This paper makes three contributions.
 \begin{enumerate}[leftmargin=*]
-\item \textbf{A model} (\S\ref{sec:model}) that connects the eviction
-policy, the hit rate, the service-time distribution, queueing delay and
-the control cost. It is assembled from standard results (Little's law,
-the Pollaczek--Khinchine formula, Kingman's bound, the interactive
-response-time law), which we state and cite.
-\item \textbf{Results for three decisions} (\S\S\ref{sec:congestion}--\ref{sec:routing}):
-how the hit/miss mixture drives delay, when offloading helps, how to
-choose what to evict, and when session affinity fails. Each result is
-placed next to the published claim it bears on. Two claims from
-ThunderAgent \citep{thunderagent} are re-examined: that KV offloading is
-ineffective, and that shortest-context-first eviction is optimal. The
-first holds only in an identifiable regime. The second is false, and we
-bound how far from optimal the heuristic can be. Appendix~\ref{app:pd}
-states our results on prefill/decode (PD) disaggregation, a third
-ThunderAgent claim, which a follow-up paper will treat in detail.
-\item \textbf{An experimental design} (\S\ref{sec:exp}) whose primary
-metric is decision faithfulness. Result tables are laid out with
-placeholders; no measurement is reported in this draft.
+\item \textbf{A formulation and its central result} (\S\ref{sec:model}).
+Sessions arrive as a Poisson process and loop through turns and tools. A
+replica has two resources, a prefill queue that serves pending prefills
+in order and a decode batch that shares bandwidth, and one memory pool
+that the batch and the suspended states share. A miss changes only the
+prefill work, and we derive its price at the prefill queue
+(Proposition~\ref{prop:price}); the decode stage prices only work and is
+insensitive to it (Proposition~\ref{prop:decode}). We also show that
+footprint variance has no fixed effect on batch size
+(Proposition~\ref{prop:footprint}).
+\item \textbf{Congestion-priced scheduling} (\S\ref{sec:sched}). One
+number per suspended program, its expected price per byte-second of
+memory, is compared with one shadow price of memory to decide eviction,
+offloading and admission; routing uses the same price. The threshold
+rule is optimal for the relaxed problem and optimal up to one block
+when state is evicted in blocks (Proposition~\ref{prop:memory}), and
+the program-level eviction rule is a 2-approximation for any prices
+(Proposition~\ref{prop:guarded}). Two
+claims of ThunderAgent \citep{thunderagent} are special cases of the
+formulation: that shortest-context-first eviction is optimal, which is
+false (Proposition~\ref{prop:evict}), and that KV offloading is
+ineffective, which can hold for always-offloading but never for
+offloading chosen per program.
+\item \textbf{Experiments} (\S\ref{sec:exp}). An uncalibrated simulation
+checks each proposition inside and beyond its model and shows that
+memory thrashing, not the eviction order, decides throughput. An
+experimental design on a rack-scale NPU testbed takes decision
+faithfulness as its primary metric; no measurement is reported in this
+draft.
 \end{enumerate}
 
 \paragraph{Conventions.} Propositions are our results; their proofs are
-in Appendix~\ref{app:proofs}. Theorems are standard results, cited and not
-re-proved. When we discuss another paper we report what it
-states, with section and figure, and we have not re-run its experiments.
+in Appendix~\ref{app:proofs}. Standard results are cited and not
+re-proved. When we discuss another paper we report what it states, with
+section and figure, and we have not re-run its experiments.
 
 % ===========================================================================
-\section{A Model of Agentic Serving}\label{sec:model}
+\section{Problem Formulation}\label{sec:model}
 % ===========================================================================
 
 The model is a chain in which each quantity is set by the one before it:
 \begin{multline*}
-  \text{eviction policy} \to p \to \bigl(\E[S],\E[S^2]\bigr)
-  \to \bigl(\rho,\E[W_q]\bigr) \\ \to \text{control cost}\ \eqref{eq:mdp}
-  \to \text{policy}.
+  \text{KV policy} \to p \to \text{prefill work} \to
+  \bigl(\rho_P, L_P\bigr) \\ \to \text{delay cost} \to \text{policy}.
 \end{multline*}
-Here $p$ is the prefix-cache hit rate and $S$ the service time of a turn.
-The rest of this section defines each link; \S\S\ref{sec:congestion}--\ref{sec:routing}
-derive consequences.
+Here $p$ is the prefix-cache hit rate, $\rho_P$ the load on the prefill
+stage of a replica and $L_P$ the mean number of turns waiting for
+prefill. \S\ref{sec:sessions} describes how turns arrive,
+\S\ref{sec:batch} how a replica serves them and what its memory holds,
+and \S\ref{sec:congestion} how KV reuse shapes the prefill work.
+\S\ref{sec:problem} states the decision problem, and \S\ref{sec:price}
+derives the quantity that every decision in it needs.
 
-\subsection{Congestion at a service centre}
+\subsection{Sessions, Turns and Tools}\label{sec:sessions}\label{sec:closed}
 
-Requests arrive at rate~$\lambda$ to a service centre (one replica, or one
-device pool) with service time~$S$. Utilisation is $\rho=\lambda\E[S]$.
-Three standard results relate these quantities to delay.
+An agent program, or session, cycles through
+$\text{prefill}\to\text{decode}\to\text{tool}\to\text{prefill}\to\cdots$.
+We model sessions as arriving in a Poisson process of rate~$\Lambda$ and
+the loop inside a session as closed: a turn is served, its tool call
+takes a random time, and with probability $p_i$ the session issues
+another turn. Tool execution plays the role of \emph{think time} in an
+interactive network \citep{lazowska1984}. A session in the tool phase is
+not finished. It is suspended future work with resident state. Its
+phase $z_p(t)\in\{\text{reasoning},\text{acting},\text{waiting}\}$ and
+the transition probabilities $\Prob(\text{next phase}\mid z)$ are
+observable, and a request-level scheduler discards them.
 
-\begin{theorem}[Little's law; \citealp{little1961}]\label{thm:little}
-In a stable system in which the long-run arrival rate $\lambda$ and the
-mean time in system $W$ exist and are finite, the long-run mean number in
-the system is $L=\lambda W$.
-\end{theorem}
+The result is an open network with feedback: a replica visited
+repeatedly by each session, and a delay station for the tools. Turns
+reach the replica at rate $\lambda=\Lambda\,\E[\text{turns per session}]$,
+but not as a Poisson process, because the turns of one session are
+correlated. For networks of processor-sharing and delay stations the
+BCMP theorem gives a product-form stationary law \citep{bcmp1975}: each
+station then behaves, in distribution, like one fed by Poisson arrivals
+at its own rate, whatever the distribution of tool times, and turn
+classes (for instance the turn index) let the work grow with the
+context without leaving this family. We use this result for the decode
+stage below and as an approximation for the prefill stage. Benchmarks
+that fix the number of concurrent programs~$N$ \citep{thunderagent} are
+the closed special case; since closed product-form throughput does not
+fall with $N$ at fixed demand \citep{lazowska1984}, a throughput that
+does fall signals a demand that grows, here through misses.
 
-\begin{theorem}[Pollaczek--Khinchine; \citealp{pollaczek1930,khinchine1932}]\label{thm:pk}
-In an M/G/1 FIFO queue with arrival rate $\lambda$, service time $S$ with
-$\E[S^2]<\infty$, and $\rho=\lambda\E[S]<1$, the mean waiting time is
+\paragraph{Memory pressure.} Each live session holds its KV, whose size
+$K(t)$ grows with its age~$t$. If session lifetimes $D$ were independent
+across sessions, the live sessions would form an M/G/$\infty$ system,
+and by Campbell's theorem \citep{kingman1993} the resident KV would be
+compound Poisson with mean $\Lambda\,\E\bigl[\int_0^DK(t)\,dt\bigr]$ and
+variance $\Lambda\,\E\bigl[\int_0^DK(t)^2\,dt\bigr]$. Sessions interact
+through the replica, so this is an approximation, but it corrects two
+errors of the naive estimate $\Lambda\,\E[D]\,\E[K]$. The mean involves
+the joint law of lifetime and size, and long contexts tend to belong to
+long sessions, so the naive estimate is low whenever lifetime and size
+are positively correlated. And evictions start when resident KV exceeds
+device memory, not when its mean does, so the second moment of the
+footprint matters as well as the first. Longer tool calls raise memory
+demand without raising compute demand.
+
+\subsection{A Replica: Two Resources and a Memory Pool}\label{sec:batch}\label{sec:queue}
+
+A turn with context $K_i$ appends $n_i$ new tokens and decodes $o_i$
+output tokens. It makes three demands on the replica.
+\begin{itemize}[nosep,leftmargin=*]
+\item \emph{Prefill compute.} Prefilling $n$ tokens onto a resident
+  prefix of $K$ costs
+  \begin{equation}\label{eq:prefill}
+    P(n,K)=a\,n+b\,n\,(K+n/2),
+  \end{equation}
+  a linear term for the dense layers and an attention term over the
+  prefix. A hit appends $n_i$ tokens; a miss re-prefills the evicted
+  part, so its work is $P(K_i,0)$, quadratic in the context, as
+  ThunderAgent's Lemma~4.1 models it \citep{thunderagent}.
+\item \emph{Decode bandwidth.} Each decode step reads the model weights
+  once for the whole batch and the KV of every turn in it. Decoding
+  $o_i$ tokens therefore moves
+  \begin{equation}\label{eq:decode}
+    D_i = o_i\bigl(\beta K_i+\omega/n\bigr)
+  \end{equation}
+  bytes-worth of time, with $n$ the batch size, $\beta$ the KV bytes per
+  token and $\omega$ the weight bytes. The weight term is shared; the KV
+  term is not. At agentic context lengths the KV term dominates, and it
+  does not depend on whether the prefix was a hit or a miss.
+\item \emph{Memory.} $\beta K_i$ bytes for as long as the state is
+  resident, whether the turn is running or the session is in a tool call.
+\end{itemize}
+The hit/miss distinction lives entirely in the first demand.
+
+\paragraph{Decode stage.} A replica runs continuous batching. Each
+iteration advances every turn in the batch, so decoding turns share the
+device rather than wait for it. We model the decode stage as a
+processor-sharing (PS) station with capacity $\varphi(n)$ when $n$ turns
+share it, in units of the demand~\eqref{eq:decode}. Batching makes
+$\varphi$ increase with $n$, and memory and the batch limit make it
+saturate. The stationary law of the number in the batch is
+$\pi(n)\propto\rho_D^n/\prod_{k\le n}\varphi(k)$ with $\rho_D=\lambda\E[D]$,
+and it is \emph{insensitive}: it depends on the demand only through its
+mean \citep{bcmp1975,kelly1979}.
+
+\paragraph{Prefill stage.} Chunked prefill splits a prefill into
+near-equal chunks and builds ``stall-free schedules'' that add new
+requests to a batch ``without pausing ongoing decodes''
+\citep{sarathi2024}. Each step first serves the decode batch and then
+spends the tokens left in its budget on pending prefills. Chunking
+therefore protects the decoding turns from a long prefill, but it does
+not let one prefill overtake another: we model pending prefills as
+served in arrival order from the budget the decode batch leaves, which
+is how the schedulers we know of order them. We model the prefill stage as a FIFO queue with service
+$P_i$ whose server is available a fraction $1-\rho_D$ of the time.
+Without chunking the same queue also stalls the decode batch, which is
+the extreme case. For Poisson arrivals to a FIFO server with load
+$\rho<1$ and $\E[S^2]<\infty$ (M/G/1), the Pollaczek--Khinchine formula
+\citep{pollaczek1930,khinchine1932} gives the mean waiting time
 \begin{equation}\label{eq:pk}
   \E[W_q] = \frac{\lambda \E[S^2]}{2(1-\rho)} .
 \end{equation}
-\end{theorem}
+For exponential service ($\E[S^2]=2\E[S]^2$) this gives the M/M/1
+response time $W=\E[W_q]+\E[S]=1/(\mu-\lambda)$ with $\mu=1/\E[S]$
+\citep{kleinrock1975}. Session feedback makes turn arrivals non-Poisson
+and the available fraction of the server fluctuates, so we use
+\eqref{eq:pk} for the prefill stage as an approximation and check it by
+simulation (\S\ref{sec:sim}). For general renewal arrivals, Kingman's
+bound \citep{kingman1962} limits the wait by the sum of the interarrival
+and service variances over the same factor $1-\rho$, so bursty arrivals
+add delay on top of service variability rather than replacing it. The
+two stages differ in what they need from the cache. The decode stage
+needs only mean demands, which the cache does not change. The prefill
+stage needs the second moment of its work, which the cache sets.
 
-For exponential service ($\E[S^2]=2\E[S]^2$) this gives the M/M/1 response
-time $W=\E[W_q]+\E[S]=1/(\mu-\lambda)$ with $\mu=1/\E[S]$
-\citep{kleinrock1975}. Agentic arrivals are not Poisson: turns of one
-program are separated by tool calls and are correlated. Kingman's bound
-covers general renewal arrivals and shows that arrival variability adds to
-service variability rather than replacing it.
+\paragraph{Memory pool.} The two stages share one pool of $M$ bytes with
+the suspended sessions. A replica admits turns into the batch until the
+next one does not fit, so the batch size, and with it the saturation of
+$\varphi$, depends on the footprints of the turns it holds. It is
+tempting to treat a more variable footprint as worse, but no such rule
+holds.
 
-\begin{theorem}[Kingman's bound; \citealp{kingman1962}]\label{thm:kingman}
-In a GI/G/1 FIFO queue with arrival rate $\lambda$, interarrival variance
-$\sigma_a^2$, service variance $\sigma_s^2$ and $\rho<1$,
-\[
-  \E[W_q] \le \frac{\lambda(\sigma_a^2+\sigma_s^2)}{2(1-\rho)} .
-\]
-\end{theorem}
+\begin{proposition}[Footprint variance has no fixed sign]\label{prop:footprint}
+Let a replica with $M=12$ free tokens admit requests with i.i.d.\
+footprints in arrival order until the first one that does not fit.
+\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
+\item With footprint $6$ it admits $2$ requests; with footprint $5$ or
+  $7$ with equal probability (mean $6$) it admits $7/4$ on average.
+\item With footprint $7$ it admits $1$; with footprint $2$ or $12$ with
+  equal probability (mean $7$) it admits $95/64$ on average.
+\end{enumerate}
+\provedby{\leanref{footprint\_variance\_hurts}, \leanref{footprint\_variance\_helps}}
+\end{proposition}
 
-In both \eqref{eq:pk} and Theorem~\ref{thm:kingman}, service variance
-enters linearly and the load enters through $1/(1-\rho)$. The model
-therefore needs two things from the cache: the mean service time, which
-sets~$\rho$, and its variance.
+A more variable footprint thus shrinks the batch in one case and grows it
+in the other. The batch capacity is a property of the footprint
+distribution and of the admission rule, and $\varphi$ has to be
+calibrated, not derived from the mean footprint (\S\ref{sec:exp-calib}).
+The pool also couples the two roles of memory. Every byte held for a
+suspended session is a byte the batch cannot use, and every miss holds
+its turn in the batch for longer, which holds more bytes, which evicts
+more suspended state. Once resident KV exceeds the pool, the policy has
+to choose what to drop, and that choice sets~$p$.
 
-\subsection{KV reuse shapes the service time}
+\subsection{Prefill Work under KV Reuse}\label{sec:congestion}
 
 A turn whose prefix is resident in the KV cache (a hit) needs only an
-append-prefill of the new tokens and a decode. A miss re-prefills the
-whole context. With hit probability~$p$,
+append-prefill of the new tokens. A miss re-prefills the whole context.
+With hit probability~$p$ the prefill work of a turn is
 \begin{gather*}
-  S = \begin{cases} S^{\mathrm{hit}} & \text{w.p. } p \\
-                    S^{\mathrm{miss}} & \text{w.p. } 1-p, \end{cases}\\
+  S = \begin{cases} S^{\mathrm{hit}}=P(n_i,K_i) & \text{w.p. } p \\
+                    S^{\mathrm{miss}}=P(K_i+n_i,0) & \text{w.p. } 1-p, \end{cases}\\
   \E[S] = p\,S^{\mathrm{hit}} + (1-p)\,S^{\mathrm{miss}} .
 \end{gather*}
-The eviction and admission policy determines~$p$, hence $\E[S]$,
-$\E[S^2]$ and~$\rho$.
+The KV policy determines~$p$, hence $\E[S]$, $\E[S^2]$ and~$\rho_P$. At
+the FIFO prefill stage, Eq.~\eqref{eq:pk} makes the second moment a
+first-class quantity: of two work distributions with the same mean, the
+one with the larger variance waits longer at every stable
+load.\provedby{\leanref{pkWait\_lt\_of\_variance\_lt}} Raising the hit
+rate lowers both moments at once, so the PK wait is non-increasing in
+$p$.\provedby{\leanref{meanService\_antitone}, \leanref{utilization\_antitone}, \leanref{secondMomentService\_antitone}, \leanref{pkWait\_mixture\_antitone}}
 
-What drives evictions is memory pressure, and Little's law gives it
-directly. If programs start at rate $\lambda_{\mathrm{prog}}$ and each
-stays resident for a time $T_{\mathrm{prog}}$ that includes its tool
-calls, the mean number of resident programs is
-$\lambda_{\mathrm{prog}}\E[T_{\mathrm{prog}}]$. If the KV footprint $K$ is
-independent of residence time, the mean resident KV is
-$\lambda_{\mathrm{prog}}\E[T_{\mathrm{prog}}]\E[K]$. Longer tool calls
-therefore raise memory demand without raising compute demand. Once
-resident KV exceeds device memory, the eviction policy has to choose what
-to drop, and that choice sets~$p$.
-
-\subsection{Programs as jobs in a closed network}
-
-An agent program cycles through
-$\text{prefill}\to\text{decode}\to\text{tool}\to\text{prefill}\to\cdots$.
-Tool execution plays the role of \emph{think time} in an interactive closed
-network \citep{lazowska1984}. A program in the tool phase is not
-finished. It is suspended future work with resident state. Its phase
-$z_p(t)\in\{\text{reasoning},\text{acting},\text{waiting}\}$ and the
-transition probabilities $\Prob(\text{next phase}\mid z)$ are observable,
-and a request-level scheduler discards them. Benchmarks that fix the
-number of concurrent programs $N$ \citep{thunderagent} are closed systems,
-to which the following law applies.
-
-\begin{theorem}[Interactive response-time law; \citealp{lazowska1984}]\label{thm:irtl}
-In a closed interactive system with $N$ jobs, mean think time $Z$ and
-throughput $X$, the mean response time is $R = N/X - Z$.
-\end{theorem}
-
-With fixed per-visit service demands, the throughput of a closed
-product-form network does not decrease as $N$ grows \citep{lazowska1984}.
-A throughput that falls with $N$ therefore signals that the demand per
-step grows with $N$. In our chain the mechanism is a falling hit rate:
-more programs, more memory pressure, more misses, and each miss turns a
-cheap append into a full re-prefill.
-
-\subsection{Serving as a control problem}
-
-Let $X_t = (Q_t, \mathrm{KV}_t, P_t, R_t)$ collect queue states, KV
-placement, program states and resources. Actions are
-$A_t \in \{\text{route},\text{evict},\text{offload},\text{migrate},
-\text{admit},\text{prefetch}\}$. The serving problem is
-\begin{multline}\label{eq:mdp}
-  \min_\pi \E_\pi\Bigl[\sum_t
-     \alpha\,\text{latency}_t + \beta\,\text{recompute}_t \\
-   + \gamma\,\text{migration}_t + \delta\,\text{SLA-violation}_t \Bigr].
-\end{multline}
-We do not solve \eqref{eq:mdp}. We use it as a common objective against
-which heuristics can be compared: each policy in
-\S\S\ref{sec:kv}--\ref{sec:routing} is a one-step approximation of it,
-and the propositions say when such an approximation is exact and when it
-fails.
-
-% ===========================================================================
-\section{Congestion and the Hit/Miss Mixture}\label{sec:congestion}
-% ===========================================================================
-
-Theorem~\ref{thm:pk} makes the second moment of service time, not only
-its mean, a first-class quantity.
-
-\begin{proposition}[Variance drives queueing delay]\label{prop:pk}
-Let $S_A$ and $S_B$ have finite discrete distributions with equal mean
-and $\mathrm{Var}[S_A]<\mathrm{Var}[S_B]$, and let $\E[W_q]$ be given
-by~\eqref{eq:pk}. Then $\E[W_q^A]<\E[W_q^B]$ at every stable load.
-\provedby{\leanref{pkWait\_lt\_of\_variance\_lt}}
-\end{proposition}
-
-
-Raising the hit rate lowers both moments at once.
-
-\begin{proposition}[Cache reuse empties the queue]\label{prop:cache}
-Let $0\le S^{\mathrm{hit}}\le S^{\mathrm{miss}}$, let a request hit with
-probability~$p$, and let $\rho=\lambda\E[S]$ with $\lambda>0$. For
-$p\le q$ in $[0,1]$, if the system is stable at hit rate~$p$, the PK
-delay at~$q$ is at most the PK delay at~$p$.
-\provedby{\leanref{meanService\_antitone}, \leanref{utilization\_antitone}, \leanref{secondMomentService\_antitone}, \leanref{pkWait\_mixture\_antitone}}
-\end{proposition}
-
-
-Because $\E[W_q]$ is convex in~$\rho$ and unbounded as $\rho\to1$, cache
-reuse is more than a compute saving. It removes load at the point where
-load is most expensive.
-
-\paragraph{Where the variance comes from.} We do not assume that agentic
-workloads have intrinsically high service-time variance. With a prefix hit
-rate above 96\,\% \citep{vllm-agentx}, a turn is an append-prefill of a
-few hundred tokens plus a decode of a few hundred tokens. If every turn
-hit, $\E[S^2]$ would be close to $\E[S]^2$. Variance enters through the
+\paragraph{Where the variance comes from, and what it touches.} We do
+not assume that agentic workloads have intrinsically high variance.
+With a prefix hit rate above 96\,\% \citep{vllm-agentx}, a turn's
+prefill is an append of a few hundred tokens. If every turn hit,
+$\E[S^2]$ would be close to $\E[S]^2$. Variance enters through the
 hit/miss mixture. A miss re-prefills a $10^5$-token context and costs one
-to two orders of magnitude more than a hit.
-
-Relative to exponential service with the same mean and load,
+to two orders of magnitude more prefill than a hit. Relative to
+exponential work with the same mean and load,
 \begin{equation}\label{eq:cv2}
   \frac{\E[W_q]_{M/G/1}}{\E[W_q]_{M/M/1}}=\frac{1+\mathrm{CV}^2}{2},
   \qquad \mathrm{CV}^2=\frac{\E[S^2]}{\E[S]^2}-1 .
 \end{equation}
-With a 96\,\% hit rate, $S^{\mathrm{hit}}=50$\,ms and
-$S^{\mathrm{miss}}=5$\,s (full re-prefill of a long context),
-$\mathrm{CV}^2>15$, which is more than $8\times$ the delay of exponential
-service. With the same hit rate and a cheap miss
-($S^{\mathrm{miss}}=100$\,ms), $\mathrm{CV}^2<0.05$.
+With a 96\,\% hit rate, a hit prefill of $50$\,ms and a miss prefill of
+$5$\,s, $\mathrm{CV}^2>15$, which is more than $8\times$ the wait of
+exponential work. With the same hit rate and a cheap miss
+($100$\,ms), $\mathrm{CV}^2<0.05$.
 \provedby{\leanref{pkWait\_ratio\_to\_exponential}, \leanref{mixtureCV2\_agentic\_example}, \leanref{mixtureCV2\_cheap\_miss\_example}}
-The variance is thus a property of the miss penalty and the eviction
-policy, not of the workload label. A second, fleet-level source is mixing
-request classes (short chat, long document, agent) in one FIFO queue.
-That is the classical motivation for class separation and for
-shortest-remaining-processing-time scheduling, which minimises mean
-response time in a single-server queue \citep{schrage1968}. Which source
-dominates in a given deployment is an empirical question
+This variance touches the time to first token, which is the prefill
+wait. It does not touch the decode stage, whose demand~\eqref{eq:decode}
+is the same for a hit and a miss and whose mean occupancy is insensitive
+to variance in any case. The variance is thus a property of the miss
+penalty and the KV policy, and its cost falls on TTFT, not on the whole
+turn. How much of it a deployment shows is an empirical question
 (\S\ref{sec:exp-variance}).
 
-% ===========================================================================
-\section{Managing KV State: Offloading and Eviction}\label{sec:kv}
-% ===========================================================================
+\subsection{The KV-State Problem}\label{sec:problem}
 
-Section~\ref{sec:congestion} implies that the objective of a KV policy is
-not the hit ratio but $\E[\mathrm{TTFT}]$ or
-$\Prob(\mathrm{TTFT} > \mathrm{SLA})$. A natural per-byte utility for
-keeping program~$i$ resident is
-\begin{equation}\label{eq:utility}
-  U_i = \frac{\Prob(\text{reuse}_i)\cdot \Delta S_i}{\mathrm{KVBytes}_i}\cdot
-        \frac{1}{1-\rho},
+The serving system chooses routes, evictions, offloads and admissions
+to minimise delay under a memory constraint. We study one decision of
+that problem: what happens to the state of each suspended program.
+
+At a decision epoch the replica holds a set of suspended programs.
+Program~$i$ holds $c_i=\beta K_i$ bytes of KV, resumes with
+probability~$p_i$ after an expected further $\tau_i$ seconds in its
+tool call, and its next turn needs prefill $S_i^{\mathrm{hit}}$ if the
+state is resident and $S_i^{\mathrm{miss}}=S_i^{\mathrm{hit}}+\Delta S_i$
+if it must be recomputed. For each program the controller keeps the
+state, moves it to a slower tier, or drops it; when the next turn
+arrives it chooses a node; and it decides how many sessions to admit.
+Resident state must fit: the bytes held by suspended programs and by the
+batch sum to at most $M$. The objective is the mean number of turns at
+the replica,
+\begin{equation}\label{eq:numsys}
+  L = L_P + L_D ,
 \end{equation}
-where $\Delta S_i=S_i^{\mathrm{miss}}-S_i^{\mathrm{hit}}$. The last factor
-makes resident state more valuable as the system approaches saturation.
-This section asks two questions about a suspended program: whether to
-move its KV to a slower tier, and which programs to evict when memory
-runs out.
+the mean number waiting for prefill plus the mean number in the decode
+batch, which by Little's law is the total delay accumulated per unit
+time; $L_P$ alone is the TTFT part. Relaxing the memory constraint with
+a multiplier $\theta\ge0$, the shadow price of a byte-second of memory,
+turns the constrained problem into one with an additive cost:
+keeping program~$i$ costs $\theta\,c_i\,\tau_i$, and dropping it costs
+the price of the miss it may cause. The next subsection derives that
+price.
 
-\subsection{Offloading}\label{sec:offload}
+\subsection{The Price of a Miss}\label{sec:price}
 
-\paragraph{The claim.} ThunderAgent \citep[App.~A.2, Fig.~7]{thunderagent}
-reports that vLLM$+$LMCache offloading collapses at high concurrency: 111,
-54, 62 and 40 step/min with 88\,\%, 2\,\%, 1\,\% and 1\,\% hit rate at
-24, 48, 72 and 96 parallel programs. It attributes this to PCIe
-bandwidth.
+Dropping a program's state does not change the arrival rate. It changes
+the prefill work of the program's next turn. In the stationary model a
+policy fixes which fraction of arrivals are misses, so we ask what
+happens to $L_P$ when a fraction $q_i$ of arrivals, belonging to
+program~$i$, turn from hits into misses. The added prefill load is
+$\rho'-\rho=\lambda\sum_iq_i\Delta S_i$.
 
-\paragraph{The model.} An offloading tier is a second service centre with
-capacity $B_{\mathrm{tier}}/\E[K]$ transfers per second. Once
-$\lambda\,\Prob(\text{offload})\,\E[K] > B_{\mathrm{tier}}$ it saturates
-and every miss pays the transfer. The falling throughput is also what
-\S\ref{sec:model} predicts for a closed system whose hit rate collapses.
-The observation is consistent with the model. What it supports is a
-statement about a policy, not about a mechanism.
+\begin{proposition}[The price of a miss]\label{prop:price}
+Model the prefill stage as an M/G/1 FIFO server with arrival rate
+$\lambda\ge0$, load $\rho<1$ and mean wait $W=\E[W_q]$
+from~\eqref{eq:pk}. Turn a fraction $q_i\ge0$ of arrivals from hits of
+work $S_i^{\mathrm{hit}}\ge0$ into misses of work
+$S_i^{\mathrm{miss}}\ge S_i^{\mathrm{hit}}$, and let
+$\rho'=\rho+\lambda\sum_iq_i\Delta S_i<1$. Let
+\begin{equation}\label{eq:price}
+  \Phi_i=\Delta S_i
+   +\frac{\lambda\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr)}{2(1-\rho)}
+   +\frac{\lambda W\,\Delta S_i}{1-\rho}.
+\end{equation}
+\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
+\item The change in $L_P$ satisfies
+  $\lambda\sum_iq_i\Phi_i\le\Delta L_P\le\frac{1-\rho}{1-\rho'}\,
+  \lambda\sum_iq_i\Phi_i$.
+\item The second term of $\Phi_i$ is
+  $\lambda(S_i^{\mathrm{miss}}+S_i^{\mathrm{hit}})/(2(1-\rho))$ times the
+  first, and, if $W>0$,
+  $(S_i^{\mathrm{miss}}+S_i^{\mathrm{hit}})/(2W)$ times the third.
+\item For fixed work with $\E[S]>0$, $\E[S^2]>0$ and
+  $S_i^{\mathrm{hit}}<S_i^{\mathrm{miss}}$, $\Phi_i$ is unbounded as
+  $\lambda$ approaches $1/\E[S]$.
+\end{enumerate}
+\provedby{\leanref{missPrice\_lower}, \leanref{missPrice\_upper}, \leanref{missPrice\_aggregate\_exact}, \leanref{missPrice\_own\_vs\_queue\_ratio}, \leanref{missPrice\_queue\_terms\_ratio}, \leanref{missPrice\_unbounded}}
+\end{proposition}
 
-Offloading enlarges the action set of a KV controller from
-$A_0=\{\text{keep},\text{recompute}\}$ to $A_1=A_0\cup\{\text{offload}\}$.
-A minimum over a larger set is never larger, so \emph{enabling}
-offloading never increases the optimal cost. \emph{Always} offloading
-can still be strictly worse than the $A_0$ optimum, for instance when
-$J(\text{keep})=1$, $J(\text{recompute})=5$ and
-$J(\text{offload})=10$.\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{enabling\_offload\_never\_hurts}, \leanref{always\_offload\_can\_be\_worse}}
+$\Phi_i$ is the total time to first token, summed over all turns, that
+one miss of program~$i$ adds. Its three terms are three ways a miss
+hurts. The miss itself takes longer to prefill. Turns that arrive while
+it is being prefilled wait for all of it, and that wait grows with the
+square of the miss, as the second moment in~\eqref{eq:pk} does. Its
+extra work raises the prefill load, which stretches every wait already
+in the queue by $1/(1-\rho)$. Part~(i) says that the sum of these
+prices never overstates the damage and understates it only by the
+factor $(1-\rho)/(1-\rho')$, which is close to one when the change in
+load is small.
 
-\paragraph{Reading the claim.} Hence the
-reported numbers show that \emph{always-offload} is a bad policy at that
-operating point, not that enabling offloading is harmful. A controller
-that chooses $a_i^\ast = \argmin\{J_{\mathrm{keep}},
-J_{\mathrm{offload}}, J_{\mathrm{recompute}}\}$ per program can never do
-worse than never offloading. Version~3 of ThunderAgent reaches the same
-conclusion. Its Appendix~A.4 (added in v3) states that ThunderAgent ``is
-orthogonal to KV-cache offloading'', demonstrates it on SGLang HiCache,
-and reframes the finding as ``offloading alone is insufficient at high
-concurrency''. The open question is \emph{program-aware selective
-offloading} with Eq.~\eqref{eq:utility} evaluated per program
-(\S\ref{sec:exp-offload}).
+Part~(ii) says which term dominates, and the answer depends on the
+load. When few turns arrive during a miss, the miss mostly hurts itself
+and its price is close to $\Delta S_i$. When many arrive, the turns
+queued behind it dominate, and the price grows with the square of the
+miss. Once the mean wait exceeds half the miss, the load term takes
+over, with a factor that diverges as the stage approaches capacity,
+part~(iii). The same miss has a different price, and a different shape
+of price, at different loads. A rule fixed in advance, whether it is
+context length, recompute time or hit ratio, ranks states the way
+$\Phi$ does only in some load regime.
+
+The decode stage sees the miss differently.
+
+\begin{proposition}[The decode stage prices only work]\label{prop:decode}
+Consider the PS decode stage of \S\ref{sec:batch} with any nondecreasing
+capacity~$\varphi$ and load $\rho_D$.
+\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
+\item $L_D$ is nondecreasing in $\rho_D$. Hence, at every load, a policy
+  whose turns add no more expected demand than another's leaves no more
+  turns in the batch.
+\item For constant capacity $C$ and added demand raising the load to
+  $\rho_D'<C$, the change in $L_D$ is exactly
+  $\frac{C-\rho_D}{C-\rho_D'}\,\lambda\sum_iq_i\Phi^D_i$ with
+  $\Phi^D_i=C\,\Delta D_i/(C-\rho_D)^2$, which is unbounded as
+  $\rho_D$ approaches $C$.
+\end{enumerate}
+\provedby{\leanref{stationaryMean\_mono}, \leanref{ps\_eviction\_rank\_by\_work}, \leanref{psNum\_diff\_exact}, \leanref{psPrice\_lower}, \leanref{psPrice\_upper}, \leanref{psPrice\_unbounded}}
+\end{proposition}
+
+A miss adds no decode demand, so to first order the decode stage is
+untouched by it. The load factor of part~(ii) is what a decision that
+adds decode demand, such as admitting a session, pays. The two propositions separate the roles of the two
+stages. The prefill queue is where a miss is paid for, with a
+head-of-line term that batching does not remove, and the decode batch
+is where the memory that a kept state occupies would otherwise buy
+capacity. We define the expected price of dropping program~$i$'s state,
+its price per byte and its price per byte-second held as
+\begin{equation}\label{eq:utility}
+  w_i = p_i\,\Phi_i, \qquad v_i=\frac{w_i}{c_i}, \qquad
+  u_i=\frac{w_i}{c_i\,\tau_i}.
+\end{equation}
+The next section builds a scheduler on these and reads two published
+claims as special cases of it.
+
+% ===========================================================================
+\section{Congestion-Priced Scheduling}\label{sec:sched}
+% ===========================================================================
+
+The scheduler keeps one number per suspended program, its price per
+byte-second~$u_i$ from~\eqref{eq:utility}, and one number per replica,
+the shadow price~$\theta$ of a byte-second of memory. It needs the miss
+penalty $\Delta S_i$, from a calibrated cost model
+(\S\ref{sec:exp-calib}); the resume probability $p_i$ and the expected
+remaining suspension $\tau_i$, from the program's phase and tool
+(\S\ref{sec:sessions}); and the prefill load and mean wait, which a
+replica observes. A state is worth keeping when $u_i>\theta$, and
+$\theta$ is set by the memory the replica must free.
 
 \subsection{Eviction}\label{sec:evict}
+
+When memory runs out the controller must free $\Delta C$ bytes at the
+least price,
+\begin{equation}\label{eq:evict-priced}
+  \min_{S}\ \sum_{i\in S}w_i \quad\text{s.t.}\quad \sum_{i\in S}c_i\ge\Delta C ,
+\end{equation}
+a covering knapsack, NP-hard in general and approximable to any factor
+$1+\varepsilon$ \citep{csirik1991,carnes2008}. Two facts make it easy
+in practice. Engines evict blocks rather than programs, so the problem
+is nearly fractional, and a fractional knapsack is solved by price per
+byte \citep{dantzig1957}. And the shadow price $\theta$ turns the
+constraint into a threshold.
+
+\begin{proposition}[Memory price and block-level eviction]\label{prop:memory}
+Let $w_i\ge0$ be prices and $c_i>0$ sizes.
+\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
+\item \emph{Threshold rule.} For any $\theta\ge0$, the set of states
+  with $w_i/c_i\le\theta$ costs no more than any other set that frees at
+  least as much memory.
+\item \emph{Blocks.} Taking blocks in increasing order of $w_i/c_i$ and
+  stopping at the first block $x$ that reaches the target costs at most
+  the cost of any feasible set plus $w_x$.
+\end{enumerate}
+\provedby{\leanref{threshold\_rule\_optimal}, \leanref{density\_prefix\_plus\_one}}
+\end{proposition}
+
+At the $\theta$ that frees exactly $\Delta C$ the threshold rule is
+optimal, and the same $\theta$ prices offloading and admission below.
+Held for $\tau_i$ seconds, a byte of state costs $\theta\tau_i$, so
+among states of equal price and size the one with the longer expected
+tool call goes first. Where programs must be evicted whole, as in
+ThunderAgent, price-per-byte order can fail by any factor, and a guard
+repairs it.
+
+\begin{proposition}[Guarded program-level eviction]\label{prop:guarded}
+Let $w_i\ge0$ and $c_i>0$.
+\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
+\item Evicting whole programs in increasing order of $w_i/c_i$ until
+  $\Delta C$ is freed has no constant approximation ratio
+  for~\eqref{eq:evict-priced}.
+\item For each program $e$, discard $e$ and every program with
+  $w_j>w_e$, and evict $e$ together with the remaining programs in
+  increasing order of $w_j/c_j$ until $\Delta C$ is freed. The cheapest
+  such candidate costs at most twice any feasible set.
+\end{enumerate}
+\provedby{\leanref{densityFirst\_unbounded}, \leanref{threshold\_prefix\_le}, \leanref{guardedGreedy\_two\_approx}}
+\end{proposition}
 
 \paragraph{The claim.} ThunderAgent's Lemma~4.1 models recompute cost as
 quadratic in context length. Its Definition~4.1 poses the eviction problem
@@ -390,6 +562,14 @@ quadratic in context length. Its Definition~4.1 poses the eviction problem
 over subsets $S$ of suspended programs with context lengths $c_i$ and a
 memory target $\Delta C$. Its Appendix~F.3 states a theorem that selecting
 the programs with the smallest~$c_i$ is optimal.
+
+\paragraph{The claim as a special case.} Problem~\eqref{eq:evict} is
+\eqref{eq:evict-priced} with $w_i=c_i^2$: every program resumes
+($p_i=1$) and the price is the recompute work alone, which by
+Proposition~\ref{prop:price}(ii) holds only at light prefill load; the
+work is then quadratic in the context by~\eqref{eq:prefill}. Under
+these assumptions the price per byte is $c_i$, and shortest-first (SF)
+is the plain price-per-byte order.
 
 \begin{proposition}[Shortest-context-first eviction]\label{prop:evict}
 Let shortest-first (SF) scan the programs in increasing order of $c_i$ and
@@ -410,60 +590,81 @@ evict until $\Delta C$ is freed.
 \provedby{\leanref{shortestFirst\_not\_optimal}, \leanref{shortestFirst\_optimality\_claim\_false}, \leanref{shortestFirst\_feasible}, \leanref{shortestFirst\_two\_approx}, \leanref{shortestFirst\_two\_approx\_tight}, \leanref{shortestFirst\_unbounded\_with\_resume\_prob}}
 \end{proposition}
 
-
-Problem~\eqref{eq:evict} is a covering (min-)knapsack, NP-hard in general
-and approximable to any factor $1+\varepsilon$ in polynomial time
-\citep{csirik1991,carnes2008}. Its continuous relaxation is solved by a
-classical greedy rule.
-
-\begin{theorem}[Greedy solves the knapsack relaxation; \citealp{dantzig1957}]\label{thm:dantzig}
-The linear relaxation $\max\sum_iv_iy_i$ s.t.\ $\sum_ic_iy_i\le B$,
-$y\in[0,1]^n$, with $v_i\ge0$, $c_i>0$, is solved by filling items in
-decreasing order of $v_i/c_i$, with at most one fractional item.
-\end{theorem}
-
-Substituting $y_i=1-x_i$ turns the relaxation of \eqref{eq:evict} with
-costs $w_i$ into this form with $B=\sum_ic_i-\Delta C$. The relaxed
-eviction problem is therefore solved by evicting in \emph{increasing}
-order of the cost per byte freed, $w_i/c_i$. With $w_i=p_ic_i^2$ this
-density is $p_ic_i$, not $c_i$. When all $p_i$ are equal the two orders
-coincide, which is why SF loses at most a factor~2 in
-Proposition~\ref{prop:evict}(ii); when they differ, SF sorts by the wrong
-key.
-
-\paragraph{Reading the claim.} Proposition~\ref{prop:evict}(i) refutes the
-Appendix~F.3 theorem as stated. Its proof is an exchange argument on
-$(c_{\mathrm{short}}+r)^2 > c_{\mathrm{short}}^2 + r^2$ that replaces a
-long program by a short one ``and theoretically the residue $r$''. The
-decision variable is a \emph{subset of programs}, and the residue is not a
-program that can be selected. The argument is valid for the relaxation,
-where Theorem~\ref{thm:dantzig} applies, and not for Definition~4.1. The
-paper's own ablation (App.~G.3, v3) shows SF beating longest-first and
-random eviction by about $2\times$ in throughput. That is consistent with
-Proposition~\ref{prop:evict}(ii): with uniform resume behaviour SF is a
-good heuristic. The ablation does not compare against the optimum or
-against the density rule. How much resume probabilities vary in real
-agent traces decides which regime of Proposition~\ref{prop:evict}
+\paragraph{Reading the claim.} Part~(i) refutes the Appendix~F.3 theorem
+as stated. Its exchange argument replaces a long program by a short one
+``and theoretically the residue $r$'', but the residue is not a program
+that can be selected; the argument is valid for the fractional
+relaxation, not for Definition~4.1. With $w_i=c_i^2$ the dearest program
+of any feasible set costs at least as much as the last one SF takes, so
+SF needs no guard, which is why (ii) holds; once the $p_i$ differ the
+price per byte is $p_ic_i$ and (iii) follows. ThunderAgent's objective
+is therefore sound at light load for programs that all resume, and its
+error lies in the algorithm and in the uniform resume assumption. Its
+ablation (App.~G.3, v3) shows SF beating longest-first and random
+eviction by about $2\times$ in throughput, which (ii) predicts, but it
+does not compare against the optimum or a priced rule. How much resume
+probabilities and tool times vary in real traces decides which regime
 applies, and is measured in \S\ref{sec:exp-evict}.
 
-% ===========================================================================
-\section{Program-Aware Routing}\label{sec:routing}
-% ===========================================================================
+\subsection{Offloading}\label{sec:offload}
 
-A myopic router sends a turn to the node minimising $W_j + S_{ij}$. A
-KV-aware router adds a locality term. A program-aware router also charges
-the migration cost $M_j$ and the expected future cost $F_j$ of the
-program's remaining turns, a one-step approximation of
-$\E[V(X_{t+1})\mid p,j]$ in~\eqref{eq:mdp}. Session affinity (always stay
-where the state is) is the extreme case $M_j=\infty$ for every other node.
-Let node~1 hold a program's state and node~2 be a candidate. With
-$M_1=0$, the lookahead rule $\min_j W_j+S_j+M_j+F_j$ prefers node~1 iff
+An offloading tier gives the controller a third option between keeping
+and dropping a state. Moving program~$i$'s state out and back costs a
+transfer that delays its next turn. When the fetch holds the prefill
+stage, the price of that delay has the same form as the price of a miss,
+with the transfer time in place of $\Delta S_i$. The three options are
+now priced in the same unit: keeping costs $\theta c_i\tau_i$ of memory,
+offloading costs the priced transfer plus the tier's own memory price,
+and dropping costs $w_i$. The scheduler takes the cheapest, so it
+offloads program~$i$ when the transfer is cheaper than both keeping and
+dropping. The tier is itself a service centre with capacity
+$B_{\mathrm{tier}}/\E[K]$ transfers per second. Once
+$\lambda\,\Prob(\text{offload})\,\E[K] > B_{\mathrm{tier}}$ it saturates,
+its wait enters every transfer, and the rule offloads fewer programs.
+
+\paragraph{The claim.} ThunderAgent \citep[App.~A.2, Fig.~7]{thunderagent}
+reports that vLLM$+$LMCache offloading collapses at high concurrency: 111,
+54, 62 and 40 step/min with 88\,\%, 2\,\%, 1\,\% and 1\,\% hit rate at
+24, 48, 72 and 96 parallel programs. It attributes this to PCIe
+bandwidth.
+
+\paragraph{The claim as a special case.} The falling throughput is what
+\S\ref{sec:sessions} predicts for a closed system whose hit rate collapses,
+and it is what a saturated tier produces. Offloading enlarges the action
+set of the controller from $A_0=\{\text{keep},\text{drop}\}$ to
+$A_1=A_0\cup\{\text{offload}\}$. A minimum over a larger set is never
+larger, so \emph{enabling} offloading never increases the optimal cost.
+\emph{Always} offloading can still be strictly worse than the $A_0$
+optimum, for instance when $J(\text{keep})=1$, $J(\text{drop})=5$ and
+$J(\text{offload})=10$.\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{enabling\_offload\_never\_hurts}, \leanref{always\_offload\_can\_be\_worse}}
+
+\paragraph{Reading the claim.} Hence the reported numbers show that
+\emph{always-offload} is a bad policy at that operating point, not that
+enabling offloading is harmful. A controller that prices each option per
+program can never do worse than never offloading. Version~3 of
+ThunderAgent reaches a compatible conclusion. Its Appendix~A.4 (added in
+v3) states that ThunderAgent ``is orthogonal to KV-cache offloading'',
+demonstrates it on SGLang HiCache, and reframes the finding as
+``offloading alone is insufficient at high concurrency''. Whether priced
+offloading recovers the lost throughput is measured in
+\S\ref{sec:exp-offload}.
+
+\subsection{Routing}\label{sec:routing}
+
+A program-aware router charges a resuming turn the wait and service at
+each node, the migration cost $M_j$ of moving its state and the expected
+future cost $F_j$ of its remaining turns. With node~1 holding the state
+($M_1=0$), the rule $\min_j W_j+S_j+M_j+F_j$ keeps the turn at node~1 iff
 \begin{equation}\label{eq:lookahead}
   (W_1+S_1)-(W_2+S_2) < M_2+(F_2-F_1).
 \end{equation}
 \provedby{\leanref{lookahead\_prefers\_iff}}
+The price of a miss supplies $M_j$: a move turns the next turn into a
+miss served at node~$j$, so $M_j$ is $\Phi_i$ at node~$j$'s prefill
+load, small at an idle node even for a long context. Session affinity
+sets $M_j=\infty$ for every other node.
 
-\begin{proposition}[Program-aware routing and the limit of affinity]\label{prop:routing}
+\begin{proposition}[The limit of affinity]\label{prop:routing}
 For \emph{any} finite $M,F\ge0$ there is a stable load $\lambda<\mu$ at
 which the M/M/1 response time of the affinity node exceeds $1/\mu+M+F$,
 the cost of moving to an idle node of the same speed. Hence strict
@@ -471,308 +672,227 @@ session affinity is not an optimal policy.
 \provedby{\leanref{affinity\_not\_always\_optimal}, \leanref{mm1Wait\_unbounded}}
 \end{proposition}
 
-Session affinity and KV-aware routing are both one-step approximations
-of~\eqref{eq:mdp}. Proposition~\ref{prop:routing} says that the
-approximation which ignores queueing entirely fails at high load.
-Appendix~\ref{app:pd} applies the comparison~\eqref{eq:lookahead} to prefill and decode pools.
+\subsection{Admission}\label{sec:admission}
 
+The memory pool couples the two roles of KV, and the coupling is
+unstable. A miss holds its turn in the prefill queue and then in the
+batch for longer, which holds more bytes, which evicts more suspended
+state, which causes more misses. The simulation of \S\ref{sec:sim}
+shows a replica switching between a hit rate near one and one near zero
+under the same load. The shadow price gives the admission rule its
+unit: a new session is admitted when the price it pays for memory,
+$\theta$ times the byte-seconds it will hold, is below the delay it
+avoids by not waiting, and $\theta$ rises steeply as the pool fills. In
+practice this is a cap on live sessions set where the expected resident
+KV of \S\ref{sec:sessions} stays below the pool, and it is the decision
+that keeps the eviction rules in the regime where they matter.
+
+\paragraph{The scheduler.} Congestion-priced scheduling maintains running
+estimates of the prefill load and wait at each node, one shadow price
+$\theta$ per replica, and, for each suspended program, $p_i$, $c_i$,
+$\tau_i$ and $\Delta S_i$. (1)~When memory must be freed it evicts
+blocks in increasing price per byte-second, or whole programs by the
+guarded rule of Proposition~\ref{prop:guarded}, with $w_i=p_i\Phi_i$.
+(2)~A suspended state is kept, offloaded or dropped by comparing
+$\theta c_i\tau_i$, the priced transfer and $w_i$. (3)~A resuming turn
+goes to the node that minimises~\eqref{eq:lookahead} with $M_j$ priced
+at that node's prefill load. (4)~Sessions are admitted while $\theta$
+stays below the delay a waiting session would incur. SF, always-offload
+and strict affinity are the special cases in which the price is
+replaced by $c_i^2$, by zero, and by infinity.
 
 % ===========================================================================
 \section{Experiments}\label{sec:exp}
 % ===========================================================================
 
-This section fixes the experiments and the numbers each will report.
-Every entry marked \tbd{} is to be measured. No result in this section
-has been obtained yet, and the hypotheses below are predictions of the
-propositions, not findings.
+Validation runs in two stages. \S\ref{sec:sim} simulates each
+proposition inside its model and with its assumptions dropped, using an
+uncalibrated simulator and synthetic workloads. \S\ref{sec:exp-real}
+fixes the experiments on a real system that will decide whether the
+propositions, and the scheduler built on them, carry over.
 
-\subsection{Setup}\label{sec:exp-setup}
+\input{simulation}
 
-\paragraph{Testbed.} A rack of \tbd{} NPUs with \tbd{} interconnect,
-\tbd{} HBM per device and a host-memory or shared KV tier of \tbd{}
-capacity. Serving stack: \tbd{}, with prefix caching, KV offloading,
-static and dynamic PD, and a pluggable router.
+\subsection{Evaluation on a Real System}\label{sec:exp-real}\label{sec:exp-setup}\label{sec:exp-protocol}
 
-\paragraph{Workloads.} Replayed coding-agent traces (source \tbd) and a
-synthetic chat workload for class-mixing experiments.
-Table~\ref{tab:workload} will report trace statistics next to the
-published reference values.
-
-\paragraph{Simulator.} A discrete-event simulator calibrated from E1
-reproduces the chain of \S\ref{sec:model} with continuous batching,
-block-level KV management and transfer contention. It is used where the
-testbed is too slow: policy sweeps, the exact eviction optimum, and the
-many operating points needed for the scorecard. The testbed provides
-ground truth at a subset of points, and the simulator is itself scored
-against it (\S\ref{sec:exp-scorecard}).
+The propositions are about the model. Table~\ref{tab:exp-overview}
+lists the experiments that will decide whether they carry over to a
+rack-scale NPU testbed running a serving stack with prefix caching, KV
+offloading and a pluggable router, on replayed coding-agent traces and a
+synthetic chat workload. The layouts of the result tables, with every
+quantity each experiment reports, are in the research plan distributed
+with the code. No measurement is reported in this draft; the hypotheses
+below are predictions of the propositions.
 
 \begin{table}[t]
-\caption{Workload statistics. Reference column from \citet{vllm-agentx}
-(medians).}
-\label{tab:workload}
-\centering\small
-\begin{tabular}{@{}lccc@{}}
-\toprule
-Statistic & Reference & Median & p90 \\
-\midrule
-Turns per program        & 43    & \tbd & \tbd \\
-Input tokens per turn    & 142K  & \tbd & \tbd \\
-Output tokens per turn   & 444   & \tbd & \tbd \\
-Tool time per turn (s)   & --    & \tbd & \tbd \\
-Prefix hit rate          & $>$96\,\% & \multicolumn{2}{c}{\tbd} \\
-Resume probability $p_i$ & --    & \tbd & \tbd \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[t]
-\caption{Experiments, the result each tests, and where it runs
-(T = testbed, S = simulator, O = offline on traces). E5 (PD
-disaggregation) is described in Appendix~\ref{app:pd}.}
+\caption{Experiments, the result each tests, where it runs
+(T = testbed, S = simulator, O = offline on traces) and its primary
+metric.}
 \label{tab:exp-overview}
-\centering\small
+\centering\small\setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}llll@{}}
 \toprule
 Exp. & Tests & Where & Primary metric \\
 \midrule
-E1 & calibration              & T    & held-out MAPE \\
-E2 & Prop.~\ref{prop:pk}, Eq.~\eqref{eq:cv2} & T, S & $\mathrm{CV}^2$ share \\
-E3 & \S\ref{sec:offload}  & T, S & step/min \\
-E4 & Prop.~\ref{prop:evict}, Eq.~\eqref{eq:utility} & O, S & cost / OPT \\
-E6 & Prop.~\ref{prop:routing} & T, S & inversion load \\
-E7 & decision faithfulness    & T, S & Kendall $\tau$ \\
+E1 & calibration of~\eqref{eq:prefill}, \eqref{eq:decode}, $\varphi$ & T & held-out MAPE \\
+E2 & \S\ref{sec:congestion}, Props.~\ref{prop:price}, \ref{prop:decode} & T, S & $\mathrm{CV}^2$ share, $\Delta L_P$ \\
+E3 & \S\ref{sec:offload} & T, S & turns/min \\
+E4 & Props.~\ref{prop:memory}, \ref{prop:guarded}, \ref{prop:evict}; \S\ref{sec:admission} & O, S, T & cost/OPT, p99 TTFT \\
+E5 & Prop.~\ref{prop:routing} & T, S & inversion load \\
+E6 & decision faithfulness & T, S & Kendall $\tau$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Evaluation protocol}\label{sec:exp-protocol}
+\paragraph{Protocol.} Decision accuracy is the primary metric: whether
+the model picks the same policy as the real optimum and ranks policies
+in the same order (Kendall~$\tau$ over policy sets, fraction of states
+with the same $\argmin$), reported alongside MAPE of TTFT, TPOT and
+throughput on held-out workloads. Error is decomposed by substituting
+measured for modelled quantities one link of the chain at a time, and
+out-of-distribution checks vary tool time, context skew, reuse rate and
+program mix beyond the calibration range.
 
-An analytical model will not match the system cycle for cycle. The
-question is which discrepancies matter for the decisions the model is
-used to make. We assess three levels of validity.
-\begin{enumerate}[leftmargin=*,nosep]
-\item \textbf{Structural validity.} The mechanisms that drive decisions
-are represented: queue state, KV locality and transfer cost, memory
-pressure, program phase transitions, and the dependence of service time
-on cached tokens.
-\item \textbf{Calibration.} Service and transfer models are fitted from
-profiling, not assumed (E1).
-\item \textbf{Held-out validation.} On workloads not used for calibration
-we report \emph{metric accuracy} (MAPE of TTFT, TPOT, p99 and throughput),
-\emph{trend accuracy} (sign of the response to load, hit rate and tool
-time) and \emph{decision accuracy} (whether the model picks the same
-policy as the real optimum and ranks policies in the same order).
-\end{enumerate}
-Decision accuracy is primary. A model that predicts a TTFT reduction of
-$430\to370$\,ms when the system shows $500\to420$\,ms is 14\,\% off in
-level but right about the decision, and the decision is what a scheduler
-consumes. We report policy-ranking agreement (Kendall~$\tau$ over policy
-sets) and optimal-decision agreement (fraction of states where the
-$\argmin$ coincides) alongside MAPE. Error is decomposed as
-$E_{\text{service}} + E_{\text{queue}} + E_{\text{network}} +
-E_{\text{program}}$ by substituting measured for modelled quantities one
-link of the chain at a time, and each cost term of~\eqref{eq:mdp} is
-ablated to show the decision accuracy it contributes. Out-of-distribution
-checks vary tool time ($2\to10$\,s), context skew, reuse rate and program
-mix beyond the calibration range.
+\paragraph{E1: Calibration.}\label{sec:exp-calib} We profile prefill
+time over new tokens, cached prefix and batch, decode step time over
+batch size and total batch KV, and transfer time over bytes per link,
+and fit~\eqref{eq:prefill}, \eqref{eq:decode} and $\varphi(n)$. We also
+measure the largest batch that fits in memory under the trace's
+footprint distribution, which Proposition~\ref{prop:footprint} says
+cannot be inferred from the mean footprint.
 
-The model does not represent collective-communication contention,
-kernel-launch jitter, allocator fragmentation or network head-of-line
-blocking. Where those dominate we expect error to grow and will report
-it.
+\paragraph{E2: Variance and the price.}\label{sec:exp-variance}
+\emph{Hypothesis:} per-turn prefill $\mathrm{CV}^2$ is dominated by the
+hit/miss mixture, the prefill wait tracks $(1+\mathrm{CV}^2)/2$ with and
+without chunking, and decode occupancy depends on decode load only. We
+decompose $\mathrm{Var}[S]$ by the law of total variance, vary the hit
+rate by controlling eviction under both prefill schedulers, and force
+misses on a controlled fraction of turns to compare the rise in summed
+TTFT with Proposition~\ref{prop:price}(i).
 
-\subsection{E1: Service-time calibration}\label{sec:exp-calib}
+\paragraph{E3: Offloading.}\label{sec:exp-offload} \emph{Hypothesis:}
+priced offloading is never below never-offload, and always-offload falls
+below it once the tier saturates, at the concurrencies ThunderAgent
+reports; whether the stack fetches on the critical path decides the
+ranking (\S\ref{sec:sim}).
 
-We profile $S_{\mathrm{prefill}}(L,K,B)$ on a grid of new tokens~$L$,
-cached prefix~$K$ and batch~$B$, $S_{\mathrm{decode}}(B,\mathrm{KV})$,
-and $T_{\mathrm{transfer}}$ against KV bytes over each link. Fitted forms
-and held-out errors go in Table~\ref{tab:calib}.
+\paragraph{E4: Eviction and admission.}\label{sec:exp-evict}
+\emph{Hypothesis:} on replayed eviction events, SF is within a factor~2
+of the optimum when resume probabilities are uniform, price-per-byte
+order beats it when they vary, the byte-second key $u_i$ beats both when
+tool times differ, and the full price of Proposition~\ref{prop:price}
+matters at prefill loads where the mean wait is comparable to a miss.
+End to end, we sweep the admission cap, since the simulation shows it
+decides whether eviction matters at all.
 
-\begin{table}[t]
-\caption{E1: fitted service and transfer models (held-out split).}
-\label{tab:calib}
-\centering\small
-\begin{tabular}{@{}llcc@{}}
-\toprule
-Quantity & Fitted form & $R^2$ & MAPE \\
-\midrule
-$S_{\mathrm{prefill}}(L,K,B)$          & \tbd & \tbd & \tbd \\
-$S_{\mathrm{decode}}(B,\mathrm{KV})$   & \tbd & \tbd & \tbd \\
-$T_{\mathrm{transfer}}$ (device--device) & \tbd & \tbd & \tbd \\
-$T_{\mathrm{transfer}}$ (device--tier)   & \tbd & \tbd & \tbd \\
-\bottomrule
-\end{tabular}
-\end{table}
+\paragraph{E5: Routing.}\label{sec:exp-routing} \emph{Hypothesis:}
+strict affinity wins at low load and loses above a load that
+\eqref{eq:lookahead} predicts from measured waits and priced $M_j$.
 
-\subsection{E2: Where the variance comes from}\label{sec:exp-variance}
-
-\emph{Hypothesis} (Prop.~\ref{prop:pk}, Eq.~\eqref{eq:cv2}): per-turn
-$\mathrm{CV}^2$ is dominated by the hit/miss mixture, and $\E[W_q]$ tracks
-$(1+\mathrm{CV}^2)/2$ times the exponential-service delay. We measure
-per-turn service time on replayed traces, decompose $\mathrm{Var}[S]$ by
-the law of total variance into the hit/miss term and the within-class
-spread of output and context length, and then vary the hit rate by
-controlling eviction. For fleet-level mixing we compare a shared FIFO
-queue with class-separated queues on chat$+$agent workloads of equal mean.
-
-\begin{table}[t]
-\caption{E2: service-time variance decomposition and PK prediction.}
-\label{tab:variance}
-\centering\small
-\begin{tabular}{@{}lc@{}}
-\toprule
-Quantity & Value \\
-\midrule
-Per-turn $\mathrm{CV}^2$                          & \tbd \\
-Share of $\mathrm{Var}[S]$: hit/miss mixture      & \tbd \\
-Share: output-length spread                       & \tbd \\
-Share: context-length spread                      & \tbd \\
-\midrule
-$\E[W_q]$ measured / PK, $\rho=0.5$               & \tbd \\
-$\E[W_q]$ measured / PK, $\rho=0.7$               & \tbd \\
-$\E[W_q]$ measured / PK, $\rho=0.9$               & \tbd \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{E3: Selective offloading}\label{sec:exp-offload}
-
-\emph{Hypothesis} (\S\ref{sec:offload}): a per-program $\argmin$ over
-$\{\text{keep},\text{offload},\text{recompute}\}$ is never below
-never-offload, while always-offload falls below it once the tier
-saturates. We sweep concurrency over the range used by ThunderAgent and
-past the tier's bandwidth saturation.
-
-\begin{table}[t]
-\caption{E3: throughput (step/min) and hit rate by offloading policy and
-number of concurrent programs.}
-\label{tab:offload}
-\centering\small
-\begin{tabular}{@{}lcccc@{}}
-\toprule
-Policy & 24 & 48 & 72 & 96 \\
-\midrule
-Never offload            & \tbd & \tbd & \tbd & \tbd \\
-Always offload           & \tbd & \tbd & \tbd & \tbd \\
-Selective ($\argmin$)    & \tbd & \tbd & \tbd & \tbd \\
-\midrule
-Hit rate, selective      & \tbd & \tbd & \tbd & \tbd \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{E4: Eviction}\label{sec:exp-evict}
-
-\emph{Hypothesis} (Prop.~\ref{prop:evict}, Thm.~\ref{thm:dantzig}): SF is
-within a factor~2 of the optimum when resume probabilities are uniform,
-and the $p_ic_i$ density rule beats it when they vary. We estimate $p_i$
-from program phase and history, and compare selection rules on replayed
-eviction events offline (exact optimum by integer programming for
-small instances) and end-to-end in the simulator. We also compare
-eviction objectives: LRU, hit-ratio maximisation, and the utility
-\eqref{eq:utility}.
-
-\begin{table}[t]
-\caption{E4: eviction. Cost relative to the optimum of~\eqref{eq:evict}
-(expected, with estimated $p_i$) and end-to-end p99 TTFT.}
-\label{tab:evict}
-\centering\small
-\begin{tabular}{@{}lccc@{}}
-\toprule
-Rule & Cost / OPT & \multicolumn{2}{c}{p99 TTFT (ms)} \\
-     &            & $\rho=0.7$ & $\rho=0.9$ \\
-\midrule
-Shortest-first            & \tbd & \tbd & \tbd \\
-Density $p_ic_i$          & \tbd & \tbd & \tbd \\
-Exact optimum             & 1.00 & \tbd & \tbd \\
-\midrule
-LRU                       & \tbd & \tbd & \tbd \\
-Hit-ratio maximisation    & \tbd & \tbd & \tbd \\
-Utility \eqref{eq:utility} & \tbd & \tbd & \tbd \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{E6: Routing}\label{sec:exp-routing}
-
-\emph{Hypothesis} (Prop.~\ref{prop:routing}): strict
-affinity wins at low load and loses above a load that the lookahead rule
-predicts from measured $W_j$, $M_j$ and $F_j$. We compare myopic,
-KV-aware, program-aware (one-step lookahead) and strict-affinity routing.
-
-\begin{table}[t]
-\caption{E6: p99 TTFT (ms) by router and load, and the load at which
-affinity's advantage inverts.}
-\label{tab:routing}
-\centering\small
-\begin{tabular}{@{}lccc@{}}
-\toprule
-Router & $\rho=0.5$ & $\rho=0.7$ & $\rho=0.9$ \\
-\midrule
-Myopic             & \tbd & \tbd & \tbd \\
-KV-aware           & \tbd & \tbd & \tbd \\
-Program-aware      & \tbd & \tbd & \tbd \\
-Strict affinity    & \tbd & \tbd & \tbd \\
-\midrule
-Inversion load (pred./obs.) & \multicolumn{3}{c}{\tbd{} / \tbd} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{E7: Decision-faithfulness scorecard}\label{sec:exp-scorecard}
-
-For each decision we score the analytical model and the simulator against
-the testbed with the metrics of \S\ref{sec:exp-protocol}.
-
-\begin{table}[t]
-\caption{E7: decision faithfulness against the testbed. $\tau$ = Kendall
-rank correlation of policy orderings; Agree = fraction of states with the
-same $\argmin$.}
-\label{tab:scorecard}
-\centering\small
-\begin{tabular}{@{}lcccc@{}}
-\toprule
-Decision & \multicolumn{2}{c}{Analytical} & \multicolumn{2}{c}{Simulator} \\
-         & $\tau$ & Agree & $\tau$ & Agree \\
-\midrule
-Offloading     & \tbd & \tbd & \tbd & \tbd \\
-Eviction       & \tbd & \tbd & \tbd & \tbd \\
-Routing        & \tbd & \tbd & \tbd & \tbd \\
-\midrule
-TTFT MAPE      & \multicolumn{2}{c}{\tbd} & \multicolumn{2}{c}{\tbd} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\input{simulation}
+\paragraph{E6: Scorecard.}\label{sec:exp-scorecard} For each decision we
+score the analytical model and the calibrated simulator against the
+testbed with the protocol above.
 
 % ===========================================================================
 \section{Related Work}\label{sec:related}
 % ===========================================================================
 
-Queueing foundations: \citet{kleinrock1975}; the PK formula and M/G/1
-\citep{pollaczek1930,khinchine1932}; Little's law \citep{little1961};
-GI/G/1 bounds \citep{kingman1962}; SRPT optimality \citep{schrage1968};
-closed and interactive networks \citep{lazowska1984}. Knapsack relaxation
-and covering knapsack: \citet{dantzig1957,csirik1991,carnes2008}. Agentic
-serving: ThunderAgent \citep{thunderagent}; production traces
-\citep{vllm-agentx}; distributed KV pools \citep{mooncake-vllm}. PPD
-append-prefill \citep{ppd} and PD rate matching \citep{vllm-agentx} bear
-on Appendix~\ref{app:pd}.
+\paragraph{Queueing foundations.} \citet{kleinrock1975}; the PK formula
+and M/G/1 \citep{pollaczek1930,khinchine1932}; Little's law
+\citep{little1961}; GI/G/1 bounds \citep{kingman1962}; SRPT optimality
+\citep{schrage1968}; closed and interactive networks
+\citep{lazowska1984}; product-form networks and insensitivity
+\citep{bcmp1975,kelly1979}. Charging a job for the delay it imposes on
+others is classical in the economics of queues
+\citep{naor1969,mendelson1990}; there the price steers customers who
+decide whether to join, whereas here it ranks the states a server
+keeps. Knapsack relaxation and covering knapsack:
+\citet{dantzig1957,csirik1991,carnes2008}.
+
+\paragraph{Queueing models of LLM serving.} \citet{mitzenmacher2025queueing}
+set out why LLM jobs, with variable inference times, growing memory
+footprints and several preemption options, need new queueing models.
+Existing analyses take the variability from output length:
+\citet{yang2024mg1} use an M/G/1 model to show that capping the output
+of a few requests cuts queueing delay, \citet{ozbas2026reasoning} let a
+class mixture of reasoning budgets set the second moment, and
+\citet{shahout2024trail} give a closed form for a memory-aware SRPT
+variant. Fluid and stability analyses cover throughput:
+work-conserving schedulers are throughput-optimal, also for agent
+workloads with fork-join structure \citep{dai2025workconserving};
+memory growth sets the equilibrium batch and stability region, from
+which admission rules follow \citep{ao2025fluid,nie2026stability};
+flow control, routing and prefill/decode contention have provable
+guarantees \citep{dong2026flowcontrol,bari2025optimal,lin2026pdcontention}.
+Closest to our memory results, \citet{ao2026congestion} show that the
+eviction-free equilibrium of a memory-constrained replica is unstable
+and converges to a limit cycle with large throughput loss; the
+thrashing of \S\ref{sec:sim} is the same phenomenon with KV reuse across
+turns. \citet{chen2026fleetsim} pair M/G/$c$ formulas with simulation
+for capacity planning, as we do. None of these models KV reuse across
+the turns of a session, so none prices a miss.
+
+\paragraph{Scheduling theory with KV constraints.}
+\citet{jaillet2025online} prove that no deterministic online algorithm
+has a constant competitive ratio under arbitrary arrivals with KV
+constraints and give one under conditions; \citet{feng2026nonclairvoyant}
+give the first constant-competitive non-clairvoyant policy;
+\citet{wang2025variable} show that first-come-first-served,
+shortest-output-first and size-based priorities have unbounded
+approximation ratios for batch scheduling under a KV budget, a result
+in the spirit of our Proposition~\ref{prop:evict}(iii) for eviction.
+\citet{dexter2025prefix} prove NP-hardness of scheduling with prefix
+reuse under TTFT constraints and study the trade-off between reuse and
+fairness.
+
+\paragraph{Agentic and multi-turn KV serving.} ThunderAgent
+\citep{thunderagent} and InferCept \citep{infercept} manage the KV of
+programs paused on external calls; InferCept, to our understanding,
+scores preserve, discard and swap by the memory each wastes, where the
+price of a miss scores by queueing delay. Continuum \citep{li2025continuum}
+keeps a program's KV through its tool call for a time-to-live set from
+the reload cost and the queueing delay an eviction would induce, a
+heuristic form of \S\ref{sec:price}; MORI \citep{xia2026mori} offloads by
+the idleness of tool calls and reports durations spanning orders of
+magnitude, which gives $\tau_i$ its role. TokenCake
+\citep{bian2025tokencake}, KVFlow \citep{pan2025kvflow} and CacheScout
+\citep{zhang2026cachescout} predict reuse from the agent workflow;
+TOPAS \citep{ni2026topas} states the trade-off between a retained prefix
+and the batch memory it displaces, which
+Propositions~\ref{prop:footprint} and~\ref{prop:memory} formalise.
+KVLearn \citep{kvlearn2026} learns a retention score that weighs
+recompute, transfer and storage costs and adapts its threshold from
+observed hit rates and memory pressure; it is a learned counterpart of
+the price~\eqref{eq:utility} and the shadow price~$\theta$, which we
+derive instead and use to say when fixed rules fail.
+Chunked prefill \citep{sarathi2024} protects decoding from long
+prefills; that head-of-line blocking among prefills remains motivates
+\citet{hsieh2026flowprefill}, \citet{liu2026chunkedfair} and
+\citet{lyu2025fairbatching}, and it is the term our price keeps.
+Production traces \citep{vllm-agentx}, distributed KV pools
+\citep{mooncake-vllm} and PPD's append-prefill routing \citep{ppd}
+supply the setting.
 
 % ===========================================================================
 \section{Limitations}\label{sec:limits}
 % ===========================================================================
 
-The propositions are about the model, not the world. Their empirical
-force depends on the experiments of \S\ref{sec:exp}, which have not been
-carried out. Propositions~\ref{prop:pk} and~\ref{prop:cache} assume Poisson
-arrivals and a single server. Agentic arrivals are bursty and correlated,
-and Theorem~\ref{thm:kingman} shows that arrival variability adds to the
-delay rather than cancelling service variability, so the PK formula can
-underestimate it. We have not measured the service-time variance of a
-real agentic deployment; \S\ref{sec:congestion} argues where it should
-come from, and E2 measures it. The
+The propositions are about the model, not the world, and the
+experiments of \S\ref{sec:exp-real} have not been run. The replica
+model treats the prefill stage as a FIFO server with a fixed available
+fraction, although the budget left by the decode batch fluctuates and
+session feedback makes arrivals non-Poisson, so Eq.~\eqref{eq:pk} is an
+approximation there; Kingman's bound says bursty arrivals add delay on
+top of it. Decode capacity depends on the number of turns in the batch,
+with the KV dependence of a step carried by~\eqref{eq:decode} alone. A
+real batch limit admits turns in FIFO order and is not insensitive;
+\S\ref{sec:sim} finds the error of the saturating $\varphi$ follows the
+work $\mathrm{CV}^2$ near saturation. The propositions concern means,
+while service objectives are tails, and they price an eviction as a
+stationary fraction of misses, whereas a real eviction is one event
+with a transient effect that the simulation shows can be a thrash. The
+scheduler uses estimates of load, wait, $p_i$ and $\tau_i$; how much of
+the guarantees survives these substitutions is what E4 tests. The
 ThunderAgent statements we discuss were checked against
 arXiv:2602.13692v3; we have not reproduced its experiments.
 
@@ -797,44 +917,129 @@ formalised and machine-checked in Lean~4 with Mathlib; the development is
 in the supplementary material. The proofs below are written for human
 readers and do not follow the formal proofs step by step.
 
-\begin{proof}[Proof of Proposition~\ref{prop:pk}]
-Let $S$ take value $s_i$ with probability $q_i$, and let
-$m=\E[S]=\sum_iq_is_i$. Expanding the square,
-\begin{align*}
-\mathrm{Var}[S]&=\sum_iq_i(s_i-m)^2\\
-&=\textstyle\sum_iq_is_i^2-2m\sum_iq_is_i+m^2\sum_iq_i\\
-&=\E[S^2]-m^2 .
-\end{align*}
-
-Hence $\E[S_A^2]=\mathrm{Var}[S_A]+m^2<\mathrm{Var}[S_B]+m^2
-=\E[S_B^2]$ when the means are both $m$. The loads are equal because
-$\rho=\lambda m$ in both cases, and for fixed $\lambda>0$ and $\rho<1$
-Eq.~\eqref{eq:pk} is linear in $\E[S^2]$ with slope
-$\lambda/(2(1-\rho))>0$.
+\begin{proof}[Proof of Proposition~\ref{prop:footprint}]
+Let $E(m)$ be the expected number admitted into $m$ free tokens. The
+first request is admitted if it fits, after which $m$ shrinks by its
+footprint, so $E(m)=\sum_k\Prob(K=k)\,\mathbf 1[k\le m]\,(1+E(m-k))$.
+(i) With $K\equiv6$, $E(12)=1+E(6)=2$. With $K\in\{5,7\}$, $E(m)=0$ for
+$m<5$, $E(5)=\tfrac12$, $E(7)=1$, and
+$E(12)=\tfrac12(1+E(7))+\tfrac12(1+E(5))=\tfrac74$.
+(ii) With $K\equiv7$, $E(12)=1$. With $K\in\{2,12\}$, a request of $12$
+fits only into $12$ free tokens, so
+$E(12)=\tfrac12(1+E(10))+\tfrac12$ and $E(m)=\tfrac12(1+E(m-2))$ for
+$2\le m<12$, with $E(0)=0$. This gives $E(10)=\tfrac{31}{32}$ and
+$E(12)=\tfrac{95}{64}$.
 \end{proof}
 
-\begin{proof}[Proof of Proposition~\ref{prop:cache}]
-Write $h=S^{\mathrm{hit}}$ and $m=S^{\mathrm{miss}}$.
+\begin{proof}[Proof of Proposition~\ref{prop:decode}]
+(i) Write $a_n=1/\prod_{k\le n}\varphi(k)$, so
+$L(\rho)=\sum_nna_n\rho^n/\sum_na_n\rho^n$. For $\rho_1\le\rho_2$,
+\[
+  L(\rho_2)-L(\rho_1)=\frac{\sum_{n,m}na_na_m(\rho_2^n\rho_1^m-\rho_1^n\rho_2^m)}{P(\rho_1)P(\rho_2)},
+\]
+with $P(\rho)=\sum_na_n\rho^n$. Exchanging $n$ and $m$ and averaging, the
+numerator is half of
+$\sum_{n,m}a_na_m(n-m)(\rho_2^n\rho_1^m-\rho_1^n\rho_2^m)$. For $n\ge m$
+the last factor is $\rho_1^m\rho_2^m(\rho_2^{n-m}-\rho_1^{n-m})\ge0$, and
+symmetrically for $n<m$ both factors are non-positive, so every term is
+non-negative. This holds for every truncation of the sums at a finite
+$N$, and $L$ is the limit of the truncated means, so it holds for $L$.
+By insensitivity, $L$ depends on the policy only through $\rho$, and a
+policy that adds expected work $A$ per arrival moves the load to
+$\rho+\lambda A$.
 
-For $p\le q$,
-$\E[S](q)-\E[S](p)=(q-p)(h-m)\le0$ because $h\le m$. The same computation
-with $h^2$ and $m^2$ gives the claim for $\E[S^2]$, since $0\le h\le m$
-implies $h^2\le m^2$, and $\rho=\lambda\E[S]$ with $\lambda>0$ is
-non-increasing too.
+(ii) With constant capacity $\pi$ is geometric and $L=\rho/(C-\rho)$.
+With $\rho'=\rho+\lambda A$ and $A=\sum_iq_i\Delta S_i$,
+\[
+  L(\rho')-L(\rho)=\frac{C\,\lambda A}{(C-\rho)(C-\rho')}
+  =\frac{C-\rho}{C-\rho'}\cdot\frac{C\,\lambda A}{(C-\rho)^2},
+\]
+and the last factor is $\lambda\sum_iq_i\Phi^D_i$ (with $\Delta D_i$ in
+place of $\Delta S_i$). Since $\rho'\ge\rho$ the prefactor is at least
+one.
 
-The PK delay at hit rate $x$ is $\lambda\E[S^2](x)/(2(1-\rho(x)))$.
-For $q\in[0,1]$ both terms of $\E[S^2](q)=qh^2+(1-q)m^2$ are
-non-negative, so the numerator at $q$ is non-negative, and it is
-at most the numerator at $p$. Also $\rho(q)\le\rho(p)<1$, so the
-denominator at $q$ is positive and at least the denominator at $p$. A
-non-negative numerator that shrinks over a positive denominator that
-grows gives a smaller ratio.
+(iii) At $\rho=C-\varepsilon$, $\Phi^D_i=C\Delta D_i/\varepsilon^2$.
+\end{proof}
 
-The numbers around Eq.~\eqref{eq:cv2}: for exponential service $\E[S^2]=2\E[S]^2$, so the
-ratio of PK expressions at equal $\lambda$ and $\rho$ is
-$\E[S^2]/(2\E[S]^2)=(1+\mathrm{CV}^2)/2$. With $p=0.96$, $h=0.05$ and
-$m=5$: $\E[S]=0.248$, $\E[S^2]=1.0024$ and $\mathrm{CV}^2\approx15.3$. With
-$m=0.1$: $\E[S]=0.052$, $\E[S^2]=0.0028$ and $\mathrm{CV}^2\approx0.036$.
+\begin{proof}[Proof of Proposition~\ref{prop:memory}]
+(i) Let $T=\{i: w_i/c_i\le\theta\}$ and let $S$ free at least as much,
+$c(T)\le c(S)$. Removing the common part gives
+$c(T\setminus S)\le c(S\setminus T)$. Members of $T\setminus S$ have
+$w_i\le\theta c_i$ and members of $S\setminus T$ have $w_i>\theta c_i$, so
+$w(T)-w(S)=w(T\setminus S)-w(S\setminus T)\le\theta\bigl(c(T\setminus S)
+-c(S\setminus T)\bigr)\le0$.
+
+(ii) Let $P$ be the blocks taken before $x$ and $\theta=w_x/c_x$. Every
+block in $P$ has price per byte at most $\theta$, every block outside
+$P$ at least $\theta$, and $c(P)<\Delta C\le c(O)$ for any feasible $O$.
+The exchange step of (i) gives $w(P)\le w(O)$, hence
+$w(P)+w_x\le w(O)+w_x$.
+\end{proof}
+
+\begin{proof}[Proof of Proposition~\ref{prop:price}]
+Write $u=1-\rho$, $m_2=\E[S^2]$,
+$A=\sum_iq_i\Delta S_i$ and
+$B=\sum_iq_i\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr)$.
+The change raises $\E[S]$ by $A$ and $\E[S^2]$ by $B$, so the load
+becomes $\rho'=\rho+\lambda A$ and $1-\rho'=u-\lambda A>0$. By
+\eqref{eq:pk}, $L=\lambda^2m_2/(2u)+\rho$, hence
+\[
+  \Delta L=\lambda A+\frac{\lambda^2}{2}\Bigl(\frac{m_2+B}{u-\lambda A}
+    -\frac{m_2}{u}\Bigr)
+  =\lambda A+\frac{Y}{u(u-\lambda A)},
+\]
+with $Y=\lambda^2(uB+\lambda Am_2)/2\ge0$. Summing \eqref{eq:price} with
+$W=\lambda m_2/(2u)$ gives $\lambda\sum_iq_i\Phi_i=\lambda A+Y/u^2$.
+
+(i) Since $0<u-\lambda A\le u$, $Y/(u(u-\lambda A))\ge Y/u^2$, which is
+the lower bound. For the upper bound,
+\[
+  \frac{u}{u-\lambda A}\Bigl(\lambda A+\frac{Y}{u^2}\Bigr)-\Delta L
+  =\frac{(\lambda A)^2}{u-\lambda A}\ \ge\ 0 .
+\]
+
+(ii) $(S^{\mathrm{miss}})^2-(S^{\mathrm{hit}})^2
+=(S^{\mathrm{miss}}+S^{\mathrm{hit}})\Delta S$, so the second term of
+$\Phi_i$ is $\lambda(S^{\mathrm{miss}}+S^{\mathrm{hit}})/(2u)$ times
+$\Delta S_i$, and the third is $\lambda W\Delta S_i/u$. Dividing gives
+both ratios.
+
+(iii) Let $m_1=\E[S]$ and $\lambda=(1-\varepsilon)/m_1$ with
+$0<\varepsilon\le1/2$, so $\rho=1-\varepsilon$ and $\lambda\ge1/(2m_1)$.
+The first two terms of $\Phi_i$ are non-negative, and the third is
+$\lambda^2m_2\Delta S_i/(2\varepsilon^2)\ge m_2\Delta S_i/(8m_1^2\varepsilon^2)$,
+which exceeds any bound for small~$\varepsilon$.
+\end{proof}
+
+\begin{proof}[Proof of Proposition~\ref{prop:guarded}]
+(i) Take $\Delta C=2$ and three programs with $(w,c)=(0,1)$, $(K,K)$ and
+$(2,1)$, $K\ge1$. Their prices per byte are $0\le1\le2$. The order takes
+the first program, which frees~1, then the second, which completes the
+target, at cost~$K$. The first and third programs also free~2, at
+cost~2. Choose $K>2R$.
+
+(ii) Let $O$ be any feasible set and $e$ its most expensive member. It
+suffices to show that the candidate built for $e$ costs at most
+$2w(O)$, since the rule returns the cheapest candidate. If
+$c_e\ge\Delta C$ the candidate is $\{e\}$ and costs $w_e\le w(O)$.
+Otherwise let the pool be the programs other than~$e$ with
+$w_j\le w_e$. It contains $O'=O\setminus\{e\}$, which frees at least
+$\Delta C-c_e$, so the greedy pass over the pool completes. Let it take
+$P$ and then $x$, the program that completes the target, and let
+$\theta=w_x/c_x$. Every member of $P$ has price per byte at most
+$\theta$, every pool member outside $P$ at least~$\theta$, and
+$c(P)<\Delta C-c_e\le c(O')$.
+
+\emph{Exchange step.} Removing the common part $P\cap O'$ from both
+sides of $c(P)\le c(O')$ gives $c(P\setminus O')\le c(O'\setminus P)$.
+Then
+\begin{align*}
+  w(P)-w(O')&=w(P\setminus O')-w(O'\setminus P)\\
+  &\le\theta\,c(P\setminus O')-\theta\,c(O'\setminus P)\ \le\ 0 .
+\end{align*}
+The candidate therefore costs at most
+$w_e+w(P)+w_x\le w_e+w(O')+w_e=w(O)+w_e\le2w(O)$, using $w_x\le w_e$ and
+$w_e\le w(O)$.
 \end{proof}
 
 \begin{proof}[Proof of Proposition~\ref{prop:evict}]
@@ -887,179 +1092,5 @@ is unbounded on $[0,\mu)$: the load $\lambda=\mu-\varepsilon$ with
 $\varepsilon=\min(\mu,1/(|B|+2))$ gives $W(\lambda)=1/\varepsilon>B$. At that load a policy that
 always stays is beaten by one that moves.
 \end{proof}
-
-\begin{proof}[Proof of Proposition~\ref{prop:pd}]
-(i) Let $m=\min(N_P/s_P,N_D/s_D)$. Then $ms_P\le N_P$ and $ms_D\le N_D$.
-Adding, $m(s_P+s_D)\le N_P+N_D=N$, i.e.\ $m\le N/(s_P+s_D)$.
-
-(ii) At $N_P=Ns_P/(s_P+s_D)$ and $N_D=Ns_D/(s_P+s_D)$ both arguments of
-the minimum equal $N/(s_P+s_D)$, so the bound in (i) is attained and no
-split does better.
-
-(iii) A number is below a minimum of four terms exactly when it is below
-each of them. With $g_P=g_D=1$ and $I=0$ the compute term is
-$N/(s_P+s_D)=\mu_A$, and the strict inequality cannot hold, which is (i)
-again.
-\end{proof}
-
-
-% ===========================================================================
-\section{Prefill/Decode Disaggregation}\label{app:pd}
-% ===========================================================================
-
-This appendix collects our results on prefill/decode (PD)
-disaggregation. They use the model of \S\ref{sec:model} and are proved
-in Appendix~\ref{app:proofs}. A fuller treatment, including batching
-inside each pool, is left to follow-up work.
-
-\subsection{Static PD splits}\label{sec:pd}
-
-\paragraph{The claim.} ThunderAgent \citep[App.~A.2, Fig.~7]{thunderagent}
-reports that static PD splits of 1:3, 2:2 and 3:1 reach 87.1, 160.1 and
-183.2 step/min, against 214.9 for aggregated serving. It attributes the
-gap to a smaller effective HBM pool for prefill (``PD disaggregation
-exacerbates thrashing'').
-
-\paragraph{The model.} We treat each pool as a capacity and ask when a
-split beats aggregation.
-
-\begin{proposition}[PD disaggregation: no-gain theorem and exact win condition]\label{prop:pd}
-Let $N$ identical devices serve requests with prefill work $s_P>0$ and
-decode work $s_D>0$ (device-seconds). Ideal aggregation has capacity
-$\mu_A=N/(s_P+s_D)$; a static split $N_P+N_D=N$ has capacity
-$\mu_{PD}=\min(N_P/s_P,\,N_D/s_D)$.
-\begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
-\item $\mu_{PD}\le\mu_A$ for every split.
-\item Equality holds at the rate-matched split $N_P=Ns_P/(s_P+s_D)$,
-      which is therefore optimal.
-\item Let aggregation pay an interference overhead~$I$, let dedicated pools
-      realise specialisation gains $g_P,g_D$, and let PD be further capped
-      by KV-transfer capacity $B_{\mathrm{net}}/\E[K]$ and memory caps
-      $\mu_{P,\mathrm{mem}},\mu_{D,\mathrm{mem}}$. Then
-      \begin{multline*}
-        \mu_{PD} > \mu_A \iff
-        \frac{N}{s_P+s_D+I} < \\
-        \min\Bigl[\tfrac{N}{s_P/g_P+s_D/g_D},\;
-                  \tfrac{B_{\mathrm{net}}}{\E[K]},\;
-                  \mu_{P,\mathrm{mem}},\;\mu_{D,\mathrm{mem}}\Bigr],
-      \end{multline*}
-      i.e.\ PD wins iff \emph{each} of its four bottlenecks exceeds the
-      aggregated capacity. With $g_P=g_D=1$ and $I=0$ the compute term
-      equals $\mu_A$, recovering~(i).
-\end{enumerate}
-\provedby{\leanref{pd\_le\_agg}, \leanref{pd\_eq\_agg\_at\_rate\_match}, \leanref{rate\_match\_optimal}, \leanref{pd\_beats\_agg\_iff}, \leanref{pdCompute\_eq\_agg\_of\_no\_gain}}
-\end{proposition}
-
-
-\paragraph{Reading the claim.} Proposition~\ref{prop:pd}(i)--(ii) says the
-reported result is what the model predicts under the paper's conditions:
-same hardware, no phase specialisation ($g_P=g_D=1$), and a memory-bound
-prefill pool (a smaller HBM pool thrashes sooner, i.e.\
-$\mu_{P,\mathrm{mem}}$ binds). Nothing specific to agentic workloads is
-needed; the bound is a rate-matching identity. Proposition~\ref{prop:pd}(iii)
-gives the condition under which the conclusion flips. PD is deployed in
-practice \citep{vllm-agentx,mooncake-vllm} with long-context prefill
-parallelism ($g_P>1$), wide expert-parallel decode ($g_D>1$), measurable
-prefill/decode interference ($I>0$), a fast interconnect
-($B_{\mathrm{net}}/\E[K]$ not binding), and a shared KV tier that removes
-$\mu_{P,\mathrm{mem}}$ as a constraint. That is the regime the condition
-identifies. The supported statement is regime-dependent: static PD
-without specialisation and with a memory-bound prefill pool cannot beat
-aggregation. The generalisation that PD does not help agentic serving is
-not supported.
-
-A second issue is the request shape. For turn $t\ge2$ a request is
-``$10^5$ cached tokens $+\,500$ new tokens''. Routing it through the
-prefill pool and shipping the whole KV to a decode node is often the
-wrong path. Static PD is therefore the wrong abstraction for multi-turn
-programs. The routing comparison of \S\ref{sec:routing} makes the
-per-turn alternative precise.
-
-\subsection{Per-turn routing between pools}\label{sec:pd-append}
-
-Applied to PD pools, the comparison~\eqref{eq:lookahead} decides where a follow-up turn
-is prefilled. Let $W_P,S_P$ be the prefill pool's wait and append service,
-$T_{\mathrm{KV}}$ the transfer of the program's KV to the decode node,
-$W_D$ the decode wait, $S_D$ the append service on the decode node, and
-$I$ the interference it inflicts on co-located decodes.
-
-The decode-local path costs $W_D+S_D+I$ and the prefill-pool path costs
-$W_P+S_P+T_{\mathrm{KV}}+W_D$. The decode wait cancels, so decode-local
-processing of turn $t\ge2$ is cheaper iff
-\begin{equation}\label{eq:append}
-  S_D+I < W_P+S_P+T_{\mathrm{KV}} .
-\end{equation}
-\provedby{\leanref{append\_prefill\_rule}}
-
-
-Rule~\eqref{eq:append} is the append-prefill rule of PPD
-\citep{ppd} written as a cost comparison. Together with
-Proposition~\ref{prop:pd} it says that the useful form of PD for agentic
-serving is \emph{dynamic}: first-turn prefills go to the prefill pool, and
-follow-up turns are routed per turn by comparing the two sides of
-\eqref{eq:append}. PPD-style routing is, like session
-affinity and KV-aware routing, a one-step approximation
-of~\eqref{eq:mdp}.
-
-\subsection{Planned experiment E5: PD win condition}\label{sec:exp-pd}
-
-\emph{Hypothesis} (Prop.~\ref{prop:pd}): the inequality in
-Prop.~\ref{prop:pd}(iii), evaluated from independently measured
-parameters, predicts which of aggregated and rate-matched PD serving has
-higher throughput. We measure $s_P, s_D, I, g_P, g_D$,
-$B_{\mathrm{net}}/\E[K]$ and the memory caps, evaluate the condition, and
-run both deployments. We repeat with a shared KV tier and with per-turn
-append-prefill routing (dynamic PD).
-
-\begin{table}[t]
-\caption{E5: predicted vs.\ observed winner. $\mu$ in requests/s.}
-\label{tab:pd}
-\centering\small
-\begin{tabular}{@{}lccc@{}}
-\toprule
-Configuration & $\mu_A$ & $\min[\cdot]$ & Pred.\ / Obs. \\
-\midrule
-Static PD, local KV      & \tbd & \tbd & \tbd{} / \tbd \\
-Static PD, shared tier   & \tbd & \tbd & \tbd{} / \tbd \\
-Dynamic PD (append)      & \tbd & \tbd & \tbd{} / \tbd \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-E5 uses the testbed and protocol of \S\ref{sec:exp}. Its decision
-agreement will be scored as in \S\ref{sec:exp-scorecard}.
-
-\subsection{Uncalibrated simulation}\label{sec:sim-pd}
-
-The simulator of \S\ref{sec:sim} also models aggregated and
-disaggregated pools. As in \S\ref{sec:sim}, every number below is a
-property of the simulated model under a synthetic workload, not a
-measurement.
-
-\input{sim/tab-pd-inmodel}
-
-\paragraph{In-model.} Table~\ref{tab:sim-pd-inmodel} shows that the
-saturated throughput of the aggregated pool and of a disaggregated
-tandem matches the scalar capacities of Proposition~\ref{prop:pd}. This
-confirms the simulator, not the proposition.
-
-\input{sim/tab-pd}
-
-\paragraph{Win condition and latency.} On a grid of interference $I$,
-prefill gain $g_P$ and link capacity $B_{\mathrm{net}}/\E[K]$ ($N=16$),
-we compare the simulated winner (aggregation, or the best integer split)
-with the condition of Proposition~\ref{prop:pd}(iii). Cells within
-3\,\% of the boundary are skipped. The two agree in \simPdAgree{} of
-\simPdCells{} decisive cells. The scalar model says nothing about
-latency. Table~\ref{tab:sim-pd} shows that at the rate-matched split,
-where the capacities are equal, disaggregated serving has a higher mean
-latency, and the gap grows with load. A single pool of $N$ servers
-queues less than a tandem of two smaller pools, a classical pooling
-effect. A comparison of PD and aggregation at equal capacity therefore
-has to report latency as well as throughput.
-
-\paragraph{Limitations.} The PD model treats capacity as a scalar
-bottleneck and ignores batching dynamics inside each pool. The simulator
-does not model memory caps on PD pools.
 
 \end{document}

@@ -1,4 +1,4 @@
-//! Agent programs sharing one replica with finite KV memory (paper §2.2–§3).
+//! Agent programs sharing one replica with finite KV memory (paper §2.2–2.3, §3).
 //!
 //! This is the chain of §2 made executable:
 //!
@@ -25,7 +25,7 @@ use std::collections::VecDeque;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
-use crate::analytic::pk_wait;
+use crate::analytic::{miss_price_given_wait, pk_wait};
 use crate::dist::Dist;
 use crate::engine::{Model, Scheduler, run};
 use crate::stats::{Estimate, TimeAverage, Welford, batch_means};
@@ -35,13 +35,20 @@ use crate::stats::{Estimate, TimeAverage, Welford, batch_means};
 /// Prefilling `new` tokens on top of `cached` resident ones costs
 /// `overhead + linear·new + quadratic·new·(cached + new/2)`: the last term is
 /// attention over the prefix, so a full re-prefill of a context `c` is
-/// quadratic in `c` (ThunderAgent Lemma 4.1).
+/// quadratic in `c` (ThunderAgent Lemma 4.1). Decoding `out` tokens over a
+/// context of `K` tokens costs `out·(decode_per_token + decode_kv·K)`: a
+/// decode step reads the weights (`decode_per_token`, amortised over the
+/// batch by the server model) and the turn's own KV (`decode_kv` per
+/// context token, not amortised). With `decode_kv = 0` this is the
+/// original context-free decode term.
 #[derive(Clone, Debug)]
 pub struct CostModel {
     pub overhead: f64,
     pub prefill_linear: f64,
     pub prefill_quadratic: f64,
     pub decode_per_token: f64,
+    /// Decode time per output token per context token (KV read).
+    pub decode_kv: f64,
 }
 
 impl CostModel {
@@ -49,10 +56,17 @@ impl CostModel {
         self.prefill_linear * new + self.prefill_quadratic * new * (cached + 0.5 * new)
     }
 
+    /// Decode work of `out` output tokens over a context of `context`
+    /// tokens (seconds at an otherwise idle device):
+    /// `out·(decode_per_token + decode_kv·context)`.
+    pub fn decode(&self, out: f64, context: f64) -> f64 {
+        out * (self.decode_per_token + self.decode_kv * context)
+    }
+
     /// Service time of a turn that appends `new` tokens to a resident
     /// prefix of `cached` tokens and decodes `out` tokens.
     pub fn turn(&self, new: f64, cached: f64, out: f64) -> f64 {
-        self.overhead + self.prefill(new, cached) + self.decode_per_token * out
+        self.overhead + self.prefill(new, cached) + self.decode(out, cached + new)
     }
 
     /// Extra service a miss pays over a hit for a context of `c` tokens:
@@ -104,8 +118,40 @@ pub enum EvictionPolicy {
     Random,
     /// Increasing expected recompute cost per token freed,
     /// `p_i ΔS_i / c_i`: the greedy rule for the knapsack relaxation
-    /// (paper Thm. dantzig, Eq. utility without the common `1/(1-ρ)`).
+    /// (Dantzig 1957), with Eq. utility's cost less its common `1/(1-ρ)`.
     Density,
+    /// Increasing congestion price per token freed, `q_i Φ_i / c_i`, with
+    /// `Φ_i` the price of a miss (paper Prop. price, `missPrice`):
+    ///
+    /// `Φ_i = ΔS_i + λ̂(s_m² - s_h²)/(2(1-ρ̂)) + λ̂ Ŵ ΔS_i/(1-ρ̂)`,
+    ///
+    /// `q_i` the resume probability (1 for a queued program, as in
+    /// `Density`), `s_h` the hit service of the program's next turn at the
+    /// class-mean new and output tokens, `s_m = s_h + ΔS_i` and
+    /// `ΔS_i = miss_penalty(c_i)`. `λ̂, ρ̂, Ŵ` are online estimates, see
+    /// [`PriceEstimator`]. Unlike `Density`, the order depends on load:
+    /// the own-length term `λ(s_m² - s_h²)/(2(1-ρ))` grows like `ΔS²`, so
+    /// near saturation long recomputes are priced above their share of work.
+    /// Plain density order, not the guarded greedy of Prop. guarded; see
+    /// the doc comment of `evict` for why.
+    Priced,
+    /// Increasing price per byte-second, `q_i Φ_i / (c_i τ_i)`, with `τ_i`
+    /// the expected remaining suspension of the program: the mean tool time
+    /// of its class while it is in a tool call, a common constant while it
+    /// waits for admission (so within each eviction phase only the tool-call
+    /// order changes). The threshold rule of paper Prop. memory (i)
+    /// (`threshold_rule_optimal`): the shadow price `θ` of memory is per
+    /// byte-second, so a state that would sit idle longer is cheaper to
+    /// drop per unit of the resource it frees.
+    PricedMemory,
+    /// Block-level [`PricedMemory`](Self::PricedMemory): evict blocks of
+    /// `block_tokens` from the tail of a context, cheapest per byte-second
+    /// first, `q_i Φ(ΔP) / (m τ_i)` with `ΔP = a·m + b·m·(K - m/2)` the cost
+    /// of re-prefilling the `m` evicted tokens over the kept prefix (paper
+    /// Prop. memory (ii), `density_prefix_plus_one`). A partial miss then
+    /// re-prefills only the evicted suffix. Implemented in
+    /// [`super::batch`] only.
+    PricedMemoryBlocks,
 }
 
 /// What happens to an evicted program's KV.
@@ -123,6 +169,76 @@ pub enum OffloadPolicy {
     /// With [`FetchMode::Blocking`] both options hold the replica, so the
     /// fetch test is `transfer < ΔS`.
     Selective,
+    /// As `Selective`, with the price of a miss `Φ` (see
+    /// [`EvictionPolicy::Priced`]) in place of `ΔS·(1+Q)`. Async: write iff
+    /// `transfer < p_i·Φ`, fetch iff `transfer < Φ` (the transfer delays
+    /// only this turn). Blocking: a fetch stalls the replica for the
+    /// transfer, which is priced like extra service; `Φ` is increasing in
+    /// the extra service, so both tests reduce to `transfer < ΔS`.
+    Priced,
+}
+
+/// Online estimates of the quantities in the price of a miss, from what a
+/// replica observes. Updated at every service start (warm-up included) as
+/// exponentially weighted averages over turns with weight `ALPHA`:
+/// the gap between service starts (so `λ̂` = 1 / mean gap, the turn rate),
+/// the service time `ŝ`, and the queue wait `Ŵ` of the turn starting.
+/// `ρ̂ = min(λ̂ ŝ, RHO_CAP)`. `Ŵ` is the measured wait, not PK from the
+/// service moments, because turn arrivals of a closed population are not
+/// Poisson. Before the first gap is seen `λ̂ = 0`, so `Φ = ΔS` and
+/// `Priced` coincides with `Density`.
+#[derive(Clone, Debug, Default)]
+pub struct PriceEstimator {
+    last_start: Option<f64>,
+    gap: Option<f64>,
+    service: f64,
+    wait: f64,
+    seen: u64,
+}
+
+impl PriceEstimator {
+    pub const ALPHA: f64 = 0.01;
+    pub const RHO_CAP: f64 = 0.99;
+
+    fn ewma(old: f64, x: f64, first: bool) -> f64 {
+        if first {
+            x
+        } else {
+            (1.0 - Self::ALPHA) * old + Self::ALPHA * x
+        }
+    }
+
+    /// Record a turn that starts service at `now` after waiting `wait`.
+    pub fn observe(&mut self, now: f64, wait: f64, service: f64) {
+        let first = self.seen == 0;
+        self.service = Self::ewma(self.service, service, first);
+        self.wait = Self::ewma(self.wait, wait, first);
+        if let Some(t) = self.last_start {
+            self.gap = Some(match self.gap {
+                None => now - t,
+                Some(g) => Self::ewma(g, now - t, false),
+            });
+        }
+        self.last_start = Some(now);
+        self.seen += 1;
+    }
+
+    /// `(λ̂, ρ̂, Ŵ)`.
+    pub fn estimates(&self) -> (f64, f64, f64) {
+        match self.gap {
+            Some(g) if g > 0.0 => {
+                let lam = 1.0 / g;
+                (lam, (lam * self.service).min(Self::RHO_CAP), self.wait)
+            }
+            _ => (0.0, 0.0, self.wait),
+        }
+    }
+
+    /// `Φ` for a turn of hit service `s_h` that a miss lengthens by `ds`.
+    pub fn price(&self, s_h: f64, ds: f64) -> f64 {
+        let (lam, rho, w) = self.estimates();
+        miss_price_given_wait(lam, w, rho, s_h, s_h + ds)
+    }
 }
 
 /// How a fetch from the offload tier interacts with the replica.
@@ -181,6 +297,7 @@ impl AgenticConfig {
                 prefill_linear: 2.0e-5,
                 prefill_quadratic: 2.0e-9,
                 decode_per_token: 2.0e-4,
+                decode_kv: 0.0,
             },
             kv_capacity,
             max_context: 0.5 * kv_capacity,
@@ -232,7 +349,7 @@ pub struct AgenticReport {
 
 impl AgenticReport {
     /// PK prediction from the *measured* turn rate and service moments,
-    /// i.e. what the model of §3 would say given this hit rate.
+    /// i.e. what the model of §2.2 would say given this hit rate.
     /// `NaN` when the measured load is not below one (PK does not apply).
     pub fn pk_wait_prediction(&self) -> f64 {
         let lam = self.throughput;
@@ -301,6 +418,7 @@ struct Agentic {
     used_kv: f64,
     tier_free_at: f64,
     warm: bool,
+    price: PriceEstimator,
     // statistics
     turns: u64,
     follow_ups: u64,
@@ -338,6 +456,7 @@ impl Agentic {
             used_kv: 0.0,
             tier_free_at: 0.0,
             warm: false,
+            price: PriceEstimator::default(),
             turns: 0,
             follow_ups: 0,
             hits: 0,
@@ -429,6 +548,28 @@ impl Agentic {
         self.cfg.cost.miss_penalty(c) * (1.0 + self.queue.len() as f64)
     }
 
+    /// Price of a miss (Prop. price) for program `id` if its next turn
+    /// were a miss of a `c`-token prefix, from the online estimates.
+    fn miss_price(&self, id: usize, c: f64) -> f64 {
+        let cls = &self.cfg.classes[self.programs[id].class];
+        let s_h = self
+            .cfg
+            .cost
+            .turn(cls.new_tokens.mean(), c, cls.output_tokens.mean());
+        self.price.price(s_h, self.cfg.cost.miss_penalty(c))
+    }
+
+    /// Resume probability of a program as seen at eviction time: a queued
+    /// program resumes with certainty.
+    fn resume_prob(&self, id: usize) -> f64 {
+        let p = &self.programs[id];
+        if p.phase == Phase::Tool {
+            self.cfg.classes[p.class].resume_prob
+        } else {
+            1.0
+        }
+    }
+
     fn evict_key(&mut self, id: usize) -> f64 {
         let p = &self.programs[id];
         match self.cfg.eviction {
@@ -437,19 +578,34 @@ impl Agentic {
             EvictionPolicy::Lru => p.last_used,
             EvictionPolicy::Random => self.rng.random(),
             EvictionPolicy::Density => {
-                // A queued program resumes with certainty.
-                let q = if p.phase == Phase::Tool {
-                    self.cfg.classes[p.class].resume_prob
+                let kv = p.kv;
+                self.resume_prob(id) * self.cfg.cost.miss_penalty(kv) / kv
+            }
+            EvictionPolicy::Priced => {
+                let kv = p.kv;
+                self.resume_prob(id) * self.miss_price(id, kv) / kv
+            }
+            EvictionPolicy::PricedMemory => {
+                let kv = p.kv;
+                let tau = if p.phase == Phase::Tool {
+                    self.cfg.classes[p.class].tool_time.mean()
                 } else {
                     1.0
                 };
-                q * self.cfg.cost.miss_penalty(p.kv) / p.kv
+                self.resume_prob(id) * self.miss_price(id, kv) / (kv * tau)
+            }
+            EvictionPolicy::PricedMemoryBlocks => {
+                unimplemented!("block-level eviction is implemented in models::batch only")
             }
         }
     }
 
     /// Free at least `need` tokens, never touching `exclude`. Programs in a
-    /// tool call are evicted before programs waiting in the queue.
+    /// tool call are evicted before programs waiting in the queue. Every
+    /// policy takes its order greedily until `need` is met; the guard of
+    /// Prop. guarded is not applied online (it protects against a heavy
+    /// item with good density, which with quadratic `ΔS` and bounded `q_i`
+    /// is not the regime here).
     fn evict(&mut self, need: f64, exclude: usize, now: f64) {
         let mut freed = 0.0;
         for phase in [Phase::Tool, Phase::Queued] {
@@ -488,6 +644,15 @@ impl Agentic {
                     let q = self.cfg.classes[p.class].resume_prob;
                     let transfer = self.tier_backlog(now) + tokens / self.cfg.tier_bandwidth;
                     transfer < q * self.recompute_cost(tokens)
+                }
+                OffloadPolicy::Priced => {
+                    let q = self.cfg.classes[p.class].resume_prob;
+                    let transfer = self.tier_backlog(now) + tokens / self.cfg.tier_bandwidth;
+                    if self.cfg.fetch == FetchMode::Blocking {
+                        transfer < self.cfg.cost.miss_penalty(tokens)
+                    } else {
+                        transfer < q * self.miss_price(id, tokens)
+                    }
                 }
             };
         let p = &mut self.programs[id];
@@ -537,7 +702,7 @@ impl Agentic {
                     OffloadPolicy::Never => false,
                     OffloadPolicy::Always => true,
                     // Both options hold the replica, so compare directly.
-                    OffloadPolicy::Selective => {
+                    OffloadPolicy::Selective | OffloadPolicy::Priced => {
                         self.tier_backlog(now) + context / self.cfg.tier_bandwidth
                             < self.cfg.cost.miss_penalty(context)
                     }
@@ -577,6 +742,8 @@ impl Agentic {
             }
             self.used_kv += extra;
             self.resident.add(now, extra);
+            let wait = now - self.programs[id].enqueued_at;
+            self.price.observe(now, wait, service);
             let p = &mut self.programs[id];
             p.kv = target;
             p.phase = Phase::InService;
@@ -652,6 +819,10 @@ impl Model for Agentic {
                         OffloadPolicy::Selective => {
                             self.tier_backlog(now) + c / self.cfg.tier_bandwidth
                                 < self.recompute_cost(c)
+                        }
+                        OffloadPolicy::Priced => {
+                            self.tier_backlog(now) + c / self.cfg.tier_bandwidth
+                                < self.miss_price(id, c)
                         }
                     };
                     if fetch {
@@ -791,6 +962,35 @@ mod tests {
         let r = simulate(&cfg);
         assert!(r.truncated > 0, "scenario must exercise truncation");
         assert!(r.utilization <= 1.0 + 1e-9);
+    }
+
+    #[test]
+    fn price_estimator_falls_back_to_delta_s_and_tracks_rate() {
+        let mut e = PriceEstimator::default();
+        assert_eq!(e.price(0.1, 2.0), 2.0);
+        // One turn of 0.5 s every second, no waiting: λ=1, ρ=0.5, W=0.
+        for k in 0..2000 {
+            e.observe(k as f64, 0.0, 0.5);
+        }
+        let (lam, rho, w) = e.estimates();
+        assert!((lam - 1.0).abs() < 1e-9 && (rho - 0.5).abs() < 1e-9 && w == 0.0);
+        let want = crate::analytic::miss_price(1.0, 0.0, 0.5, 0.1, 2.1);
+        assert!((e.price(0.1, 2.0) - want).abs() < 1e-9);
+        // Saturation is capped.
+        for k in 0..2000 {
+            e.observe(2000.0 + 0.1 * k as f64, 5.0, 0.5);
+        }
+        assert_eq!(e.estimates().1, PriceEstimator::RHO_CAP);
+    }
+
+    #[test]
+    fn priced_policies_run_under_pressure() {
+        let mut cfg = AgenticConfig::example(32, 3.0e5);
+        cfg.eviction = EvictionPolicy::Priced;
+        cfg.offload = OffloadPolicy::Priced;
+        cfg.tier_bandwidth = 2.0e4;
+        let r = simulate(&cfg);
+        assert!(r.evictions > 0 && r.offload_writes > 0 && r.turns > 100);
     }
 
     #[test]

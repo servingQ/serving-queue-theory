@@ -2,6 +2,7 @@
 //! closed agentic network of §2.3.
 
 pub mod agentic;
+pub mod batch;
 pub mod eviction;
 pub mod pd;
 pub mod queue;

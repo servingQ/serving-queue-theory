@@ -2,11 +2,11 @@
 
 Design and status of the discrete-event simulator. Read
 `docs/research-plan.md` first: the simulator is the first validation
-phase, and the empirical programme (E1–E7) follows it.
+phase, and the empirical programme (E1–E6) follows it.
 
 Status (2026-09-23): the **uncalibrated** simulator exists in
 `libqueuingsim/` (Rust). It covers validation-ladder steps 1–4 and reports
-in paper §6.9 (`sec:sim`). The **calibrated** simulator of paper §6
+in paper §4.1 (`sec:sim`). The **calibrated** simulator of paper §4.2
 (continuous batching, block-level KV, trace replay, E1 service fits) is
 the roadmap in §6 below and is not built.
 
@@ -24,7 +24,7 @@ two, in two roles:
    implies survives. The results shape which hypotheses E2–E6 test and
    what they must record (§5 of the research plan).
 2. **After E1.** With measured service curves, be the second model scored
-   in E7 against the testbed.
+   in E6 against the testbed.
 
 | Experiment | Simulator role | Reason |
 |------------|----------------|--------|
@@ -102,7 +102,7 @@ The simulator is trusted for a use only after the steps below it pass.
 | 2. M/G/1: PK for D, E4, H2, two-point service; ratio `(1+CV²)/2` (`eq:pk`, `eq:cv2`) | `pk_formula`, `variance_orders_delay`, `cache_reuse_lowers_delay`, `cv2_ratio` | pass |
 | 3. Closed network: `R = N/X − Z`; throughput non-decreasing in N with fixed demand, below `min(N/(D+Z), 1/D)` | `interactive_response_time_law`, `closed_throughput_nondecreasing_fixed_demand` | pass |
 | 4. PD capacity: saturated tandem matches `min(N_P g_P/s_P, N_D g_D/s_D, B/E[K])` (`prop:pd`) | `pd_capacity_matches`, `pd_no_gain` | pass |
-| 5. Calibrated vs testbed: with E1 fits, TTFT and throughput at the E7 held-out points; report MAPE (`tab:scorecard`) | none yet | needs E1 and M5 |
+| 5. Calibrated vs testbed: with E1 fits, TTFT and throughput at the E6 held-out points; report MAPE (`tab:scorecard`) | none yet | needs E1 and M5 |
 
 Also covered, outside the ladder: Little's law, Lindley vs DES (bit-level),
 DP optimum vs brute force, Rust `shortest_first` vs the Lean definition.
@@ -166,5 +166,5 @@ with load-dependent servers) for E3 and E6 before building batching.
 | M4 | PD pools and routers; ladder step 4 | M3 | done (static PD); dynamic PD open |
 | M5 | continuous batching, block KV, trace replay, E1 fits; ladder step 5; E7 | E1 data | not started |
 
-M0–M4 run on synthetic workloads and feed paper §6.9. M5 cannot start
+M0–M4 run on synthetic workloads and feed paper §4.1. M5 cannot start
 before E1.

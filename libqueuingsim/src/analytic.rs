@@ -49,13 +49,34 @@ pub fn mixture_cv2(p: f64, s_hit: f64, s_miss: f64) -> f64 {
     second_moment_service(p, s_hit, s_miss) / mean_service(p, s_hit, s_miss).powi(2) - 1.0
 }
 
-/// Kingman's GI/G/1 upper bound on the mean wait (paper Thm. kingman).
+/// `numInSystem lam m2 rho = lam·pkWait + rho`: M/G/1 mean number of turns
+/// in the system (MissPrice.lean).
+pub fn num_in_system(lam: f64, m2: f64, rho: f64) -> f64 {
+    lam * pk_wait(lam, m2, rho) + rho
+}
+
+/// `missPrice lam m2 rho sh sm`: the price of one miss (paper Prop. price,
+/// MissPrice.lean), the first-order increase of total delay summed over
+/// all turns when a turn of service `sh` is served as a miss of service
+/// `sm`: `ΔS + λ(sm²-sh²)/(2(1-ρ)) + λ·W·ΔS/(1-ρ)`, `W` the PK wait.
+pub fn miss_price(lam: f64, m2: f64, rho: f64, s_h: f64, s_m: f64) -> f64 {
+    miss_price_given_wait(lam, pk_wait(lam, m2, rho), rho, s_h, s_m)
+}
+
+/// [`miss_price`] with the mean wait `w` supplied directly (e.g. measured)
+/// instead of computed from `m2` by PK.
+pub fn miss_price_given_wait(lam: f64, w: f64, rho: f64, s_h: f64, s_m: f64) -> f64 {
+    let ds = s_m - s_h;
+    ds + lam * (s_m * s_m - s_h * s_h) / (2.0 * (1.0 - rho)) + lam * w * ds / (1.0 - rho)
+}
+
+/// Kingman's GI/G/1 upper bound on the mean wait (paper §2, cited).
 /// Not formalised in Lean; cited as a classical result.
 pub fn kingman_bound(lam: f64, var_a: f64, var_s: f64, rho: f64) -> f64 {
     lam * (var_a + var_s) / (2.0 * (1.0 - rho))
 }
 
-/// Interactive response-time law `R = N/X - Z` (paper Thm. irtl).
+/// Interactive response-time law `R = N/X - Z` (paper §2, cited).
 pub fn irtl_response(n: f64, throughput: f64, think: f64) -> f64 {
     n / throughput - think
 }
@@ -117,4 +138,41 @@ pub fn via_prefill_pool(w_p: f64, s_p: f64, t_kv: f64, w_d: f64) -> f64 {
 /// `decodeLocal WD SD I` (Routing.lean).
 pub fn decode_local(w_d: f64, s_d: f64, i: f64) -> f64 {
     w_d + s_d + i
+}
+
+/// `psNum C ρ = ρ/(C-ρ)`: mean number at an M/G/1-PS station of constant
+/// capacity `C` (BatchServer.lean).
+pub fn ps_num(c: f64, rho: f64) -> f64 {
+    rho / (c - rho)
+}
+
+/// `psPrice C ρ dS = C·dS/(C-ρ)²`: the price of one miss at a PS server of
+/// capacity `C` (paper Prop. decode, BatchServer.lean).
+pub fn ps_price(c: f64, rho: f64, ds: f64) -> f64 {
+    c * ds / (c - rho).powi(2)
+}
+
+/// `stationaryMean a N ρ`: mean of `π(n) ∝ a(n)ρⁿ` on `{0, …, N}`, with
+/// `a.len() = N + 1` (BatchServer.lean). With `a(n) = 1/(φ(1)⋯φ(n))` this is
+/// the mean number at a PS station of capacity `φ`, truncated at `N`.
+pub fn stationary_mean(a: &[f64], rho: f64) -> f64 {
+    let (mut num, mut den, mut pow) = (0.0, 0.0, 1.0);
+    for (n, &an) in a.iter().enumerate() {
+        num += n as f64 * an * pow;
+        den += an * pow;
+        pow *= rho;
+    }
+    num / den
+}
+
+/// `expFit d fuel M` with enough fuel: expected number of requests
+/// admitted, in arrival order, into `M` free tokens until the first that
+/// does not fit, footprints i.i.d. from `d = [(tokens, prob)]`, tokens > 0
+/// (Footprint.lean).
+pub fn exp_fit(d: &[(f64, f64)], m: f64) -> f64 {
+    assert!(d.iter().all(|x| x.0 > 0.0));
+    d.iter()
+        .filter(|x| x.0 <= m)
+        .map(|x| x.1 * (1.0 + exp_fit(d, m - x.0)))
+        .sum()
 }

@@ -10,6 +10,48 @@ Last updated: 2026-09-23.
 
 ## 1. Thesis
 
+**Central claim (v0.6).** Every KV decision in agentic serving asks what
+it costs to lose a suspended program's state. That cost is the *price of
+a miss* `Φ_i`: the total TTFT one miss adds across all turns at the
+prefill queue.
+
+Model (v0.6, after two user reviews and the cost-model check): sessions
+arrive Poisson(Λ); inside a session the turn → tool → turn loop is
+closed; tools are a delay station (turn classes allow any turn-count
+law). The replica has **two resources and a memory pool**:
+- prefill compute: `P(n,K) = a n + b n (K + n/2)`; a miss re-prefills
+  the evicted part. Prefill stage = FIFO queue served from the budget the
+  decode batch leaves (chunked prefill protects decode, not prefill
+  order; Sarathi-Serve/vLLM decode-first). PK as an approximation.
+- decode bandwidth: `D = o (β K + ω/n)`; KV reads do not amortise over
+  the batch, weights do. Decode stage = PS with capacity φ(n),
+  insensitive. Hit/miss does not change D.
+- memory: `β K` bytes while resident; shared by suspended states and the
+  batch; admission cap; shadow price θ per byte-second.
+
+Cost-model check (roofline, 70B-class, not paper numbers): hit prefill
+of a few hundred tokens onto 142K ≈ 0.5 s; miss prefill of 142K ≈ tens
+of s (TP1); decode of 444 tokens ≈ several s (KV reads ≈ 14 ms/step at
+45 GB per session). So miss/hit is ~100× for prefill/TTFT but only a few
+× for the whole turn. The paper's CV² example is therefore about prefill.
+
+- `prop:price` (prefill queue, FIFO): three-term price with the
+  head-of-line term (∝ miss²); ranking changes with load. Central.
+- `prop:decode` (PS): L_D monotone in ρ_D and insensitive; a miss adds
+  no decode demand. Used for admission (load factor) and to separate the
+  stages.
+- `prop:memory`: θ-threshold rule is optimal for the relaxed problem;
+  block-level density order is optimal up to one block.
+- `prop:footprint`: KV footprint variance can shrink or grow the batch
+  that fits in memory (no fixed sign), so φ's saturation must be
+  measured.
+- Withdrawn v0.5 claim: "chunked prefill makes the eviction key
+  load-independent". Chunking protects decode; the prefill queue keeps
+  the square term. The
+scheduler (paper §3) ranks states by `v_i = p_i Φ_i / c_i`; SF,
+always-offload and strict affinity are the special cases where the price
+is replaced by `c_i²`, zero and infinity.
+
 A queueing model of agentic LLM serving is useful if it is **decision
 faithful**: it ranks policies (eviction, offloading, PD split, routing) the
 same way the real system does. Exact latency reproduction is secondary.
@@ -17,33 +59,36 @@ same way the real system does. Exact latency reproduction is secondary.
 The model is one causal chain (paper §2):
 
 ```
-eviction policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → control cost (Eq. mdp) → policy
+KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L → policy
 ```
 
-Every analytical result is a statement about one link of this chain, or
-about a one-step approximation of the control problem.
+## 2. Paper structure (v0.6: sessions + two-resource replica + memory price)
 
-## 2. Paper structure (v0.3: PD moved to App. B for a follow-up paper)
-
-| § | Content | Our results | Cited theorems |
+| § | Content | Our results | Cited results (prose) |
 |---|---------|-------------|----------------|
-| 2 | Model: service centre, KV mixture, closed network, control problem | none | Little, PK, Kingman bound, interactive response-time law |
-| 3 | Congestion and the hit/miss mixture | `prop:pk`, `prop:cache`, `eq:cv2` (prose numbers) | SRPT (prose) |
-| 4.1 | Offloading (+ ThunderAgent App. A.2/A.4) | option value (prose, inline proof) | none |
-| 4.2 | Eviction (+ ThunderAgent Def. 4.1, App. F.3, G.3) | `prop:evict` (not optimal; 2-approx, tight; unbounded with resume probs) | Dantzig LP greedy |
-| 5 | Program-aware routing | `prop:routing`, `eq:lookahead` (prose) | none |
-| 6 | Experiments E1 to E7 except E5, placeholder tables (`\tbd`) | none | none |
-| 6.9 | Uncalibrated simulation (`paper/simulation.tex`, tables generated into `paper/sim/`) | none (checks of the props above) | none |
-| App. A | Human-readable proofs (incl. App. B props) | | |
-| App. B | PD disaggregation (+ ThunderAgent Fig. 7, PPD): statement, append-prefill rule, planned E5, PD simulation paragraphs | `prop:pd`, `eq:append` (prose) | none |
+| 1 | Intro: thesis, three contributions | 10× example (inline) | none |
+| 2.1 | Sessions, turns and tools (`sec:sessions` = `sec:closed`): Poisson sessions, closed loop inside, memory pressure | none | BCMP, closed-network monotonicity, Campbell (M/G/∞) |
+| 2.2 | A replica: two resources and a memory pool (`sec:batch` = `sec:queue`): `eq:prefill`, `eq:decode`; prefill FIFO, decode PS | `prop:footprint` | Sarathi-Serve (chunked prefill), BCMP/Kelly insensitivity, PK (`eq:pk`), Kingman |
+| 2.3 | Prefill work under KV reuse (`sec:congestion`) | `prop:pk`, `prop:cache`, `eq:cv2` (prefill times) | SRPT |
+| 2.4 | The KV-state problem (`eq:mdp`, `eq:numsys` = L_P + L_D, shadow price θ) | none | Little |
+| 2.5 | **The price of a miss** (`eq:price`, `eq:utility` = `w_i, v_i, u_i`) | `prop:price` (prefill queue: bracket; term ratios; unbounded), `prop:decode` (PS: monotone ⇒ ranking by work; closed form; unbounded) | none |
+| 3 | Congestion-priced scheduling (`sec:sched`) | | |
+| 3.1 | Eviction (+ ThunderAgent Def. 4.1, App. F.3, G.3) | `prop:guarded` (program-level 2-approx), `prop:memory` (θ threshold; blocks: optimal up to one block), `prop:evict` (SF as the special case `w=c²`) | covering knapsack, Dantzig greedy |
+| 3.2 | Offloading (+ ThunderAgent App. A.2/A.4): keep θcτ vs transfer vs drop w | option value (prose, inline proof) | none |
+| 3.3 | Routing | `prop:routing`, `eq:lookahead` | none |
+| 3.4 | Admission (thrashing; θ as the admission unit), scheduler summary | none (design) | none |
+| 4.1 | Uncalibrated simulation (`paper/simulation.tex`, tables generated into `paper/sim/`) | none (checks of the props above) | none |
+| 4.2 | Evaluation on a real system: overview table + hypotheses E1–E6; table layouts in §4.2a below | none | none |
+| App. A | Human-readable proofs | | |
+| (removed) | PD disaggregation → `paper/pd-followup.tex`, see §4.2b | `prop:pd`, `eq:append` (Lean kept) | |
 
 Conventions that follow from the user's review of v0.1:
 - Do not call the model "layered" and do not use a "Layer 1..4" structure.
 - Propositions live in the section whose decision they inform. Do not
   collect them in one section.
 - Published claims are discussed in the section they bear on, under
-  "The claim" and "Reading the claim" paragraphs. There is no separate
-  claims section.
+  "The claim", "The claim as a special case" and "Reading the claim"
+  paragraphs. There is no separate claims or special-cases section.
 - Lean is not visible in the paper. `\provedby{\leanref{...}}` typesets
   nothing. The only mention is one sentence at the top of Appendix A.
 - Appendix proofs are ordinary mathematical proofs, not transcripts of
@@ -52,21 +97,24 @@ Conventions that follow from the user's review of v0.1:
   numbers that carry an argument (10× latency in §1, CV² > 15 vs < 0.05
   around `eq:cv2`) are prose sentences with an inline `\provedby{}`. The
   other Lean `_example` theorems remain in Lean but are not cited.
-- Established results are stated as `theorem`s with a citation; they are
-  not proved. Our own results are `proposition`s. Both use the same plain
-  amsthm format (no shading or boxes); only the name and the citation
-  tell them apart.
+- Established results are stated in prose with a citation (no `theorem`
+  boxes); they are not proved. Our own results are `proposition`s.
 
 ## 3. Status of analytical results
 
 All propositions and cited numbers compile in Lean with no `sorry` and
-only standard axioms (`make lean` reports `OK: 38 theorems audited`).
+only standard axioms (`make lean` reports `OK: 57 theorems audited`).
 
 | Result | Status | Notes |
 |--------|--------|-------|
+| `prop:price` (prefill queue, FIFO) (i) bracket, (ii) term ratios, (iii) unbounded | proved | central result. M/G/1 with PK used as an approximation (session feedback, fluctuating budget) |
+| `prop:decode` (PS) (i) monotone ⇒ ranking by work, (ii) closed-form exact change for constant capacity, (iii) unbounded | proved | (i) is proved in Lean for finite truncations; the untruncated case is the limit (App. A proof). Insensitivity itself is cited (BCMP/Kelly) |
+| `prop:memory` (i) θ-threshold optimal, (ii) blocks: density optimal up to one block | proved | both are the exchange lemma `threshold_prefix_le` read two ways |
+| `prop:footprint` (i) variance hurts, (ii) variance helps | proved | the review's two examples; `decide +kernel` on ℚ |
+| `prop:guarded` (i) plain density unbounded, (ii) guarded 2-approx | proved | (ii) is proved as a certificate lemma (`guardedGreedy_two_approx`): hypotheses encode the greedy's sorted-prefix property; the algorithm itself is not formalised |
 | `prop:pk`, `prop:cache` | proved | trivial parts dropped from the statements; M/M/1 unboundedness now lives in the `prop:routing` proof |
 | `eq:cv2` numbers | proved | the core argument that variance comes from the miss penalty |
-| option value (prose in §4.1) | proved | trivial math, so demoted from a proposition to a prose sentence; its value is in reading ThunderAgent A.2 correctly |
+| option value (prose in §3.2) | proved | trivial math, so demoted from a proposition to a prose sentence; its value is in reading ThunderAgent A.2 correctly |
 | `prop:evict` (i) | proved | refutes ThunderAgent App. F.3 |
 | `prop:evict` (ii) 2-approx + tightness | proved | added in v0.2. v0.1 wrongly said the ratio is unbounded |
 | `prop:evict` (iii) unbounded with resume probs | proved | |
@@ -75,12 +123,14 @@ only standard axioms (`make lean` reports `OK: 38 theorems audited`).
 
 Candidate results, not yet in the paper. Each needs a Lean proof, or a
 citation to an established theorem, before it becomes a proposition:
-- **Density rule guarantee.** Greedy by `p_i c_i` plus the best single item
-  is a 2-approximation for the probabilistic eviction problem. This is
-  likely provable with the same LP argument as `prop:evict`(ii). Check
-  the literature on min-knapsack first (Csirik et al. 1991).
-- **Selective offloading threshold.** A closed-form keep/offload/recompute
-  threshold in `(p_i, c_i, B_tier, ρ)` derived from Eq. (utility).
+- **Price with priorities.** Serving hits before misses (Cobham's
+  formula) changes the externality in `Φ_i`; a priced rule for queue
+  order would complete the scheduler.
+- **Transient price.** `prop:price` prices a stationary fraction of
+  misses; a bound for a single eviction event would close the gap noted
+  in the paper's Limitations.
+- **Priced offloading threshold.** A closed-form keep/offload/drop
+  threshold in `(p_i, c_i, B_tier, ρ)` derived from `eq:price`.
 - **Closed-network throughput knee.** Asymptotic bounds
   `X(N) ≤ min(N/(D+Z), 1/D_max)` applied to ThunderAgent's concurrency
   sweep. Cite Lazowska et al.; the bound itself is standard. The simulator
@@ -97,20 +147,20 @@ has to measure.
 
 1. **Simulation (uncalibrated), done.** Check every proposition in its own
    model, then drop one assumption at a time and ask whether the decision
-   survives. Synthetic workloads, fixed seeds. Reported in paper §6.9.
-2. **Empirical (E1–E7), next.** Measure on the NPU testbed and on traces.
+   survives. Synthetic workloads, fixed seeds. Reported in paper §4.1.
+2. **Empirical (E1–E6), next.** Measure on the NPU testbed and on traces.
    The hypotheses and the quantities each experiment must record are
    those that phase 1 showed to decide the outcome.
 3. **Calibrated simulation, after E1.** Plug the E1 fits into the
    simulator (M5 in `docs/simulation-design.md`) and score it with the
-   analytical model against the testbed (E7).
+   analytical model against the testbed (E6).
 
 Platform codes: T = NPU testbed, S = simulator (`libqueuingsim`,
 `docs/simulation-design.md`), O = offline on traces.
 
 ### 4.1 Phase 1: simulation (uncalibrated)
 
-Status: 22 of 22 checks pass (`make sim`; report via `make report`). What
+Status: 31 of 31 checks pass (`make sim`; report via `make report`). What
 each part established, and what it changes for phase 2:
 
 | Question | Result under the synthetic model | Consequence for phase 2 |
@@ -118,14 +168,26 @@ each part established, and what it changes for phase 2:
 | Do the closed forms hold in their own model? (M/M/1, `prop:pk`, `prop:cache`, `eq:cv2`, `prop:pd`, `prop:evict`(ii)) | yes, within CI or 2 % | the simulator is usable for the questions below |
 | Does PK survive bursty arrivals? | no: it underestimates; Kingman's bound holds | E2 records interarrival CV² next to the PK ratio |
 | Does throughput fall with N only through the hit rate? | yes: with finite KV it falls; with ample KV it follows `min(N/(D+Z),1/D)` | E3 records hit rate and resident KV per concurrency level |
-| Is always-offload harmful? (option value, §4.1) | only with blocking fetches; with async fetches the tier queue acts as admission control and always-offload is best | E3 records whether the stack fetches synchronously; the policy ranking depends on it |
+| Is always-offload harmful? (option value, §3.2) | only with blocking fetches; with async fetches the tier queue acts as admission control and always-offload is best | E3 records whether the stack fetches synchronously; the policy ranking depends on it |
+| Does the PK bracket of `prop:price`(i) hold in simulation? | yes: ΔL inside the bracket, near its upper end (δ=0.01, 0.05) | E2 forces misses on a controlled fraction and compares ΔL with the bracket |
+| Is the guard of `prop:guarded` needed, and does it help? | offline guarded ≤ 1.87×OPT everywhere and best mean in every row; plain density reaches 6.7× on random arbitrary-weight instances (unbounded only on the witness family) | E4 reports guarded next to plain density |
 | Does the offline density advantage carry over? (`prop:evict`(iii)) | offline density ≫ SF when `p_i` vary; in the closed system the two are within seed noise, LRU is worse | E4 reports end-to-end TTFT and throughput next to cost/OPT, and measures the spread of `p_i` |
+| Does PS insensitivity hold, and does the product form survive session feedback? | yes: deterministic vs hit/miss work give the same L under PS (FIFO separates them as PK says); Poisson sessions + closed loop + H2 tools match the isolated PS formula at λ=Λ/(1−p) for constant and saturating φ | E2 tests insensitivity by comparing chunked vs blocking prefill at equal load |
+| Does the PS price bracket (`prop:price`(ii)) hold? | yes; the simulated ΔL sits at the upper end, which the proposition says is exact | E2 forced-miss test uses both brackets |
+| Is "φ flattened at B" a good model of a real batch cap (LPS)? | at half load yes (≤1 %); at u=0.8–0.9 the error follows the service CV²: −10/−22 % for deterministic work, +29/+51 % for CV²=4. A capped batch is not insensitive, and hit/miss work (CV²>1) makes the model underestimate congestion near saturation | E1/E2 must report the batch-cap regime; theory needs an LPS correction or an explicit statement of this error |
+| Do the footprint examples (`prop:footprint`) hold in Monte Carlo? | yes (2 / 1.75 / 1 / 1.4844) | E1 measures batch size under the measured footprint law |
+| Two-resource replica (v0.6): is the price paid in the prefill queue and is decode insensitive? | yes: forced misses raise L_P inside the `prop:price` bracket (availability 0.96) and leave L_D unchanged to 4 decimals; in the open scenario p99 TTFT is 10–17× its mean (HoL behind document misses) while R − TTFT is a constant decode time | E2 measures TTFT and decode occupancy separately |
+| Does the byte-second key (`prop:memory`, τ-aware) beat density/SF end-to-end? | best or tied in most cells (cap 24, Λ=0.28: TTFT 2.64±0.41 vs Density 3.58±0.65; X 2.67 vs 2.48) but never separated beyond seed noise; block-level ≈ τ-key; LRU worst by ≥2× throughput | E4 needs many seeds or a paired design; the effect is second-order next to admission |
+| Does the admission cap move the thrash window? | strongly: cap 16 → hit 0.99, TTFT < 0.4 s at both loads, no thrash; cap 24 → hit degrades to 0.77 at Λ=0.28; cap 32 → 15–20/20 seeds thrash, X −40 %, TTFT 15 s. Cost of a tight cap = entry-queue wait. At Λ=0.28 offered load exceeds capacity (~2.6 turns/s) under any cap | E4 sweeps the cap; admission is a first-class policy dimension |
+| Does eviction policy matter with open sessions on a batching replica? (v0.5 single-PS replica, superseded) | only in a narrow load window (Λ≈0.23–0.3 in the scenario). Below it no evictions; above it both PS and blocking replicas thrash whatever the policy. Inside it: LRU worst; SF, Density and Priced within seed noise; Priced ≡ Density under PS (as `prop:price`(i) requires) and indistinguishable under blocking. **Thrashing (bistable hit rate) dominates**: misses pin KV in the batch, which evicts more, which causes more misses. PS with φ≡1 thrashes earlier than blocking because turns stay in the batch longer | E4 must include admission/memory control as a policy dimension, report per-seed hit-rate trajectories, and define the load window; the price of a state may be dominated by the thrash it can trigger, a transient effect outside both price propositions |
+| Do the congestion terms of `Φ` change eviction end-to-end? | not in the closed two-class scenario: Priced = Density at N=24,32, within CI at 12,16. Consistent with `prop:price`(ii): waits of tens of s make the load term dominate, so `v_i` ∝ density key; throughput scoring also ignores delay | E4 must include a regime where the mean wait is comparable to a miss (open arrivals below saturation, p99 TTFT); this is where the price can differ from density. Open populations in the current simulator thrash (metastable) and need admission control first |
+| Does priced offloading beat selective? | no: ≤ selective in every cell (blocking fetches reduce both tests to transfer < ΔS) | E3 keeps selective as a baseline |
 | Does the PD win condition pick the winner? (`prop:pd`(iii)) | 32/32 decisive grid cells agree | E5 tests the condition from measured parameters as planned |
 | Does equal capacity mean equal latency? | no: PD latency is higher at the rate-matched split (pooling) | E5 reports latency as well as throughput |
 | Does strict affinity fail at high load? (`prop:routing`) | yes once the hot replica saturates; lookahead with cheap migration stays flat | E6 measures migration cost, which sets the inversion load |
 
 Phase 1 numbers are properties of the simulated model. They appear in the
-paper only in §6.9, generated from the simulator, and never in a `\tbd`
+paper only in §4.1, generated from the simulator, and never in a `\tbd`
 cell.
 
 ### 4.2 Phase 2: empirical validation
@@ -137,24 +199,131 @@ rule 5).
 | ID | Question | Tests | Where | Needs (incl. from phase 1) | Status |
 |----|----------|-------|-------|----------------------------|--------|
 | E1 | Fit `S_prefill(L,K,B)`, `S_decode(B,KV)`, `T_transfer(bytes)` | calibration | T | profiling harness | not started |
-| E2 | Is per-turn CV² dominated by the hit/miss mixture? Does `W_q` track `(1+CV²)/2`? | `prop:pk`, `eq:cv2` | T, S | E1, replayed traces, interarrival CV² | not started |
-| E3 | Is selective offloading never below never-offload? When is always-offload below it? | option value (§4.1) | T, S | E1, tier bandwidth, fetch mode (sync/async) | not started |
-| E4 | SF vs density `p_i c_i` vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs utility | `prop:evict`, Thm. Dantzig | O, S | traces with resume events, spread of `p_i` | not started |
-| E5 | Does the PD inequality predict the winner? What is the latency cost at equal capacity? | `prop:pd` | T | E1, measured `I, g_P, g_D` | not started |
-| E6 | At what load does affinity lose? Does lookahead predict it? | `prop:routing`, `eq:lookahead`, `eq:append` | T, S | E1, migration cost | not started |
-| E7 | Decision-faithfulness scorecard (Kendall τ, argmin agreement, MAPE) | whole model | T, S | E1 to E6, phase 3 | not started |
+| E2 | Is per-turn CV² dominated by the hit/miss mixture? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces, interarrival CV², miss injection | not started |
+| E3 | Is priced offloading never below never-offload? When is always-offload below it? | option value (§3.2) | T, S | E1, tier bandwidth, fetch mode (sync/async) | not started |
+| E4 | SF vs price per byte vs guarded vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs price | `prop:guarded`, `prop:evict` | O, S | traces with resume events, spread of `p_i`, a regime with mean wait comparable to a miss | not started |
+| (PD) | Does the PD inequality predict the winner? What is the latency cost at equal capacity? (follow-up paper, see §4.2b) | `prop:pd` | T | E1, measured `I, g_P, g_D` | not started |
+| E5 | At what load does affinity lose? Does lookahead predict it? | `prop:routing`, `eq:lookahead`, `eq:append` | T, S | E1, migration cost | not started |
+| E6 | Decision-faithfulness scorecard (Kendall τ, argmin agreement, MAPE) | whole model | T, S | E1 to E5, phase 3 | not started |
 
-Details per experiment are in paper §6. The table layouts there are the
+Details per experiment are in paper §4.2. The table layouts there are the
 contract: fill `\tbd` cells with measured values only, and do not change
 what a table measures without updating this file.
+
+### 4.2a Result-table layouts (moved out of the paper on 2026-09-23)
+
+The paper keeps only the experiment-overview table and short hypotheses
+(§4.2). The layouts below are the contract for what each experiment
+reports; fill them with measured values only. E numbering in the paper
+is now E1–E6 (PD experiment removed with App. B; see §4.2b).
+
+**Workload statistics** (reference column: vLLM AgentX medians)
+
+| Statistic | Reference | Median | p90 |
+|---|---|---|---|
+| Turns per program | 43 | TBD | TBD |
+| Input tokens per turn | 142K | TBD | TBD |
+| Output tokens per turn | 444 | TBD | TBD |
+| Tool time per turn (s) | – | TBD | TBD |
+| Prefix hit rate | >96 % | TBD | |
+| Resume probability p_i | – | TBD | TBD |
+| Session interarrival CV² | – | TBD | |
+| Resident KV (tokens) | – | TBD | TBD |
+| Corr(session length, context) | – | TBD | |
+
+**E1: fitted service and transfer models (held-out split)**
+
+| Quantity | Fitted form | R² | MAPE |
+|---|---|---|---|
+| S_prefill(L, K, B) = eq:prefill | TBD | TBD | TBD |
+| decode step time (n, ΣKV) = eq:decode (β, ω) | TBD | TBD | TBD |
+| T_transfer (device–device) | TBD | TBD | TBD |
+| T_transfer (device–tier) | TBD | TBD | TBD |
+| Batch capacity φ(n) | TBD | TBD | TBD |
+| Batch size under memory M (measured footprint law) | TBD | TBD | TBD |
+
+**E2: variance decomposition, prefill scheduler, price of a miss**
+
+| Quantity | Value |
+|---|---|
+| Per-turn prefill CV² | TBD |
+| Share of Var[S]: hit/miss mixture | TBD |
+| Share: output-length spread | TBD |
+| Share: context-length spread | TBD |
+| Prefill wait measured / PK, ρ_P = 0.5 / 0.7 / 0.9 (blocking) | TBD |
+| Prefill wait measured / PK, ρ_P = 0.7 (chunked) | TBD |
+| Decode occupancy, low vs high prefill CV² | TBD |
+| Step time vs batch KV: β, ω, R² | TBD |
+| ΔL_P / (λ Σ q_i Φ_i), chunked, ρ_P = 0.5 / 0.9 (prop:price predicts [1, (1−ρ)/(1−ρ')]) | TBD |
+| ΔL_P / (λ Σ q_i Φ_i), blocking, ρ_P = 0.5 / 0.9 | TBD |
+
+**E3: throughput (turns/min) and hit rate by offloading policy and concurrency**
+
+| Policy | 24 | 48 | 72 | 96 |
+|---|---|---|---|---|
+| Never offload | TBD | TBD | TBD | TBD |
+| Always offload | TBD | TBD | TBD | TBD |
+| Priced (keep θcτ / transfer / drop w) | TBD | TBD | TBD | TBD |
+| Hit rate, priced | TBD | TBD | TBD | TBD |
+| Fetch on critical path? (yes/no) | | | | |
+
+**E4: eviction and admission.** Cost relative to the optimum of
+eq:evict-priced (estimated p_i, Φ_i) on replayed eviction events, and
+end-to-end p99 TTFT under both prefill schedulers; admission-cap sweep.
+
+| Rule | Cost / OPT | p99 TTFT ρ_P=0.7 | p99 TTFT ρ_P=0.9 |
+|---|---|---|---|
+| Shortest-first | TBD | TBD | TBD |
+| Price per byte v_i | TBD | TBD | TBD |
+| Price per byte-second u_i (θ rule) | TBD | TBD | TBD |
+| Guarded (program-level, prop:guarded) | TBD | TBD | TBD |
+| Block-level density (prop:memory) | TBD | TBD | TBD |
+| Exact optimum | 1.00 | TBD | TBD |
+| LRU | TBD | TBD | TBD |
+| Hit-ratio maximisation | TBD | TBD | TBD |
+
+| Admission cap | Hit rate | Throughput | p99 TTFT | Thrash episodes |
+|---|---|---|---|---|
+| (sweep) | TBD | TBD | TBD | TBD |
+
+**E5: routing.** p99 TTFT (ms) by router and load; predicted vs observed inversion load.
+
+| Router | ρ = 0.5 | ρ = 0.7 | ρ = 0.9 |
+|---|---|---|---|
+| Myopic | TBD | TBD | TBD |
+| KV-aware | TBD | TBD | TBD |
+| Program-aware (priced M_j) | TBD | TBD | TBD |
+| Strict affinity | TBD | TBD | TBD |
+| Inversion load (pred. / obs.) | TBD / TBD | | |
+
+**E6: decision-faithfulness scorecard** (τ = Kendall rank correlation of
+policy orderings; Agree = fraction of states with the same argmin)
+
+| Decision | Analytical τ | Analytical Agree | Simulator τ | Simulator Agree |
+|---|---|---|---|---|
+| Offloading | TBD | TBD | TBD | TBD |
+| Eviction | TBD | TBD | TBD | TBD |
+| Admission | TBD | TBD | TBD | TBD |
+| Routing | TBD | TBD | TBD | TBD |
+| TTFT MAPE | TBD | | TBD | |
+
+### 4.2b PD disaggregation (removed from the paper)
+
+App. B (static PD splits `prop:pd`, per-turn routing `eq:append`, the
+planned PD experiment and the PD simulation paragraphs) was removed from
+`paper/main.tex` on 2026-09-23 and saved verbatim in
+`paper/pd-followup.tex` (not `\input`). `PDDisaggregation.lean`,
+`models/pd.rs` and the `tab-pd*` generators stay in the repository for
+the follow-up paper. The PD experiment (formerly E5) is no longer in the
+paper's numbering: E5 = routing, E6 = scorecard.
 
 ### 4.3 Phase 3: calibrated simulation
 
 After E1: continuous batching, block-level KV, trace replay and the E1
 service fits (milestone M5). Ladder step 5 then compares the calibrated
-simulator with the testbed at the E7 held-out points. Its numbers may
+simulator with the testbed at the E6 held-out points. Its numbers may
 fill the "Simulator" columns of `tab:scorecard`; they replace nothing in
-§6.9, which stays the uncalibrated baseline.
+§4.1, which stays the uncalibrated baseline.
 
 ### Data needed from traces
 - Per turn: arrival time, new tokens, cached tokens (hit length), output
@@ -171,11 +340,11 @@ fill the "Simulator" columns of `tab:scorecard`; they replace nothing in
 ### Decisions about the simulator
 The simulator is `libqueuingsim` (Rust); `docs/simulation-design.md`
 has its design, status and roadmap. It serves E2 (hit-rate sweeps), E3,
-E4 (end-to-end), E6 and E7. E1 and E5 are testbed-only; E4's cost/OPT
+E4 (end-to-end), E5 and E6. E1 and the PD experiment are testbed-only; E4's cost/OPT
 column is offline. Milestones M0 to M4 are built on synthetic workloads
 (offline oracle, fair-share links and dynamic PD still open).
-Uncalibrated numbers go in the paper only in §6.9, labelled as
-simulation of the model. Any simulator number in §§6.1–6.8 or in
+Uncalibrated numbers go in the paper only in §4.1, labelled as
+simulation of the model. Any simulator number in §4.2 or in
 `tab:scorecard` needs the calibrated simulator (M5), which needs E1.
 
 ## 5. Claims we must not make (until data exists)
@@ -185,6 +354,10 @@ simulation of the model. Any simulator number in §§6.1–6.8 or in
   measures it.
 - That PD does or does not help agentic serving in general. Say which
   regime of `prop:pd`(iii) applies.
+- That footprint variance helps or hurts batch size in general
+  (`prop:footprint` shows both signs).
+- That hit/miss variance raises mean delay regardless of the prefill
+  scheduler; under chunked prefill (PS) it does not.
 - That shortest-first is a bad heuristic in practice. It is within 2× of
   optimal when resume behaviour is uniform. Whether it is bad depends on
   the spread of `p_i` (E4).
@@ -192,7 +365,10 @@ simulation of the model. Any simulator number in §§6.1–6.8 or in
   not read in the source. Mark bib entries `UNVERIFIED` otherwise.
 - That a phase-1 simulation result holds for real systems or traces
   (AGENTS.md rule 7). In particular: that density and SF perform alike in
-  practice, that async offloading is always best, or that the mechanism
+  practice, that the congestion-priced rule does or does not beat density
+  end-to-end, that PS thrashes earlier than blocking prefill (an artefact
+  of φ≡1 with no separate prefill rate), that the LPS error has the sign
+  seen here for real workloads, that async offloading is always best, or that the mechanism
   behind ThunderAgent's collapse is the one the simulator reproduces.
   Phase 1 shows these are possible under the model; phase 2 decides.
 
@@ -203,14 +379,37 @@ khinchine1932, schrage1968, lazowska1984, carnes2008, csirik1991,
 thunderagent (v3), ppd, vllm-agentx, mooncake-vllm.
 
 `UNVERIFIED` (bibliographic details from memory, statement standard):
-little1961, kingman1962, dantzig1957. Before submission, read the
+little1961, kingman1962, dantzig1957, naor1969, mendelson1990,
+infercept, bcmp1975, kelly1979, kingman1993, kvlearn2026 (README read, paper not).
+
+Verified from the arXiv abstract page only (not the full text), added
+2026-09-23 for §1 and §5 Related Work: sarathi2024 and the 25 entries
+under the ``Queueing-theoretic and scheduling-theory work'' comment in
+refs.bib (nie2026stability, dai2025workconserving, ao2025fluid,
+ao2026congestion, lin2026pdcontention, yang2024mg1, bari2025optimal,
+dong2026flowcontrol, mitzenmacher2025queueing, chen2026fleetsim,
+ozbas2026reasoning, jaillet2025online, feng2026nonclairvoyant,
+wang2025variable, dexter2025prefix, shahout2024trail, li2025continuum,
+xia2026mori, bian2025tokencake, pan2025kvflow, zhang2026cachescout,
+ni2026topas, hsieh2026flowprefill, liu2026chunkedfair,
+lyu2025fairbatching). The Related Work paragraphs paraphrase their
+abstracts only; read the full text before any stronger claim. Venue
+notes in the bib say which venues were stated on arXiv and which came
+from search hits (UNVERIFIED). Closest competitors: nie2026stability
+(ICML 2026, stability with KV memory), ao2026congestion (eviction-free
+equilibrium unstable = our thrashing), li2025continuum (TTL from reload
+cost + queueing delay = heuristic price of a miss). Gap the survey
+found: no paper prices a KV miss or models the hit/miss mixture as the
+source of service variance. InferCept matters most: the paper says it scores
+preserve/discard/swap by memory waste, which must be checked because it
+is the closest prior system work. Before submission, read the
 primary source, check that the statement in the paper matches, and remove
 the note.
 
 ## 7. Open questions
 
 - Is the target venue ICML 2026 (theory with placeholders) or a systems
-  venue after E1 to E7 exist? This affects how much of §6 stays in the
+  venue after E1 to E6 exist? This affects how much of §4.2 stays in the
   paper.
 - Which agentic trace can be used and released (internal Rebellions
   traces, or public ones)?

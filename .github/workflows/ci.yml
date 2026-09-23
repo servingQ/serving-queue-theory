@@ -74,7 +74,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: libqueuingsim
-      - name: Lean names, fmt, clippy, tests, validation report
+      - name: Install uv (scripts/plot_sim.py draws the figures)
+        uses: astral-sh/setup-uv@v6
+      - name: Lean names, fmt, clippy, tests, validation report, tables and figures
         run: scripts/check_sim.sh
       - name: Publish report to job summary
         if: always()

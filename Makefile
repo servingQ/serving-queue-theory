@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 export PATH := $(HOME)/.elan/bin:$(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
 
-.PHONY: setup lean refs paper sim report check preview clean
+.PHONY: setup lean refs paper sim figs report check preview clean
 
 setup:            ## install elan, rustup, tectonic, uv (user-local) and fetch Mathlib cache
 	scripts/setup.sh
@@ -16,8 +16,11 @@ refs:             ## every \leanref{} in the paper exists and is audited
 paper:            ## compile paper/main.pdf
 	cd paper && tectonic -X compile main.tex
 
-sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests, validation report
+sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests, report, tables/data staleness, figures
 	scripts/check_sim.sh
+
+figs:             ## redraw paper/sim/fig-*.pdf from paper/sim/data/*.csv (written by paper_tables)
+	uv run --quiet --with matplotlib python scripts/plot_sim.py
 
 report:           ## print the simulator validation report
 	cd libqueuingsim && cargo run --release --quiet --example validate

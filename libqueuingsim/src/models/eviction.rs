@@ -1,10 +1,18 @@
-//! Offline eviction instances (paper §3.2, Prop. evict; experiment E4 "O").
+//! Offline eviction instances (paper §3.1, Props. evict and guarded;
+//! experiment E4 "O").
 //!
 //! Problem (evict): choose a subset of suspended programs with context
-//! lengths `c_i` freeing at least `ΔC`, minimising `Σ w_i` where
-//! `w_i = p_i c_i²` (`p_i = 1` recovers ThunderAgent Def. 4.1).
-//! [`optimal`] solves it exactly by dynamic programming over freed tokens,
-//! so heuristics can be scored as cost/OPT on many random instances.
+//! lengths `c_i` freeing at least `ΔC`, minimising `Σ w_i`. With
+//! [`Item`], `w_i = p_i c_i²` (`p_i = 1` recovers ThunderAgent Def. 4.1);
+//! with [`Weighted`], `w_i ≥ 0` is arbitrary (e.g. the congestion price
+//! `p_i Φ_i` of paper Props. price and memory). [`optimal_weighted`] solves it exactly
+//! by dynamic programming over freed tokens, so heuristics can be scored as
+//! cost/OPT on many random instances.
+//!
+//! [`guarded_density`] is the guarded density greedy of paper
+//! Prop. guarded (`guardedGreedy_two_approx` in DensityGreedy.lean): a
+//! 2-approximation for arbitrary nonnegative weights, where plain
+//! [`density_weighted`] has no constant ratio.
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -32,6 +40,29 @@ impl Item {
     }
 }
 
+impl From<Item> for Weighted {
+    fn from(it: Item) -> Self {
+        Weighted {
+            c: it.c,
+            w: it.cost(),
+        }
+    }
+}
+
+/// A suspended program with an arbitrary nonnegative eviction weight.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Weighted {
+    pub c: u64,
+    pub w: f64,
+}
+
+impl Weighted {
+    /// Weight per token freed, `w / c`.
+    pub fn density(&self) -> f64 {
+        self.w / self.c as f64
+    }
+}
+
 /// `evictCost`: `Σ c²` (Eviction.lean).
 pub fn evict_cost(s: &[u64]) -> u64 {
     s.iter().map(|c| c * c).sum()
@@ -54,14 +85,11 @@ pub fn shortest_first_lean(ctx: &[u64], delta: u64) -> Vec<u64> {
     }
 }
 
-/// Greedy eviction in increasing `key` order until `delta` is freed.
-/// Returns indices into `items`.
-fn greedy(items: &[Item], delta: u64, key: impl Fn(&Item) -> f64) -> Vec<usize> {
-    let mut order: Vec<usize> = (0..items.len()).collect();
-    order.sort_by(|&a, &b| key(&items[a]).total_cmp(&key(&items[b])).then(a.cmp(&b)));
+/// Take `order` until `delta` is freed. Returns indices into `items`.
+fn take_until(items: &[Weighted], order: &[usize], delta: u64) -> Vec<usize> {
     let mut freed = 0;
     let mut out = vec![];
-    for i in order {
+    for &i in order {
         if freed >= delta {
             break;
         }
@@ -71,14 +99,77 @@ fn greedy(items: &[Item], delta: u64, key: impl Fn(&Item) -> f64) -> Vec<usize> 
     out
 }
 
+/// Indices sorted by increasing `key`, ties by index.
+fn sorted_by_key(items: &[Weighted], key: impl Fn(&Weighted) -> f64) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..items.len()).collect();
+    order.sort_by(|&a, &b| key(&items[a]).total_cmp(&key(&items[b])).then(a.cmp(&b)));
+    order
+}
+
+fn weighted(items: &[Item]) -> Vec<Weighted> {
+    items.iter().map(|&it| it.into()).collect()
+}
+
 /// Shortest-context-first (SF).
 pub fn shortest_first(items: &[Item], delta: u64) -> Vec<usize> {
-    greedy(items, delta, |it| it.c as f64)
+    shortest_first_weighted(&weighted(items), delta)
 }
 
 /// Increasing cost per token freed, `p_i c_i` (the relaxation's greedy).
 pub fn density_first(items: &[Item], delta: u64) -> Vec<usize> {
-    greedy(items, delta, Item::density)
+    density_weighted(&weighted(items), delta)
+}
+
+/// SF on general weights (the order ignores the weights).
+pub fn shortest_first_weighted(items: &[Weighted], delta: u64) -> Vec<usize> {
+    take_until(items, &sorted_by_key(items, |it| it.c as f64), delta)
+}
+
+/// Plain density greedy: increasing `w_i / c_i` until `delta` is freed.
+/// No constant ratio for general weights (see the tests).
+pub fn density_weighted(items: &[Weighted], delta: u64) -> Vec<usize> {
+    take_until(items, &sorted_by_key(items, Weighted::density), delta)
+}
+
+/// Guarded density greedy (paper Prop. guarded). For each candidate `e`,
+/// the guess for the heaviest item of an optimum: if `c_e ≥ ΔC` the
+/// candidate is `{e}`; otherwise restrict to items `j ≠ e` with
+/// `w_j ≤ w_e` and take them in increasing `w_j / c_j` until
+/// `c_e + freed ≥ ΔC` (skip `e` if that never happens). Return the cheapest
+/// candidate. `None` iff evicting everything does not free `delta`.
+/// `O(n² log n)`.
+pub fn guarded_density(items: &[Weighted], delta: u64) -> Option<Vec<usize>> {
+    if delta == 0 {
+        return Some(vec![]);
+    }
+    let order = sorted_by_key(items, Weighted::density);
+    let mut best: Option<(f64, Vec<usize>)> = None;
+    for (e, it) in items.iter().enumerate() {
+        let mut s = vec![e];
+        let mut freed = it.c;
+        for &j in &order {
+            if freed >= delta {
+                break;
+            }
+            if j != e && items[j].w <= it.w {
+                freed += items[j].c;
+                s.push(j);
+            }
+        }
+        if freed < delta {
+            continue;
+        }
+        let cost = weighted_cost(items, &s);
+        if best.as_ref().is_none_or(|(b, _)| cost < *b) {
+            best = Some((cost, s));
+        }
+    }
+    best.map(|(_, s)| s)
+}
+
+/// [`guarded_density`] on `p_i c_i²` costs.
+pub fn guarded_density_items(items: &[Item], delta: u64) -> Option<Vec<usize>> {
+    guarded_density(&weighted(items), delta)
 }
 
 pub fn subset_cost(items: &[Item], s: &[usize]) -> f64 {
@@ -89,9 +180,22 @@ pub fn subset_freed(items: &[Item], s: &[usize]) -> u64 {
     s.iter().map(|&i| items[i].c).sum()
 }
 
+pub fn weighted_cost(items: &[Weighted], s: &[usize]) -> f64 {
+    s.iter().map(|&i| items[i].w).sum()
+}
+
+pub fn weighted_freed(items: &[Weighted], s: &[usize]) -> u64 {
+    s.iter().map(|&i| items[i].c).sum()
+}
+
 /// Exact optimum of (evict) by 0/1 covering-knapsack DP, `O(n·ΔC)` time
 /// and space. Returns `None` if evicting everything does not free `delta`.
 pub fn optimal(items: &[Item], delta: u64) -> Option<(f64, Vec<usize>)> {
+    optimal_weighted(&weighted(items), delta)
+}
+
+/// [`optimal`] for arbitrary nonnegative weights.
+pub fn optimal_weighted(items: &[Weighted], delta: u64) -> Option<(f64, Vec<usize>)> {
     let d = delta as usize;
     let n = items.len();
     // table[k][j]: min cost using items[..k] to free at least j tokens.
@@ -99,7 +203,7 @@ pub fn optimal(items: &[Item], delta: u64) -> Option<(f64, Vec<usize>)> {
     table[0][0] = 0.0;
     for (k, it) in items.iter().enumerate() {
         let c = it.c as usize;
-        let w = it.cost();
+        let w = it.w;
         for j in 0..=d {
             let skip = table[k][j];
             let with = table[k][j.saturating_sub(c)] + w;
@@ -164,31 +268,92 @@ pub fn random_instance(rng: &mut StdRng, n: usize, max_c: u64, resume: ResumeMod
     Instance { items, delta }
 }
 
-/// Cost/OPT of SF and of the density rule on one instance.
+/// A random instance with arbitrary weights, for Prop. guarded.
+#[derive(Clone, Debug)]
+pub struct WeightedInstance {
+    pub items: Vec<Weighted>,
+    pub delta: u64,
+}
+
+/// Random instance with weights independent of sizes: `c_i` uniform on
+/// `1..=max_c`, `w_i` log-uniform on `[1e-4, 1e5]` (so near-free and very
+/// heavy programs both occur), and `ΔC` a uniform fraction in `[0.1, 0.6]`
+/// of the total.
+pub fn random_weighted_instance(rng: &mut StdRng, n: usize, max_c: u64) -> WeightedInstance {
+    let items: Vec<Weighted> = (0..n)
+        .map(|_| Weighted {
+            c: rng.random_range(1..=max_c),
+            w: 10f64.powf(rng.random_range(-4.0..=5.0)),
+        })
+        .collect();
+    let total: u64 = items.iter().map(|i| i.c).sum();
+    let frac = rng.random_range(0.1..=0.6);
+    let delta = ((total as f64 * frac).round() as u64).max(1);
+    WeightedInstance { items, delta }
+}
+
+/// Cost/OPT of SF, of the density rule and of the guarded density greedy
+/// on one instance.
 #[derive(Clone, Copy, Debug)]
 pub struct Ratios {
     pub shortest_first: f64,
     pub density_first: f64,
+    pub guarded_density: f64,
 }
 
-pub fn ratios(inst: &Instance) -> Ratios {
-    let (opt, _) = optimal(&inst.items, inst.delta).expect("feasible");
+pub fn ratios_weighted(items: &[Weighted], delta: u64) -> Ratios {
+    let (opt, _) = optimal_weighted(items, delta).expect("feasible");
     let r = |s: Vec<usize>| {
-        let c = subset_cost(&inst.items, &s);
-        if opt == 0.0 { 1.0 } else { c / opt }
+        let c = weighted_cost(items, &s);
+        if opt == 0.0 {
+            if c == 0.0 { 1.0 } else { f64::INFINITY }
+        } else {
+            c / opt
+        }
     };
     Ratios {
-        shortest_first: r(shortest_first(&inst.items, inst.delta)),
-        density_first: r(density_first(&inst.items, inst.delta)),
+        shortest_first: r(shortest_first_weighted(items, delta)),
+        density_first: r(density_weighted(items, delta)),
+        guarded_density: r(guarded_density(items, delta).expect("feasible")),
     }
 }
 
-/// Score both heuristics on `count` random instances.
+pub fn ratios(inst: &Instance) -> Ratios {
+    ratios_weighted(&weighted(&inst.items), inst.delta)
+}
+
+/// Score the heuristics on `count` random instances.
 pub fn sweep(count: usize, n: usize, max_c: u64, resume: ResumeModel, seed: u64) -> Vec<Ratios> {
     let mut rng = StdRng::seed_from_u64(seed);
     (0..count)
         .map(|_| ratios(&random_instance(&mut rng, n, max_c, resume)))
         .collect()
+}
+
+/// Score the heuristics on `count` random general-weight instances.
+pub fn sweep_weighted(count: usize, n: usize, max_c: u64, seed: u64) -> Vec<Ratios> {
+    let mut rng = StdRng::seed_from_u64(seed);
+    (0..count)
+        .map(|_| {
+            let inst = random_weighted_instance(&mut rng, n, max_c);
+            ratios_weighted(&inst.items, inst.delta)
+        })
+        .collect()
+}
+
+/// The family of `densityFirst_unbounded` (DensityGreedy.lean) on which
+/// plain density greedy pays `K` against an optimum of 2:
+/// `(c=1, w=0)`, `(c=K, w=K)`, `(c=1, w=2)` with `ΔC = 2` and `K ≥ 2`.
+pub fn density_counterexample(k: u64) -> (Vec<Weighted>, u64) {
+    assert!(k >= 2);
+    (
+        vec![
+            Weighted { c: 1, w: 0.0 },
+            Weighted { c: k, w: k as f64 },
+            Weighted { c: 1, w: 2.0 },
+        ],
+        2,
+    )
 }
 
 #[cfg(test)]
@@ -247,6 +412,71 @@ mod tests {
         let (opt, s) = optimal(&it, 6).unwrap();
         assert_eq!(opt, 36.0);
         assert_eq!(s, vec![2]);
+    }
+
+    fn brute_force(items: &[Weighted], delta: u64) -> f64 {
+        let n = items.len();
+        (0u32..1 << n)
+            .filter_map(|mask| {
+                let s: Vec<usize> = (0..n).filter(|i| mask >> i & 1 == 1).collect();
+                (weighted_freed(items, &s) >= delta).then(|| weighted_cost(items, &s))
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    #[test]
+    fn guarded_is_two_approx_against_brute_force() {
+        let mut rng = StdRng::seed_from_u64(11);
+        let mut worst_plain: f64 = 0.0;
+        for _ in 0..5000 {
+            let n = rng.random_range(1..=10);
+            let inst = random_weighted_instance(&mut rng, n, 25);
+            let opt = brute_force(&inst.items, inst.delta);
+            let (dp, _) = optimal_weighted(&inst.items, inst.delta).unwrap();
+            assert!((dp - opt).abs() <= 1e-9 * opt.max(1.0));
+            let g = guarded_density(&inst.items, inst.delta).unwrap();
+            assert!(weighted_freed(&inst.items, &g) >= inst.delta);
+            let cost = weighted_cost(&inst.items, &g);
+            assert!(
+                cost <= 2.0 * opt * (1.0 + 1e-12),
+                "{inst:?}: {cost} vs {opt}"
+            );
+            let d = density_weighted(&inst.items, inst.delta);
+            worst_plain = worst_plain.max(weighted_cost(&inst.items, &d) / opt);
+        }
+        assert!(worst_plain > 2.0, "plain density worst {worst_plain}");
+    }
+
+    #[test]
+    fn guarded_is_two_approx_on_quadratic_costs() {
+        let mut rng = StdRng::seed_from_u64(12);
+        for resume in [ResumeModel::Uniform, ResumeModel::Varied { lo: 0.05 }] {
+            for _ in 0..1000 {
+                let inst = random_instance(&mut rng, 10, 25, resume);
+                let r = ratios(&inst);
+                assert!(r.guarded_density <= 2.0 + 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn plain_density_has_no_constant_ratio() {
+        for k in [10u64, 100, 1000, 100_000] {
+            let (it, delta) = density_counterexample(k);
+            let d = density_weighted(&it, delta);
+            assert_eq!(weighted_cost(&it, &d), k as f64);
+            let (opt, _) = optimal_weighted(&it, delta).unwrap();
+            assert_eq!(opt, 2.0);
+            let g = guarded_density(&it, delta).unwrap();
+            assert_eq!(weighted_cost(&it, &g), 2.0);
+        }
+    }
+
+    #[test]
+    fn guarded_infeasible_is_none() {
+        let it = [Weighted { c: 1, w: 1.0 }, Weighted { c: 2, w: 1.0 }];
+        assert!(guarded_density(&it, 4).is_none());
+        assert_eq!(guarded_density(&it, 0), Some(vec![]));
     }
 
     #[test]

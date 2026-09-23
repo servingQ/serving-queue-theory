@@ -1,7 +1,7 @@
 /-
 # KV-cache reuse as a service-time transformation
 
-Proposition (paper `prop:cache`, §3).  A KV hit turns a prefill of cost `sMiss`
+Proposition (paper `prop:cache`, §2.2).  A KV hit turns a prefill of cost `sMiss`
 into one of cost `sHit ≤ sMiss`.  With hit probability `p`,
 `E[S] = p sHit + (1-p) sMiss`, `rho = lam E[S]`.
 

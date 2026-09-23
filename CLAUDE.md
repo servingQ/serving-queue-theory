@@ -13,3 +13,18 @@
   mark the bib entry UNVERIFIED instead of asking; the user prefers hedged
   drafts over blocked work.
 - Reply in Korean when the user writes Korean; paper text stays in English.
+
+# Paper craft (user feedback, 2026-09-23)
+
+- Abstract ≤ 150 words: thesis, one result, one method, one validation line.
+- After every restructure, delete what the new thesis no longer needs
+  (old framings, near-trivial propositions, superseded simulation tables).
+  Demote a trivial proposition to a prose sentence with an inline
+  `\provedby{}`; keep its Lean theorem.
+- Simulation results are shown as figures when a trend or comparison is
+  the point (generated from the same data files as the tables, never
+  drawn by hand); tables carry the exact numbers, with the best result per
+  row in bold and CIs stated.
+- Placeholder (`\tbd`) result tables live in `docs/research-plan.md`, not
+  in the paper; the paper keeps one experiment-overview table and short
+  hypotheses.

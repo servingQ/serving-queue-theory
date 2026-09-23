@@ -18,13 +18,17 @@
 use crate::analytic::*;
 use crate::dist::Dist;
 use crate::models::agentic::{
-    self, AgenticConfig, EvictionPolicy, FetchMode, OffloadPolicy, Population, ProgramClass,
+    self, AgenticConfig, CostModel, EvictionPolicy, FetchMode, OffloadPolicy, Population,
+    ProgramClass,
 };
+use crate::models::batch::{self, BatchConfig, BatchReport, Phi, Server, Work, ps_mean_number};
 use crate::models::eviction::{self, Item, ResumeModel};
 use crate::models::pd::{self, Load, Mode, PdConfig};
 use crate::models::queue::{self, QueueConfig};
 use crate::models::routing::{self, RoutePolicy, RoutingConfig};
-use crate::stats::replications;
+use crate::stats::{Estimate, Welford, batch_means, replications};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -55,6 +59,13 @@ pub fn all() -> Vec<Check> {
         variance_orders_delay(),
         cache_reuse_lowers_delay(),
         cv2_ratio(),
+        miss_price_bracket(),
+        two_stage_prefill_price(),
+        ps_insensitivity(),
+        bcmp_feedback(),
+        ps_price_bracket(),
+        footprint_batch_size(),
+        lps_vs_saturating_phi(),
         kingman_bursty_arrivals(),
         little_law(),
         closed_throughput_falls_with_concurrency(),
@@ -66,6 +77,8 @@ pub fn all() -> Vec<Check> {
         shortest_first_two_approx(),
         shortest_first_tightness(),
         shortest_first_unbounded_with_resume_prob(),
+        guarded_density_two_approx(),
+        memory_threshold_rule(),
         pd_capacity_matches(),
         pd_no_gain(),
         pd_win_condition_decisions(),
@@ -78,7 +91,7 @@ fn rel(a: f64, b: f64) -> f64 {
     (a - b).abs() / b.abs()
 }
 
-// ---------------------------------------------------------------- §3 ----
+// -------------------------------------------------------------- §2.2 ----
 
 /// Prop. mm1 (i): M/M/1 response time equals `1/(μ-λ)`.
 pub fn mm1_response_time() -> Check {
@@ -161,7 +174,7 @@ pub fn pk_formula() -> Check {
     }
     Check {
         id: "pk_formula",
-        paper: "thm:pk, prop:pk",
+        paper: "eq:pk, prop:pk",
         lean: &["secondMoment_eq_variance_add_sq"],
         kind: Kind::InModel,
         claim: "M/G/1 mean wait equals λE[S²]/(2(1-ρ))",
@@ -273,7 +286,248 @@ pub fn cv2_ratio() -> Check {
     }
 }
 
-/// Thm. kingman and §7 Limitations: bursty arrivals add delay beyond PK.
+pub const MISS_PRICE_SH: f64 = 0.05;
+pub const MISS_PRICE_SM: f64 = 0.5;
+
+/// Outcome of the price-of-a-miss scenario for one `δ`.
+#[derive(Clone, Copy, Debug)]
+pub struct MissPriceRun {
+    pub phi: f64,
+    /// Simulated `ΔL = λΔT`, batch-means CI of per-turn differences.
+    pub dl: crate::stats::Estimate,
+    /// `λδΦ` and `(1-ρ)/(1-ρ')·λδΦ`.
+    pub lo: f64,
+    pub hi: f64,
+    /// Exact PK difference of `L`.
+    pub exact: f64,
+}
+
+/// M/G/1 with hit/miss service `s_h = 0.05`, `s_m = 0.5`, hit rate 0.8 at
+/// `ρ = 0.6`, against the same system with hit rate `0.8 - δ` (common
+/// random numbers, 4M turns).
+pub fn miss_price_scenario(delta: f64) -> MissPriceRun {
+    let (s_h, s_m, p) = (MISS_PRICE_SH, MISS_PRICE_SM, 0.8);
+    let base = Dist::HitMiss {
+        p_hit: p,
+        hit: s_h,
+        miss: s_m,
+    };
+    let lam = 0.6 / base.mean();
+    let rho = lam * base.mean();
+    let phi = miss_price(lam, base.second_moment(), rho, s_h, s_m);
+    let d = Dist::HitMiss {
+        p_hit: p - delta,
+        hit: s_h,
+        miss: s_m,
+    };
+    let r0 = queue::simulate(&QueueConfig::mg1(lam, base.clone(), 4_000_000, 150));
+    let r1 = queue::simulate(&QueueConfig::mg1(lam, d.clone(), 4_000_000, 150));
+    let diffs: Vec<f64> = r1
+        .sojourns
+        .iter()
+        .zip(&r0.sojourns)
+        .map(|(a, b)| lam * (a - b))
+        .collect();
+    let lo = lam * delta * phi;
+    let rho1 = rho + lam * delta * (s_m - s_h);
+    MissPriceRun {
+        phi,
+        dl: batch_means(&diffs, 20),
+        lo,
+        hi: (1.0 - rho) / (1.0 - rho1) * lo,
+        exact: num_in_system(lam, d.second_moment(), rho1)
+            - num_in_system(lam, base.second_moment(), rho),
+    }
+}
+
+/// Prop. price (the prefill stage as an M/G/1 FIFO queue with Poisson
+/// turns): turning a fraction `δ` of turns from hit to miss raises the mean
+/// number in system `L` by between `λδΦ` and `(1-ρ)/(1-ρ')·λδΦ`,
+/// `Φ = missPrice`. Common random numbers: both runs see the same arrivals
+/// and the same uniforms deciding hit/miss, so the turns that become misses
+/// are exactly those with `u ∈ [p-δ, p)`, and per-turn sojourn differences
+/// give a tight batch-means CI for `ΔL = λΔT`.
+pub fn miss_price_bracket() -> Check {
+    let mut pass = true;
+    let mut obs = vec![];
+    let mut phi = 0.0;
+    for delta in [0.01, 0.05] {
+        let m = miss_price_scenario(delta);
+        phi = m.phi;
+        // The CI must overlap the bracket, and contain the exact PK
+        // difference (to 1 %).
+        pass &= m.dl.lo() <= m.hi && m.dl.hi() >= m.lo && m.dl.agrees_with(m.exact, 0.01);
+        obs.push(format!(
+            "δ={delta}: ΔL {} vs bracket [{:.4}, {:.4}], exact {:.4}",
+            m.dl, m.lo, m.hi, m.exact
+        ));
+    }
+    let (s_h, s_m) = (MISS_PRICE_SH, MISS_PRICE_SM);
+    Check {
+        id: "miss_price_bracket",
+        paper: "prop:price",
+        lean: &["missPrice_lower", "missPrice_upper"],
+        kind: Kind::InModel,
+        claim: "λδΦ ≤ ΔL ≤ (1-ρ)/(1-ρ')·λδΦ when a fraction δ of turns changes from hit to miss",
+        expected: format!(
+            "M/G/1, s_h={s_h}, s_m={s_m}, p=0.8, ρ=0.6, Φ={phi:.3}: 95% CI of ΔL overlaps the bracket and contains the exact PK difference (+1%)"
+        ),
+        observed: obs.join("; "),
+        pass,
+    }
+}
+
+/// Decode work per turn of the two-stage price scenario (seconds at an
+/// idle device, i.e. `0.1/ω = 500` output tokens).
+pub const TWO_STAGE_DECODE: f64 = 0.1;
+
+/// Outcome of the two-stage price scenario for one `δ`.
+#[derive(Clone, Debug)]
+pub struct TwoStagePriceRun {
+    /// Mean prefill availability of the baseline run, `r̄`.
+    pub avail: f64,
+    /// Effective prefill load `λE[P]/r̄` of the baseline.
+    pub rho_p: f64,
+    /// Baseline mean number in the prefill stage, `λ·TTFT`, and the M/G/1
+    /// prediction `numInSystem` at service `P/r̄`.
+    pub l_p: Estimate,
+    pub l_p_theory: f64,
+    /// Rise of the prefill-stage number, `λ·ΔTTFT` (paired, CRN).
+    pub dl_p: Estimate,
+    /// Bracket `[λδΦ, (1-ρ)/(1-ρ')·λδΦ]` with `Φ = missPrice` at service
+    /// `P/r̄`.
+    pub lo: f64,
+    pub hi: f64,
+    /// Change of the decode-stage number, `λ·Δ(R - TTFT)` (paired).
+    pub dl_d: Estimate,
+    /// Baseline decode-stage number `λ·E[R - TTFT]` and its PS prediction
+    /// `Σ nπ(n)` for `φ_D(n) = min(n, ω/a)`.
+    pub l_d: Estimate,
+    pub l_d_theory: f64,
+}
+
+/// Poisson turns at a `TwoStage` replica: prefill work hit/miss
+/// (`0.05`/`0.5` s, hit rate 0.8), decode `0.1` s (500 tokens) per turn,
+/// `λ` such that `λE[P] = 0.6`, no memory limit, common random numbers
+/// against hit rate `0.8 - δ`, 1M turns. Contexts are zero, so the decode
+/// stage is `φ_D(n) = min(n, 10)` and the prefill stage runs at
+/// availability `1 - n/10` while `n` turns decode.
+pub fn two_stage_price_scenario(delta: f64) -> TwoStagePriceRun {
+    let (s_h, s_m, p) = (MISS_PRICE_SH, MISS_PRICE_SM, 0.8);
+    let base = Dist::HitMiss {
+        p_hit: p,
+        hit: s_h,
+        miss: s_m,
+    };
+    let lam = 0.6 / base.mean();
+    let d = Dist::HitMiss {
+        p_hit: p - delta,
+        hit: s_h,
+        miss: s_m,
+    };
+    let cfg = |prefill: Dist| {
+        let mut c =
+            BatchConfig::poisson_turns(lam, prefill.clone(), Server::TwoStage, 1.0e6 / lam, 225);
+        c.work = Work::Sampled {
+            prefill,
+            decode: Dist::Deterministic(TWO_STAGE_DECODE),
+        };
+        c
+    };
+    let r0 = batch::simulate(&cfg(base.clone()));
+    let r1 = batch::simulate(&cfg(d.clone()));
+    let scale = |xs: Vec<f64>| xs.into_iter().map(|x| lam * x).collect::<Vec<_>>();
+    let dl_p = batch_means(&scale(batch::paired_differences(&r0.ttfts, &r1.ttfts)), 20);
+    let decode = |r: &BatchReport| -> Vec<(u64, f64)> {
+        r.responses
+            .iter()
+            .zip(&r.ttfts)
+            .map(|(a, b)| {
+                debug_assert_eq!(a.0, b.0);
+                (a.0, a.1 - b.1)
+            })
+            .collect()
+    };
+    let (d0, d1) = (decode(&r0), decode(&r1));
+    let dl_d = batch_means(&scale(batch::paired_differences(&d0, &d1)), 20);
+    let l_d = batch_means(&scale(d0.iter().map(|x| x.1).collect()), 20);
+    // Prefill stage as M/G/1 with service P/r̄.
+    let r = r0.mean_availability;
+    let rho = lam * base.mean() / r;
+    let m2 = base.second_moment() / (r * r);
+    let phi = miss_price(lam, m2, rho, s_h / r, s_m / r);
+    let lo = lam * delta * phi;
+    let rho1 = rho + lam * delta * (s_m - s_h) / r;
+    let omega_over_a = 2.0e-4 / 2.0e-5;
+    TwoStagePriceRun {
+        avail: r,
+        rho_p: rho,
+        l_p: little_number_of(&r0.ttft_ci, lam),
+        l_p_theory: num_in_system(lam, m2, rho),
+        dl_p,
+        lo,
+        hi: (1.0 - rho) / (1.0 - rho1) * lo,
+        dl_d,
+        l_d,
+        l_d_theory: ps_mean_number(
+            &Phi::Saturating {
+                beta: 0.0,
+                cap: Some(omega_over_a as usize),
+            },
+            lam * TWO_STAGE_DECODE,
+        ),
+    }
+}
+
+fn little_number_of(e: &Estimate, lam: f64) -> Estimate {
+    Estimate {
+        mean: lam * e.mean,
+        half_width: lam * e.half_width,
+    }
+}
+
+/// Props. price and decode on the two-resource replica: forcing a fraction
+/// `δ` of turns to miss raises the number in the *prefill* stage by an
+/// amount bracketed by the M/G/1 price at the stage's effective service
+/// `P/r̄` (`r̄` the measured mean availability), while the *decode* stage,
+/// whose demand does not depend on hit or miss, is unchanged. Beyond the
+/// model in one respect: the prefill rate fluctuates with the decode batch
+/// (`1 - n/10`), so the stage is not exactly an M/G/1 at a fixed rate.
+pub fn two_stage_prefill_price() -> Check {
+    let mut pass = true;
+    let mut obs = vec![];
+    let mut head = String::new();
+    for delta in [0.01, 0.05] {
+        let m = two_stage_price_scenario(delta);
+        if head.is_empty() {
+            head = format!(
+                "r̄={:.3}, ρ_P={:.3}, L_P {} vs M/G/1 {:.3}, L_D {} vs PS {:.3}",
+                m.avail, m.rho_p, m.l_p, m.l_p_theory, m.l_d, m.l_d_theory
+            );
+            pass &= m.l_d.agrees_with(m.l_d_theory, 0.02);
+        }
+        // Prefill: the CI of ΔL_P must overlap the bracket (5% slack for
+        // the fluctuating rate). Decode: the CI of ΔL_D must contain 0.
+        pass &= m.dl_p.lo() <= 1.05 * m.hi && m.dl_p.hi() >= 0.95 * m.lo;
+        pass &= m.dl_d.lo() <= 0.0 && m.dl_d.hi() >= 0.0;
+        obs.push(format!(
+            "δ={delta}: ΔL_P {} vs [{:.4}, {:.4}], ΔL_D {}",
+            m.dl_p, m.lo, m.hi, m.dl_d
+        ));
+    }
+    Check {
+        id: "two_stage_prefill_price",
+        paper: "prop:price, prop:decode",
+        lean: &["missPrice_lower", "missPrice_upper", "stationaryMean"],
+        kind: Kind::BeyondModel,
+        claim: "on the two-resource replica the price of a miss is paid in the prefill queue (FIFO bracket at the stage's effective service) and not in the decode batch",
+        expected: "TwoStage, hit/miss prefill 0.05/0.5, decode 0.1 s, λE[P]=0.6: 95% CI of λΔTTFT overlaps [λδΦ, (1-ρ)/(1-ρ')λδΦ] (5% slack) at service P/r̄; CI of λΔ(R-TTFT) contains 0; baseline decode L within CI (+2%) of Σnπ(n), φ_D(n)=min(n,10)".into(),
+        observed: format!("{head}; {}", obs.join("; ")),
+        pass,
+    }
+}
+
+/// §2 Kingman's bound and §7 Limitations: bursty arrivals add delay beyond PK.
 pub fn kingman_bursty_arrivals() -> Check {
     let s = Dist::HitMiss {
         p_hit: 0.96,
@@ -305,7 +559,7 @@ pub fn kingman_bursty_arrivals() -> Check {
     }
     Check {
         id: "kingman_bursty_arrivals",
-        paper: "thm:kingman, sec:limits",
+        paper: "sec:model (Kingman), sec:limits",
         lean: &[],
         kind: Kind::BeyondModel,
         claim: "with non-Poisson arrivals PK underestimates delay; Kingman still bounds it",
@@ -325,7 +579,7 @@ pub fn little_law() -> Check {
     ));
     Check {
         id: "little_law",
-        paper: "thm:little",
+        paper: "sec:model (Little)",
         lean: &[],
         kind: Kind::InModel,
         claim: "L = λW",
@@ -339,7 +593,418 @@ pub fn little_law() -> Check {
     }
 }
 
-// ---------------------------------------------------------- §2.3 / §3 ---
+// ------------------------------------------------ batching server -------
+
+/// Load of the PS in-model scenarios.
+pub const PS_RHO: f64 = 0.7;
+
+/// Two turn-work laws with mean 0.14 s: deterministic, and the hit/miss
+/// mixture (hit 0.05 s w.p. 0.8, miss 0.5 s).
+pub fn ps_services() -> [(&'static str, Dist); 2] {
+    [
+        ("D", Dist::Deterministic(0.14)),
+        (
+            "hit/miss",
+            Dist::HitMiss {
+                p_hit: 0.8,
+                hit: 0.05,
+                miss: 0.5,
+            },
+        ),
+    ]
+}
+
+/// Mean number at the replica by Little's law, `λ·R`, with the batch-means
+/// CI of the mean response.
+pub fn little_number(r: &BatchReport, lam: f64) -> Estimate {
+    Estimate {
+        mean: lam * r.response_ci.mean,
+        half_width: lam * r.response_ci.half_width,
+    }
+}
+
+/// One service law under PS and under FIFO, with their closed forms.
+#[derive(Clone, Debug)]
+pub struct InsensitivityRow {
+    pub name: &'static str,
+    pub ps: Estimate,
+    pub ps_theory: f64,
+    pub fifo: Estimate,
+    pub fifo_theory: f64,
+}
+
+/// Open Poisson turns at `ρ = 0.7`, no memory limit, 1M turns per run.
+pub fn insensitivity_scenario() -> Vec<InsensitivityRow> {
+    ps_services()
+        .into_iter()
+        .enumerate()
+        .map(|(i, (name, d))| {
+            let lam = PS_RHO / d.mean();
+            let run = |server| {
+                let c =
+                    BatchConfig::poisson_turns(lam, d.clone(), server, 1.0e6 / lam, 200 + i as u64);
+                little_number(&batch::simulate(&c), lam)
+            };
+            InsensitivityRow {
+                name,
+                ps: run(Server::Ps {
+                    phi: Phi::Constant(1.0),
+                }),
+                ps_theory: ps_num(1.0, PS_RHO),
+                fifo: run(Server::Fifo),
+                fifo_theory: num_in_system(lam, d.second_moment(), PS_RHO),
+            }
+        })
+        .collect()
+}
+
+/// PS insensitivity: under processor sharing the mean number depends on the
+/// work law only through the load; under FIFO it follows PK.
+pub fn ps_insensitivity() -> Check {
+    let rows = insensitivity_scenario();
+    let mut pass = true;
+    let mut obs = vec![];
+    for r in &rows {
+        pass &= r.ps.agrees_with(r.ps_theory, 0.02) && r.fifo.agrees_with(r.fifo_theory, 0.02);
+        obs.push(format!(
+            "{}: PS {} vs {:.4}, FIFO {} vs PK {:.4}",
+            r.name, r.ps, r.ps_theory, r.fifo, r.fifo_theory
+        ));
+    }
+    // FIFO separates the two laws, PS does not.
+    pass &= rows[0].fifo.hi() < rows[1].fifo.lo();
+    Check {
+        id: "ps_insensitivity",
+        paper: "sec:batch, prop:decode",
+        lean: &["psNum"],
+        kind: Kind::InModel,
+        claim: "at a PS server L = ρ/(C-ρ) for every work law with the same mean; at a FIFO server L follows PK",
+        expected: "ρ=0.7, φ≡1, work D or hit/miss (mean 0.14 s): PS L within CI (+2%) of ρ/(1-ρ) for both; FIFO L within CI (+2%) of λW_q+ρ and FIFO(D) < FIFO(hit/miss)".into(),
+        observed: obs.join("; "),
+        pass,
+    }
+}
+
+/// One open-session run against the isolated PS formula.
+#[derive(Clone, Debug)]
+pub struct BcmpRow {
+    pub phi: Phi,
+    pub rho: f64,
+    /// Turn rate `Λ/(1-p)`.
+    pub lam: f64,
+    pub throughput: f64,
+    pub sim: Estimate,
+    pub theory: f64,
+}
+
+/// Sessions arrive Poisson at `Λ`; each turn is followed by an H2 tool
+/// call (mean 2 s, CV² 4) and another turn w.p. `p = 0.8`. Work per turn is
+/// the hit/miss mixture. `φ ≡ 1` at `ρ = 0.7`, and `φ(n) = n/(1+(n-1)/4)`
+/// (saturating at 4) at `ρ = 3`.
+pub fn bcmp_scenario() -> Vec<BcmpRow> {
+    let s = ps_services()[1].1.clone();
+    let p = 0.8;
+    [
+        (Phi::Constant(1.0), PS_RHO),
+        (
+            Phi::Saturating {
+                beta: 0.25,
+                cap: None,
+            },
+            3.0,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, (phi, rho))| {
+        let lam = rho / s.mean();
+        let mut c = BatchConfig::poisson_turns(
+            lam * (1.0 - p),
+            s.clone(),
+            Server::Ps { phi },
+            8.0e5 / lam,
+            210 + i as u64,
+        );
+        c.classes[0].resume_prob = p;
+        c.classes[0].tool_time = Dist::hyperexp_balanced(2.0, 4.0);
+        let r = batch::simulate(&c);
+        BcmpRow {
+            phi,
+            rho,
+            lam,
+            throughput: r.throughput,
+            sim: little_number(&r, lam),
+            theory: ps_mean_number(&phi, rho),
+        }
+    })
+    .collect()
+}
+
+/// BCMP: with feedback through a general tool delay, the mean number at a
+/// PS replica is that of an isolated PS queue fed at `λ = Λ/(1-p)`.
+pub fn bcmp_feedback() -> Check {
+    let rows = bcmp_scenario();
+    let mut pass = true;
+    let mut obs = vec![];
+    for r in &rows {
+        pass &= r.sim.agrees_with(r.theory, 0.02) && rel(r.throughput, r.lam) < 0.01;
+        obs.push(format!(
+            "{:?}, ρ={}: L {} vs {:.4}; X {:.3} vs λ {:.3}",
+            r.phi, r.rho, r.sim, r.theory, r.throughput, r.lam
+        ));
+    }
+    Check {
+        id: "bcmp_feedback",
+        paper: "sec:sessions, prop:decode",
+        lean: &["psNum", "stationaryMean"],
+        kind: Kind::InModel,
+        claim: "open sessions with feedback: L at the PS replica equals Σ n π(n), π(n) ∝ ρⁿ/Π φ(k), with λ = Λ/(1-p)",
+        expected: "p=0.8, H2 tool time (CV² 4), hit/miss work: L within CI (+2%) of the formula for φ≡1 and a saturating φ; turn throughput within 1% of Λ/(1-p)".into(),
+        observed: obs.join("; "),
+        pass,
+    }
+}
+
+/// The PS analogue of [`miss_price_scenario`]: M/G/1-PS with `φ ≡ 1`,
+/// hit/miss work `0.05`/`0.5` s, hit rate 0.8 at `ρ = 0.6`, against hit
+/// rate `0.8 - δ`, common random numbers, 1M turns.
+pub fn ps_price_scenario(delta: f64) -> MissPriceRun {
+    let (s_h, s_m, p) = (MISS_PRICE_SH, MISS_PRICE_SM, 0.8);
+    let base = Dist::HitMiss {
+        p_hit: p,
+        hit: s_h,
+        miss: s_m,
+    };
+    let lam = 0.6 / base.mean();
+    let rho = lam * base.mean();
+    let d = Dist::HitMiss {
+        p_hit: p - delta,
+        hit: s_h,
+        miss: s_m,
+    };
+    let ps = Server::Ps {
+        phi: Phi::Constant(1.0),
+    };
+    let r0 = batch::simulate(&BatchConfig::poisson_turns(lam, base, ps, 1.0e6 / lam, 220));
+    let r1 = batch::simulate(&BatchConfig::poisson_turns(lam, d, ps, 1.0e6 / lam, 220));
+    let diffs: Vec<f64> = batch::paired_differences(&r0.responses, &r1.responses)
+        .into_iter()
+        .map(|x| lam * x)
+        .collect();
+    let phi = ps_price(1.0, rho, s_m - s_h);
+    let lo = lam * delta * phi;
+    let rho1 = rho + lam * delta * (s_m - s_h);
+    MissPriceRun {
+        phi,
+        dl: batch_means(&diffs, 20),
+        lo,
+        hi: (1.0 - rho) / (1.0 - rho1) * lo,
+        exact: ps_num(1.0, rho1) - ps_num(1.0, rho),
+    }
+}
+
+/// Prop. decode: at a PS server of capacity `C`, turning a fraction `δ` of
+/// turns into misses raises `L` by between `λδΦ_PS` and
+/// `(C-ρ)/(C-ρ')·λδΦ_PS`, `Φ_PS = CΔS/(C-ρ)²`; the upper end is exact.
+pub fn ps_price_bracket() -> Check {
+    let mut pass = true;
+    let mut obs = vec![];
+    for delta in [0.01, 0.05] {
+        let m = ps_price_scenario(delta);
+        pass &= m.dl.lo() <= m.hi && m.dl.hi() >= m.lo && m.dl.agrees_with(m.exact, 0.01);
+        obs.push(format!(
+            "δ={delta}: ΔL {} vs bracket [{:.4}, {:.4}], exact {:.4}",
+            m.dl, m.lo, m.hi, m.exact
+        ));
+    }
+    Check {
+        id: "ps_price_bracket",
+        paper: "prop:decode",
+        lean: &["psPrice_lower", "psPrice_upper", "psNum_diff_exact"],
+        kind: Kind::InModel,
+        claim: "λδΦ_PS ≤ ΔL ≤ (C-ρ)/(C-ρ')·λδΦ_PS at a PS server, Φ_PS = CΔS/(C-ρ)²",
+        expected: "M/G/1-PS, C=1, s_h=0.05, s_m=0.5, p=0.8, ρ=0.6: 95% CI of ΔL overlaps the bracket and contains the exact difference ρ'/(1-ρ')-ρ/(1-ρ) (+1%)".into(),
+        observed: obs.join("; "),
+        pass,
+    }
+}
+
+/// One footprint law: exact `expFit` vs Monte Carlo of FIFO admission.
+#[derive(Clone, Debug)]
+pub struct FootprintRow {
+    pub law: &'static str,
+    pub theory: f64,
+    pub sim: Estimate,
+}
+
+/// `M = 12`; footprints 6, {5,7}, 7, {2,12}; 1M draws each.
+pub fn footprint_scenario() -> Vec<FootprintRow> {
+    let m = 12.0;
+    let laws: [(&str, Vec<(f64, f64)>); 4] = [
+        ("$K\\equiv 6$", vec![(6.0, 1.0)]),
+        ("$K\\in\\{5,7\\}$", vec![(5.0, 0.5), (7.0, 0.5)]),
+        ("$K\\equiv 7$", vec![(7.0, 1.0)]),
+        ("$K\\in\\{2,12\\}$", vec![(2.0, 0.5), (12.0, 0.5)]),
+    ];
+    laws.into_iter()
+        .enumerate()
+        .map(|(i, (law, d))| {
+            let dist = Dist::discrete(
+                d.iter().map(|x| x.0).collect(),
+                d.iter().map(|x| x.1).collect(),
+            );
+            let mut rng = StdRng::seed_from_u64(230 + i as u64);
+            let mut w = Welford::new();
+            for _ in 0..1_000_000 {
+                w.push(batch::fifo_admitted(m, &dist, &mut rng) as f64);
+            }
+            FootprintRow {
+                law,
+                theory: exp_fit(&d, m),
+                sim: Estimate {
+                    mean: w.mean(),
+                    half_width: 1.96 * (w.variance() / w.n() as f64).sqrt(),
+                },
+            }
+        })
+        .collect()
+}
+
+/// Prop. footprint: with memory `M` and FIFO admission, the expected number
+/// admitted depends on the footprint law, and more variance can lower or
+/// raise it.
+pub fn footprint_batch_size() -> Check {
+    let rows = footprint_scenario();
+    let mut pass = rows
+        .iter()
+        .all(|r| r.sim.agrees_with(r.theory, 1e-3) || r.sim.half_width == 0.0);
+    pass &= rows.iter().all(|r| (r.sim.mean - r.theory).abs() < 0.01);
+    pass &= rows[1].sim.hi() < rows[0].sim.lo() && rows[2].sim.hi() < rows[3].sim.lo();
+    Check {
+        id: "footprint_batch_size",
+        paper: "prop:footprint",
+        lean: &["footprint_variance_hurts", "footprint_variance_helps"],
+        kind: Kind::InModel,
+        claim: "M=12: K≡6 admits 2, K∈{5,7} admits 7/4; K≡7 admits 1, K∈{2,12} admits 95/64",
+        expected:
+            "Monte Carlo means (1M draws) within CI of expFit, and ordered as the proposition says"
+                .into(),
+        observed: rows
+            .iter()
+            .map(|r| format!("{}: {} vs {:.4}", r.law, r.sim, r.theory))
+            .collect::<Vec<_>>()
+            .join("; "),
+        pass,
+    }
+}
+
+/// Exact limited PS against the theory's saturating `φ`, one cell.
+#[derive(Clone, Debug)]
+pub struct LpsRow {
+    pub service: &'static str,
+    pub cv2: f64,
+    /// Load relative to `φ(B)`.
+    pub u: f64,
+    pub theory: f64,
+    pub ps: Estimate,
+    pub lps: Estimate,
+}
+
+pub const LPS_CAP: usize = 8;
+pub const LPS_BETA: f64 = 0.1;
+
+/// Poisson turns; exact LPS (at most `B = 8` in the batch at
+/// `φ(n) = n/(1+0.1(n-1))`, FIFO beyond) against PS with the same `φ`
+/// flattened at `B`, for work laws D, Exp and H2 (CV² 4) of mean 1 and
+/// loads `u = ρ/φ(B)`. 400k turns per run.
+pub fn lps_scenario() -> Vec<LpsRow> {
+    let base = Phi::Saturating {
+        beta: LPS_BETA,
+        cap: None,
+    };
+    let capped = Phi::Saturating {
+        beta: LPS_BETA,
+        cap: Some(LPS_CAP),
+    };
+    let mut rows = vec![];
+    for (i, (service, d)) in [
+        ("D", Dist::Deterministic(1.0)),
+        ("Exp", Dist::exp(1.0)),
+        ("H2", Dist::hyperexp_balanced(1.0, 4.0)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for (j, u) in [0.5, 0.8, 0.9].into_iter().enumerate() {
+            let rho = u * capped.limit();
+            let lam = rho / d.mean();
+            let seed = 240 + (3 * i + j) as u64;
+            let mut lps = BatchConfig::poisson_turns(
+                lam,
+                d.clone(),
+                Server::Ps { phi: base },
+                4.0e5 / lam,
+                seed,
+            );
+            lps.batch_cap = Some(LPS_CAP);
+            let ps = BatchConfig::poisson_turns(
+                lam,
+                d.clone(),
+                Server::Ps { phi: capped },
+                4.0e5 / lam,
+                seed,
+            );
+            rows.push(LpsRow {
+                service,
+                cv2: d.cv2(),
+                u,
+                theory: ps_mean_number(&capped, rho),
+                ps: little_number(&batch::simulate(&ps), lam),
+                lps: little_number(&batch::simulate(&lps), lam),
+            });
+        }
+    }
+    rows
+}
+
+/// How far is the theory's "φ saturating at B" from the exact batch cap?
+/// Both give the same total rate in every state; they differ in who gets
+/// it. The PS side is insensitive; the LPS side is not.
+pub fn lps_vs_saturating_phi() -> Check {
+    let rows = lps_scenario();
+    let mut pass = true;
+    let mut obs = vec![];
+    for r in &rows {
+        pass &= r.ps.agrees_with(r.theory, 0.03);
+        match r.service {
+            "Exp" => pass &= r.lps.agrees_with(r.theory, 0.03),
+            "D" if r.u >= 0.8 => pass &= r.lps.hi() < r.theory,
+            "H2" if r.u >= 0.8 => pass &= r.lps.lo() > r.theory,
+            _ => {}
+        }
+        obs.push(format!(
+            "{} u={}: formula {:.3}, PS {:.3}, LPS {:.3} ({:+.1}%)",
+            r.service,
+            r.u,
+            r.theory,
+            r.ps.mean,
+            r.lps.mean,
+            100.0 * (r.lps.mean / r.theory - 1.0)
+        ));
+    }
+    Check {
+        id: "lps_vs_saturating_phi",
+        paper: "sec:batch",
+        lean: &["stationaryMean"],
+        kind: Kind::BeyondModel,
+        claim: "a batch cap B is modelled by φ flattened at B; the exact cap (LPS) is not insensitive, so the error depends on the work law",
+        expected: "B=8, β=0.1: PS with flattened φ within CI (+3%) of Σnπ(n) for every law; LPS equals it for Exp (+3%), is below it for D and above it for H2 (CV² 4) at u ≥ 0.8".into(),
+        observed: obs.join("; "),
+        pass,
+    }
+}
+
+// ---------------------------------------------------------- §2.3 / §3.2 -
 
 /// §2.3: in a closed system with finite KV, throughput falls with N
 /// because the hit rate falls and E[S] rises.
@@ -430,7 +1095,7 @@ pub fn interactive_response_time_law() -> Check {
     }
     Check {
         id: "interactive_response_time_law",
-        paper: "thm:irtl",
+        paper: "sec:model (closed network)",
         lean: &[],
         kind: Kind::InModel,
         claim: "R = N/X - Z",
@@ -512,7 +1177,7 @@ pub fn selective_offload_never_worse() -> Check {
     }
 }
 
-// ---------------------------------------------------------------- §3.2 --
+// ---------------------------------------------------------------- §3.1 --
 
 /// Prop. evict (i).
 pub fn shortest_first_counterexample() -> Check {
@@ -607,7 +1272,7 @@ pub fn shortest_first_unbounded_with_resume_prob() -> Check {
     pass &= max_sf > 2.0 && mean_d < mean_sf;
     Check {
         id: "shortest_first_unbounded_with_resume_prob",
-        paper: "prop:evict (iii), thm:dantzig",
+        paper: "prop:evict (iii), sec:evict (Dantzig)",
         lean: &[
             "shortestFirst_unbounded_with_resume_prob",
             "shortestFirst_wrong_with_resume_prob",
@@ -617,6 +1282,132 @@ pub fn shortest_first_unbounded_with_resume_prob() -> Check {
         expected: "witness ratio > M for M=10,100,1000; on random p_i: max SF/OPT > 2 and mean(density) < mean(SF)".into(),
         observed: format!(
             "random p_i∈[0.05,1]: SF max {max_sf:.2} mean {mean_sf:.3}; density mean {mean_d:.3}"
+        ),
+        pass,
+    }
+}
+
+/// Prop. guarded: with arbitrary weights `w_i` (e.g. prices `p_i Φ_i`),
+/// plain density greedy has no constant ratio, while the guarded density
+/// greedy stays within 2 of the optimum.
+pub fn guarded_density_two_approx() -> Check {
+    let mut pass = true;
+    for k in [10u64, 1000, 100_000] {
+        let (it, delta) = eviction::density_counterexample(k);
+        let d = eviction::weighted_cost(&it, &eviction::density_weighted(&it, delta));
+        let g = eviction::guarded_density(&it, delta).expect("feasible");
+        let (opt, _) = eviction::optimal_weighted(&it, delta).expect("feasible");
+        pass &= d == k as f64 && opt == 2.0 && eviction::weighted_cost(&it, &g) == 2.0;
+    }
+    let mut v = vec![];
+    for (i, (n, max_c)) in [(6, 20), (12, 200), (18, 60)].into_iter().enumerate() {
+        v.extend(eviction::sweep_weighted(3000, n, max_c, 160 + i as u64));
+    }
+    let q: Vec<eviction::Ratios> = (0..3)
+        .flat_map(|i| eviction::sweep(3000, 12, 200, ResumeModel::Varied { lo: 0.05 }, 170 + i))
+        .collect();
+    let max = |xs: &[eviction::Ratios], f: fn(&eviction::Ratios) -> f64| {
+        xs.iter().map(f).fold(0.0, f64::max)
+    };
+    let (gw, dw) = (max(&v, |r| r.guarded_density), max(&v, |r| r.density_first));
+    let gq = max(&q, |r| r.guarded_density);
+    pass &= gw <= 2.0 + 1e-12 && gq <= 2.0 + 1e-12 && dw > 2.0;
+    Check {
+        id: "guarded_density_two_approx",
+        paper: "prop:guarded",
+        lean: &[
+            "densityFirst_unbounded",
+            "threshold_prefix_le",
+            "guardedGreedy_two_approx",
+        ],
+        kind: Kind::InModel,
+        claim: "guarded density greedy is a 2-approximation for arbitrary weights; plain density greedy is not",
+        expected: "witness (1,0),(K,K),(1,2), ΔC=2: density pays K, guarded and OPT 2; max guarded/OPT ≤ 2 over 9000 general-weight and 9000 p_i c_i² instances; plain density max > 2".into(),
+        observed: format!(
+            "general weights: guarded max {gw:.3}, density max {dw:.1}; p_i c_i²: guarded max {gq:.3}"
+        ),
+        pass,
+    }
+}
+
+/// One random memory-pricing instance: states with price `w_i` (e.g.
+/// `p_i Φ_i`) and byte-seconds `c_i = tokens × τ_i` (integers, for the DP).
+fn memory_instance(rng: &mut StdRng, n: usize) -> Vec<eviction::Weighted> {
+    (0..n)
+        .map(|_| eviction::Weighted {
+            c: rng.random_range(1..=8u64) * rng.random_range(1..=8u64),
+            w: 10f64.powf(rng.random_range(-1.0..=2.0)),
+        })
+        .collect()
+}
+
+/// Prop. memory: (i) the θ-threshold set `{i : w_i ≤ θ c_i}` costs no more
+/// than any set freeing at least as many byte-seconds (exact DP optimum);
+/// (ii) at block level, the density prefix plus the block that completes
+/// the target costs at most the optimum plus that block's price, although
+/// plain density order alone is not optimal.
+pub fn memory_threshold_rule() -> Check {
+    let mut rng = StdRng::seed_from_u64(180);
+    let (mut thresholds, mut ok_i) = (0usize, 0usize);
+    let mut pass = true;
+    for _ in 0..2000 {
+        let n = rng.random_range(4..=12);
+        let items = memory_instance(&mut rng, n);
+        let thetas: Vec<f64> = items
+            .iter()
+            .map(eviction::Weighted::density)
+            .chain(std::iter::once(0.0))
+            .collect();
+        for theta in thetas {
+            let t: Vec<usize> = (0..items.len())
+                .filter(|&i| items[i].w <= theta * items[i].c as f64)
+                .collect();
+            let freed = eviction::weighted_freed(&items, &t);
+            let (opt, _) = eviction::optimal_weighted(&items, freed).expect("feasible");
+            let cost = eviction::weighted_cost(&items, &t);
+            thresholds += 1;
+            if cost <= opt * (1.0 + 1e-12) {
+                ok_i += 1;
+            }
+        }
+    }
+    pass &= ok_i == thresholds;
+    // (ii) blocks: c_i = τ_i of the block's program, target ΔC random.
+    let (mut blocks, mut ok_ii, mut greedy_beats_opt) = (0usize, 0usize, 0usize);
+    let mut worst_excess: f64 = 0.0;
+    for _ in 0..3000 {
+        let n = rng.random_range(4..=16);
+        let items: Vec<eviction::Weighted> = (0..n)
+            .map(|_| eviction::Weighted {
+                c: rng.random_range(1..=8),
+                w: 10f64.powf(rng.random_range(-1.0..=2.0)),
+            })
+            .collect();
+        let total: u64 = items.iter().map(|i| i.c).sum();
+        let delta = rng.random_range(1..=total);
+        let g = eviction::density_weighted(&items, delta);
+        let x = *g.last().expect("delta ≥ 1 takes a block");
+        let cost = eviction::weighted_cost(&items, &g);
+        let (opt, _) = eviction::optimal_weighted(&items, delta).expect("feasible");
+        blocks += 1;
+        if cost <= opt + items[x].w + 1e-9 {
+            ok_ii += 1;
+        }
+        if cost > opt * (1.0 + 1e-9) {
+            greedy_beats_opt += 1;
+            worst_excess = worst_excess.max((cost - opt) / items[x].w);
+        }
+    }
+    pass &= ok_ii == blocks && greedy_beats_opt > 0;
+    Check {
+        id: "memory_threshold_rule",
+        paper: "prop:memory",
+        lean: &["threshold_rule_optimal", "density_prefix_plus_one"],
+        kind: Kind::InModel,
+        claim: "dropping exactly the states priced at most θ per byte-second is optimal for the memory it frees; block-level density order is optimal up to one block",
+        expected: "(i) Σ_T w = OPT(Σ_T c) at every candidate θ of 2000 random instances (4–12 states, c_i = tokens·τ_i); (ii) density prefix + completing block ≤ OPT + w_x on 3000 block instances, with plain density > OPT on some".into(),
+        observed: format!(
+            "(i) {ok_i}/{thresholds} thresholds optimal; (ii) {ok_ii}/{blocks} within one block, density > OPT on {greedy_beats_opt}, worst excess {worst_excess:.3} of the completing block's price"
         ),
         pass,
     }
@@ -850,7 +1641,7 @@ pub fn pd_win_condition_decisions() -> Check {
     }
 }
 
-// ------------------------------------------------------------------ §5 --
+// ---------------------------------------------------------------- §3.3 --
 
 /// Prop. routing (ii): strict affinity is not optimal at high load.
 pub fn affinity_breaks_at_high_load() -> Check {
@@ -958,6 +1749,169 @@ pub fn mixed_workload(n: usize, seed: u64, ev: EvictionPolicy) -> AgenticConfig 
     cfg
 }
 
+/// Session arrival rates of the open-session eviction scenario on the
+/// two-resource replica (see [`open_session_cfg`]); about 2.1 and 3.0
+/// offered turns/s (10.7 turns per session). At the default cap of 24
+/// live sessions the first is the onset of eviction (follow-up hit rate
+/// about 0.95) and the second is deep inside the eviction window (about
+/// 0.75); at 32 live sessions seeds start to thrash at the first and most
+/// have thrashed at the second, at 16 neither load evicts much. Below
+/// about 0.12 there are no evictions and the policies coincide.
+pub const OPEN_RATES: [f64; 2] = [0.20, 0.28];
+pub const OPEN_SEEDS: u64 = 20;
+/// Default cap on live sessions of the scenario.
+pub const OPEN_CAP: usize = 24;
+/// Admission caps of the sweep (the default is one of them).
+pub const OPEN_CAPS: [usize; 3] = [16, 24, 32];
+/// All policies, run at the default cap.
+pub const OPEN_POLICIES: [EvictionPolicy; 6] = [
+    EvictionPolicy::ShortestFirst,
+    EvictionPolicy::Density,
+    EvictionPolicy::Priced,
+    EvictionPolicy::PricedMemory,
+    EvictionPolicy::PricedMemoryBlocks,
+    EvictionPolicy::Lru,
+];
+/// Policies run at the other caps of the sweep.
+pub const SWEEP_POLICIES: [EvictionPolicy; 3] = [
+    EvictionPolicy::ShortestFirst,
+    EvictionPolicy::Density,
+    EvictionPolicy::PricedMemory,
+];
+
+/// Cost model of the open-session scenario: the example costs with a
+/// KV-dependent decode term, `β = 2·10⁻⁹` s per output token per context
+/// token (the KV of a 100k-token context takes as long to read as the
+/// weights).
+pub fn open_session_cost() -> CostModel {
+    let mut cost = AgenticConfig::example(0, 1.0e6).cost;
+    cost.decode_kv = 2.0e-9;
+    cost
+}
+
+/// Open sessions on one two-resource replica with finite KV. Two classes
+/// with equal arrival weight: agents (`p = 0.95`, 4–8k initial tokens, 800
+/// new and 300 output per turn, tool calls Exp(6 s)) and one-shot documents
+/// (`p = 0.3`, 15–30k tokens, 500 new, think time Exp(2 s)). The tool times
+/// differ so that the byte-second price (`PricedMemory`) and the per-token
+/// price (`Density`, `Priced`) can order the two classes differently.
+/// 600k-token KV pool, batch cap 8 (prefilling and decoding turns), at most
+/// `cap` live sessions (the rest wait to enter), 512-token blocks.
+pub fn open_session_cfg(rate: f64, cap: usize, ev: EvictionPolicy, seed: u64) -> BatchConfig {
+    let kv = 6.0e5;
+    BatchConfig {
+        population: Population::Open { rate },
+        max_sessions: Some(cap),
+        classes: vec![
+            ProgramClass {
+                weight: 1.0,
+                resume_prob: 0.95,
+                initial_tokens: Dist::Uniform {
+                    lo: 4_000.0,
+                    hi: 8_000.0,
+                },
+                new_tokens: Dist::exp(800.0),
+                output_tokens: Dist::exp(300.0),
+                tool_time: Dist::exp(6.0),
+            },
+            ProgramClass {
+                weight: 1.0,
+                resume_prob: 0.3,
+                initial_tokens: Dist::Uniform {
+                    lo: 15_000.0,
+                    hi: 30_000.0,
+                },
+                new_tokens: Dist::exp(500.0),
+                output_tokens: Dist::exp(300.0),
+                tool_time: Dist::exp(2.0),
+            },
+        ],
+        cost: open_session_cost(),
+        work: Work::Tokens,
+        server: Server::TwoStage,
+        batch_cap: Some(8),
+        kv_capacity: kv,
+        max_context: 0.5 * kv,
+        eviction: ev,
+        block_tokens: 512.0,
+        step_time: None,
+        warmup: 1_000.0,
+        horizon: 21_000.0,
+        seed,
+    }
+}
+
+/// One (cap, load, policy) cell over [`OPEN_SEEDS`] seeds.
+#[derive(Clone, Debug)]
+pub struct OpenEvictRow {
+    pub cap: usize,
+    pub rate: f64,
+    pub policy: EvictionPolicy,
+    pub throughput: Estimate,
+    pub hit_rate: Estimate,
+    /// Mean and p99 time to first token (prefill wait + prefill).
+    pub ttft: Estimate,
+    pub ttft_p99: Estimate,
+    /// Mean and p99 turn response.
+    pub response: Estimate,
+    pub p99: Estimate,
+    pub availability: Estimate,
+    /// Mean wait of a new session in the entry queue (the cost of the cap).
+    pub entry_wait: Estimate,
+    /// Seeds whose follow-up hit rate fell below 0.5 (thrashing).
+    pub collapsed: usize,
+}
+
+pub fn open_row(cap: usize, rate: f64, policy: EvictionPolicy) -> OpenEvictRow {
+    let rs: Vec<BatchReport> = (1..=OPEN_SEEDS)
+        .map(|s| batch::simulate(&open_session_cfg(rate, cap, policy, s)))
+        .collect();
+    let est = |f: fn(&BatchReport) -> f64| replications(&rs.iter().map(f).collect::<Vec<_>>());
+    OpenEvictRow {
+        cap,
+        rate,
+        policy,
+        throughput: est(|r| r.throughput),
+        hit_rate: est(|r| r.hit_rate),
+        ttft: est(|r| r.ttft.mean()),
+        ttft_p99: est(|r| r.ttft_p99),
+        response: est(|r| r.response.mean()),
+        p99: est(|r| r.p99),
+        availability: est(|r| r.mean_availability),
+        entry_wait: est(|r| r.entry_wait.mean()),
+        collapsed: rs.iter().filter(|r| r.hit_rate < 0.5).count(),
+    }
+}
+
+/// Every cell of the open-session scenario: all policies at the default
+/// cap, [`SWEEP_POLICIES`] at the other caps, both loads. Cells run on
+/// threads; the result is deterministic.
+pub fn eviction_open_scenario() -> Vec<OpenEvictRow> {
+    let mut cells = vec![];
+    for cap in OPEN_CAPS {
+        let pols: &[EvictionPolicy] = if cap == OPEN_CAP {
+            &OPEN_POLICIES
+        } else {
+            &SWEEP_POLICIES
+        };
+        for rate in OPEN_RATES {
+            for &policy in pols {
+                cells.push((cap, rate, policy));
+            }
+        }
+    }
+    std::thread::scope(|s| {
+        let handles: Vec<_> = cells
+            .iter()
+            .map(|&(cap, rate, policy)| s.spawn(move || open_row(cap, rate, policy)))
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("simulation thread"))
+            .collect()
+    })
+}
+
 /// Results that bear on the paper's open questions (§7) but test no
 /// proposition.
 pub fn observations() -> Vec<Observation> {
@@ -970,6 +1924,7 @@ pub fn observations() -> Vec<Observation> {
         for ev in [
             EvictionPolicy::ShortestFirst,
             EvictionPolicy::Density,
+            EvictionPolicy::Priced,
             EvictionPolicy::Lru,
         ] {
             let xs: Vec<f64> = (1..=5)
@@ -982,7 +1937,36 @@ pub fn observations() -> Vec<Observation> {
     out.push(Observation {
         id: "dynamic_eviction",
         paper: "prop:evict, sec:exp-evict",
-        question: "Offline, the density rule beats SF by a wide margin when p_i vary. Does that carry over to a closed system where evictions repeat and freed memory is reused? (Two classes: agent p=0.95 short context; one-shot p=0.2 long context. Throughput turns/s, 5 seeds.)",
+        question: "Offline, the density rule beats SF by a wide margin when p_i vary. Does that, or the congestion-priced order q_i Φ_i / c_i, carry over to a closed system where evictions repeat and freed memory is reused? (Two classes: agent p=0.95 short context; one-shot p=0.2 long context. Throughput turns/s, 5 seeds.)",
+        result: lines.join("; "),
+    });
+
+    // Eviction with open sessions on the two-resource replica, with an
+    // admission-cap sweep.
+    let lines: Vec<String> = eviction_open_scenario()
+        .iter()
+        .map(|r| {
+            format!(
+                "cap={} Λ={} {:?}: X {} hit {} TTFT {} p99 {} R {} p99 {} avail {} entry wait {} ({} of {OPEN_SEEDS} seeds thrash)",
+                r.cap,
+                r.rate,
+                r.policy,
+                r.throughput,
+                r.hit_rate,
+                r.ttft,
+                r.ttft_p99,
+                r.response,
+                r.p99,
+                r.availability,
+                r.entry_wait,
+                r.collapsed
+            )
+        })
+        .collect();
+    out.push(Observation {
+        id: "eviction_open_sessions",
+        paper: "prop:price, prop:decode, prop:memory, sec:exp-evict",
+        question: "On the two-resource replica misses are paid in the prefill FIFO (Prop. price) while decode is insensitive (Prop. decode), and the memory shadow price is per byte-second (Prop. memory). With open sessions, a session cap, finite KV and a batch cap, how do SF, Density, Priced, PricedMemory, block-level PricedMemory and LRU compare in throughput, hit rate, TTFT and turn response, and does the admission cap move the thrash window? (Turns/s and seconds, mean ± 95% half-width over seeds.)",
         result: lines.join("; "),
     });
 

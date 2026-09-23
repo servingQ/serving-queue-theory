@@ -1,7 +1,7 @@
 /-
 # Program-level KV eviction: shortest-context-first is not optimal
 
-Proposition (paper `prop:evict`, §4.2).  Consider suspended programs with context
+Proposition (paper `prop:evict`, §3.1).  Consider suspended programs with context
 lengths `c_i`, recompute cost `R(c) = c²`, and a memory target `ΔC`:
 
   minimise  Σ_{i∈S} c_i²   subject to  Σ_{i∈S} c_i ≥ ΔC.

@@ -114,3 +114,31 @@ fn eviction_examples() {
     assert_eq!(evict_cost(&[6]), 36);
     assert!(Item { c: 10, p: 0.01 }.cost() < Item { c: 2, p: 1.0 }.cost());
 }
+
+#[test]
+fn ps_num_and_price() {
+    // psNum_diff_exact: the change of psNum equals (C-ρ)/(C-ρ')·λ Σ q Φ.
+    for (c, rho, lam, q, ds) in [(1.0, 0.6, 4.0, 0.05, 0.45), (2.0, 1.2, 3.0, 0.1, 0.5)] {
+        let rho1 = rho + lam * q * ds;
+        let lhs = ps_num(c, rho1) - ps_num(c, rho);
+        let rhs = (c - rho) / (c - rho1) * lam * q * ps_price(c, rho, ds);
+        assert!(close(lhs, rhs));
+        // psPrice_lower
+        assert!(lam * q * ps_price(c, rho, ds) <= lhs);
+    }
+    // stationaryMean with a(n) = 1 (φ ≡ 1) tends to psNum 1 ρ.
+    let a = vec![1.0; 2000];
+    assert!(close(stationary_mean(&a, 0.7), ps_num(1.0, 0.7)));
+}
+
+#[test]
+fn footprint_exp_fit() {
+    // expFit_six, expFit_five_seven, expFit_seven, expFit_two_twelve
+    assert!(close(exp_fit(&[(6.0, 1.0)], 12.0), 2.0));
+    assert!(close(exp_fit(&[(5.0, 0.5), (7.0, 0.5)], 12.0), 7.0 / 4.0));
+    assert!(close(exp_fit(&[(7.0, 1.0)], 12.0), 1.0));
+    assert!(close(
+        exp_fit(&[(2.0, 0.5), (12.0, 0.5)], 12.0),
+        95.0 / 64.0
+    ));
+}

@@ -6,7 +6,7 @@ Claude Code and Codex.
 ## 1. Decide what is actually provable
 Write the informal statement first. Ask: is this a theorem about the
 *model* (provable) or a claim about *workloads* (empirical)? Only the
-former becomes a `proposition`; the latter goes to §6 (experiments) and
+former becomes a `proposition`; the latter goes to §4 (experiments) and
 `docs/research-plan.md`, or is hedged in prose. If the result is an
 established theorem from the literature, state it as a cited `theorem`
 instead (no Lean needed; mark the bib entry `UNVERIFIED` if you did not
@@ -38,7 +38,7 @@ Formal statement, items with \begin{enumerate}[nosep,leftmargin=1.6em,label=(\ro
 ```
 - Escape underscores in `\leanref{}` as `\_`.
 - `\provedby{}` renders nothing; it only binds the paper to Lean for CI.
-- Place the proposition in the section whose decision it informs (§§3–5; PD results go to App. B).
+- Place the proposition in the section whose decision it informs (§2 for results about the model, §3 for scheduling decisions; PD results go to App. B).
 - Add a `\begin{proof}[Proof of Proposition~\ref{prop:key}]` to Appendix A,
   written as an ordinary proof for a human reader. Do not name Lean
   theorems or tactics in it.

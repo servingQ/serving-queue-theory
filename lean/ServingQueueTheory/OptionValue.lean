@@ -1,7 +1,7 @@
 /-
 # Option value: enabling a mechanism never hurts an optimal controller
 
-Proposition (paper `prop:option`, §4.1).  Let `A₀ ⊆ A₁` be action sets (e.g.
+Proposition (paper `prop:option`, §3.2).  Let `A₀ ⊆ A₁` be action sets (e.g.
 `A₀ = {keep, recompute}`, `A₁ = A₀ ∪ {offload}`).  For any cost `J`,
 `min_{a ∈ A₁} J a ≤ min_{a ∈ A₀} J a`.
 

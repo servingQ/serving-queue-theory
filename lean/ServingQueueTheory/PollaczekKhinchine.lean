@@ -1,7 +1,7 @@
 /-
 # Pollaczek–Khinchine: variance of service time drives queueing delay
 
-Proposition (paper `prop:pk`, §3).  For an M/G/1 queue,
+Proposition (paper `prop:pk`, §2.2).  For an M/G/1 queue,
 `E[Wq] = lam * E[S²] / (2 (1 - rho))`.
 
 * `secondMoment_eq_variance_add_sq` : `E[S²] = Var[S] + E[S]²` for a finite

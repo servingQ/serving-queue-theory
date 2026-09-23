@@ -1,4 +1,4 @@
-//! Routing follow-up turns across replicas (paper §5, Prop. routing).
+//! Routing follow-up turns across replicas (paper §3.3, Prop. routing).
 //!
 //! `J` single-server FIFO replicas with unbounded KV memory. A program's KV
 //! lives on the replica that served its last turn. For each follow-up turn
@@ -75,6 +75,7 @@ impl RoutingConfig {
                 prefill_linear: 2.0e-5,
                 prefill_quadratic: 2.0e-9,
                 decode_per_token: 2.0e-4,
+                decode_kv: 0.0,
             },
             policy,
             hot_fraction: 0.5,
