@@ -23,10 +23,15 @@ latency reproduction is secondary.
 
 ## Non-negotiable rules
 
-1. **No unproved claims in the paper.** Every `\begin{proposition}` carries
-   `\leanref{...}` names, and every name must be a theorem that compiles.
-   If you cannot prove something, state it as a conjecture or an empirical
-   question, never as a proposition.
+1. **No unproved claims in the paper.** Every `\begin{proposition}` (and
+   any `\begin{example}`, though we avoid them) ends with
+   `\provedby{\leanref{...}}`; a derived number stated in prose carries an
+   inline `\provedby{}` too,
+   and every name must be a theorem that compiles. Established results from
+   the literature may be stated as a `\begin{theorem}` with a
+   citation and no Lean proof; they are not our claims and need no
+   `\provedby`. Anything else you cannot prove is a conjecture or an
+   empirical question, never a proposition.
 2. **No `sorry`, no new axioms.** `scripts/check_lean.sh` fails on either.
    Do not add `axiom` declarations or `set_option` escapes to silence errors.
 3. **Do not claim a proof compiles unless you ran `lake build`.** Report
@@ -38,7 +43,7 @@ latency reproduction is secondary.
 5. **Do not assert workload properties without data.** In particular, do not
    write that agentic workloads are "high variance" or "long-tailed" as a
    fact; the paper's stance is that variance comes from the hit/miss
-   mixture and must be measured (see §2.1 and Example ex:cv2).
+   mixture and must be measured (see §3, Eq. `eq:cv2`).
 6. **Keep statements close to the prose.** Lean statements should be
    readable next to the paper proposition so a human can check the
    correspondence, which CI cannot.
@@ -71,7 +76,7 @@ A first `lake build` without the cache would take hours — always run
 ## Repository layout
 
 ```
-paper/main.tex          paper; propositions are tcolorbox-shaded amsthm envs
+paper/main.tex          paper; propositions (ours) and theorems (cited) share the plain amsthm style
 paper/refs.bib          bibliography (verified 2026-09-23; see notes in entries)
 paper/icml2026.sty      ICML style; [preprint] option in use
 lean/lakefile.toml      Mathlib pinned to v4.34.0 (lean-toolchain matches)
@@ -82,6 +87,8 @@ scripts/check_lean.sh          build + sorry + axiom audit
 scripts/check_lean_refs.sh     \leanref ↔ Lean name check
 scripts/hooks/post-edit.sh     Claude Code hook: rebuild after edits
 docs/add-proposition.md        step-by-step workflow for a new result
+docs/research-plan.md          status of every result and experiment; read before paper work
+docs/simulation-design.md      design of the (not yet built) discrete-event simulator
 ```
 
 ## How to add or change a result
@@ -91,22 +98,37 @@ Follow `docs/add-proposition.md`. Short version:
 1. Write the theorem in the right Lean module (or a new one imported from
    `lean/ServingQueueTheory.lean`). Build it.
 2. Add `#print axioms <name>` to `lean/scripts/AxiomAudit.lean`.
-3. In the paper, state the proposition in a `proposition` box, put numeric
-   instances in an `example`, end the box with
-   `\begin{leanrefs}\leanref{name}, ...\end{leanrefs}`
-   (underscores escaped as `\_`), and add a proof to Appendix A.
+3. In the paper, state the proposition in a `proposition` box, end it with
+   `\provedby{\leanref{name}, ...}` (underscores escaped as `\_`), and add
+   a human-readable proof to Appendix A.
 4. `make check`.
 
 ## Paper conventions
 
 - ICML two-column; do not change fonts, margins, or the `.sty`.
-- Propositions: formal statement only, enumerated with `(\roman*)`.
-  Numeric instances go in `\begin{example}` with an `\exlean{...}` footer.
+- Structure: §2 model (with cited standard theorems), §§3–6 one section
+  per decision (congestion, KV state, PD, routing), §7 experiments, App. A
+  proofs. Do not reintroduce a "layered" framing, a section that collects
+  all propositions, or a separate section for other papers' claims.
+- Propositions sit in the section whose decision they inform. Formal
+  statement only, enumerated with `(\roman*)`. Do not interleave
+  `example` blocks; if a concrete number carries the argument, state it
+  in one prose sentence with an inline `\provedby{}` (the Lean `_example`
+  theorem stays).
+- **Lean stays out of the rendered paper.** `\provedby{}` typesets nothing.
+  The only mention of Lean is one sentence at the start of Appendix A. Do
+  not name Lean theorems, tactics or CI in the prose.
+- Appendix A proofs are ordinary mathematical proofs written for a human
+  reader, not transcripts of the Lean proofs.
+- Other papers' claims are discussed where they bear on a result, in "The
+  claim" / "Reading the claim" paragraphs. Quote or paraphrase exactly what
+  they say, cite the section/figure, and do not imply we re-ran their
+  experiments (the intro states once that we did not).
+- §7 Experiments uses `\tbd` placeholders. Fill cells only with measured
+  values; keep `docs/research-plan.md` in sync with what each table
+  measures.
 - Prose style: short sentences, no em-dashes, numbers in tables or examples
   rather than running text where possible.
-- Section 4 discusses other papers' claims. Quote or paraphrase exactly what
-  they say and cite the section/figure; say explicitly that we did not
-  re-run their experiments.
 
 ## Lean conventions
 
@@ -121,11 +143,13 @@ Follow `docs/add-proposition.md`. Short version:
 
 ## Research context worth knowing
 
-- Claims re-examined in §4 come from ThunderAgent (arXiv:2602.13692 v3):
+- Claims re-examined in §§4–5 come from ThunderAgent (arXiv:2602.13692 v3):
   Lemma 4.1 / Def. 4.1 / App. F.3 (shortest-first eviction theorem, refuted
   by our Prop. on eviction), App. A.2 + Fig. 7 (offloading and PD numbers),
   App. A.4 (v3 only: offloading is "orthogonal"). PPD is arXiv:2603.13358
   (ICML 2026). Agentic trace statistics are from the vLLM AgentX (2026-09-08)
   and vLLM×Mooncake (2026-05-06) blog posts.
-- Next empirical steps are listed in paper §6; the first is measuring
-  per-turn service-time CV² on replayed traces.
+- The research plan, result status and experiment order are in
+  `docs/research-plan.md`; experiments E1–E7 are laid out in paper §7. E1
+  (service-time calibration) gates everything; E2 (per-turn CV²) is the
+  first result to report.

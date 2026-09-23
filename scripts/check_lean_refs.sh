@@ -12,6 +12,14 @@ for r in $refs; do
   fi
 done
 echo "checked $(echo "$refs" | wc -w) \\leanref citations"
+# every proposition and example block must name its Lean proof via \provedby
+missing=$(sed 's/%.*//' paper/main.tex | awk '
+  /\\begin\{(proposition|example)\}/ { inblk=1; has=0; hdr=$0; ln=NR }
+  inblk && /\\provedby\{/ { has=1 }
+  inblk && /\\end\{(proposition|example)\}/ { if (!has) print "line " ln ": " hdr; inblk=0 }')
+if [ -n "$missing" ]; then
+  echo "NO \\provedby in:"; echo "$missing"; fail=1
+fi
 # theorems referenced in the paper should also be axiom-audited
 for r in $refs; do
   short=${r##*.}

@@ -2,7 +2,7 @@
 # Program-aware routing: myopic vs. lookahead decisions, and the limit of
 # affinity
 
-Proposition (Paper Prop. 7).  For a program `p` and candidate node `j`:
+Proposition (paper `prop:routing` and `prop:append`, §6).  For a program `p` and candidate node `j`:
 
   myopic     `C_j = W_j + S_j`
   lookahead  `C_j = W_j + S_j + M_j + F_j`

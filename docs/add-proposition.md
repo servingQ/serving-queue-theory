@@ -6,8 +6,11 @@ Claude Code and Codex.
 ## 1. Decide what is actually provable
 Write the informal statement first. Ask: is this a theorem about the
 *model* (provable) or a claim about *workloads* (empirical)? Only the
-former becomes a `proposition`; the latter goes to §6 (empirical plan) or
-is hedged in prose.
+former becomes a `proposition`; the latter goes to §7 (experiments) and
+`docs/research-plan.md`, or is hedged in prose. If the result is an
+established theorem from the literature, state it as a cited `theorem`
+instead (no Lean needed; mark the bib entry `UNVERIFIED` if you did not
+read the source).
 
 ## 2. Lean
 - Pick the module (`lean/ServingQueueTheory/*.lean`) or create one and
@@ -26,18 +29,23 @@ is hedged in prose.
 ```latex
 \begin{proposition}[Short name]\label{prop:key}
 Formal statement, items with \begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)].
-\begin{leanrefs}\leanref{thm\_one}, \leanref{thm\_two}\end{leanrefs}
+\provedby{\leanref{thm\_one}, \leanref{thm\_two}}
 \end{proposition}
 
-\begin{example}\label{ex:key}
-Concrete numbers. \exlean{\leanref{thm\_example}}
-\end{example}
+% No example blocks between propositions. If a number is needed, one prose
+% sentence with an inline binding:
+... gives $\mathrm{CV}^2>15$.\provedby{\leanref{thm\_example}}
 ```
 - Escape underscores in `\leanref{}` as `\_`.
+- `\provedby{}` renders nothing; it only binds the paper to Lean for CI.
+- Place the proposition in the section whose decision it informs (§§3–6).
 - Add a `\begin{proof}[Proof of Proposition~\ref{prop:key}]` to Appendix A,
-  transcribing the Lean proof and naming each theorem.
-- If the result bears on a published claim, discuss it in §4 with the
-  exact section/figure of the source.
+  written as an ordinary proof for a human reader. Do not name Lean
+  theorems or tactics in it.
+- If the result bears on a published claim, discuss it in the same
+  section under "The claim" / "Reading the claim", with the exact
+  section/figure of the source.
+- Update the status table in `docs/research-plan.md`.
 
 ## 4. Verify
 ```bash

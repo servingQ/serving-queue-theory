@@ -1,7 +1,7 @@
 /-
 # M/M/1 response time: nonlinear blow-up near saturation
 
-Proposition (Paper Prop. 1).  For a single-server Markovian queue with
+Proposition (paper `prop:mm1`, §3).  For a single-server Markovian queue with
 arrival rate `lam` and service rate `mu`, the mean response time is
 `W = 1 / (mu - lam)`.  We prove:
 

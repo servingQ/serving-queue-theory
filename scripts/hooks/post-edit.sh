@@ -22,7 +22,7 @@ case "$f" in
     ;;
   */paper/main.tex)
     out=$(scripts/check_lean_refs.sh 2>&1)
-    if echo "$out" | grep -qE "MISSING|NOT AUDITED"; then
+    if echo "$out" | grep -qE "MISSING|NOT AUDITED|NO .provedby"; then
       emit "check_lean_refs after editing paper/main.tex:"$'\n'"$out"
     fi
     ;;

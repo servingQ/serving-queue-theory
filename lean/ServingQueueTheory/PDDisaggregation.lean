@@ -2,7 +2,7 @@
 # Prefill/Decode disaggregation: a throughput no-gain theorem and its
 # exact failure conditions
 
-Proposition (Paper Prop. 5).  With `N` identical devices, per-request
+Proposition (paper `prop:pd`, §5).  With `N` identical devices, per-request
 prefill work `sP` and decode work `sD` (device-seconds), an ideal
 aggregated deployment has capacity `N / (sP + sD)`.  A static split
 `NP + ND = N` has capacity `min (NP/sP) (ND/sD)`.
