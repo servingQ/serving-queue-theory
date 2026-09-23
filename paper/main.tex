@@ -606,49 +606,6 @@ does not compare against the optimum or a priced rule. How much resume
 probabilities and tool times vary in real traces decides which regime
 applies, and is measured in \S\ref{sec:exp-evict}.
 
-\subsection{Offloading}\label{sec:offload}
-
-An offloading tier gives the controller a third option between keeping
-and dropping a state. Moving program~$i$'s state out and back costs a
-transfer that delays its next turn. When the fetch holds the prefill
-stage, the price of that delay has the same form as the price of a miss,
-with the transfer time in place of $\Delta S_i$. The three options are
-now priced in the same unit: keeping costs $\theta c_i\tau_i$ of memory,
-offloading costs the priced transfer plus the tier's own memory price,
-and dropping costs $w_i$. The scheduler takes the cheapest, so it
-offloads program~$i$ when the transfer is cheaper than both keeping and
-dropping. The tier is itself a service centre with capacity
-$B_{\mathrm{tier}}/\E[K]$ transfers per second. Once
-$\lambda\,\Prob(\text{offload})\,\E[K] > B_{\mathrm{tier}}$ it saturates,
-its wait enters every transfer, and the rule offloads fewer programs.
-
-\paragraph{The claim.} ThunderAgent \citep[App.~A.2, Fig.~7]{thunderagent}
-reports that vLLM$+$LMCache offloading collapses at high concurrency: 111,
-54, 62 and 40 step/min with 88\,\%, 2\,\%, 1\,\% and 1\,\% hit rate at
-24, 48, 72 and 96 parallel programs. It attributes this to PCIe
-bandwidth.
-
-\paragraph{The claim as a special case.} The falling throughput is what
-\S\ref{sec:sessions} predicts for a closed system whose hit rate collapses,
-and it is what a saturated tier produces. Offloading enlarges the action
-set of the controller from $A_0=\{\text{keep},\text{drop}\}$ to
-$A_1=A_0\cup\{\text{offload}\}$. A minimum over a larger set is never
-larger, so \emph{enabling} offloading never increases the optimal cost.
-\emph{Always} offloading can still be strictly worse than the $A_0$
-optimum, for instance when $J(\text{keep})=1$, $J(\text{drop})=5$ and
-$J(\text{offload})=10$.\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{enabling\_offload\_never\_hurts}, \leanref{always\_offload\_can\_be\_worse}}
-
-\paragraph{Reading the claim.} Hence the reported numbers show that
-\emph{always-offload} is a bad policy at that operating point, not that
-enabling offloading is harmful. A controller that prices each option per
-program can never do worse than never offloading. Version~3 of
-ThunderAgent reaches a compatible conclusion. Its Appendix~A.4 (added in
-v3) states that ThunderAgent ``is orthogonal to KV-cache offloading'',
-demonstrates it on SGLang HiCache, and reframes the finding as
-``offloading alone is insufficient at high concurrency''. Whether priced
-offloading recovers the lost throughput is measured in
-\S\ref{sec:exp-offload}.
-
 \subsection{Routing}\label{sec:routing}
 
 A program-aware router charges a resuming turn the wait and service at
@@ -693,8 +650,15 @@ $\theta$ per replica, and, for each suspended program, $p_i$, $c_i$,
 $\tau_i$ and $\Delta S_i$. (1)~When memory must be freed it evicts
 blocks in increasing price per byte-second, or whole programs by the
 guarded rule of Proposition~\ref{prop:guarded}, with $w_i=p_i\Phi_i$.
-(2)~A suspended state is kept, offloaded or dropped by comparing
-$\theta c_i\tau_i$, the priced transfer and $w_i$. (3)~A resuming turn
+(2)~A suspended state is kept, offloaded to a slower tier or dropped by
+comparing $\theta c_i\tau_i$, the priced transfer (the transfer time in
+place of $\Delta S_i$ in~\eqref{eq:price} when the fetch holds the
+prefill stage, plus the tier's wait once it saturates) and $w_i$. Since
+offloading only enlarges the choice set, enabling it never raises the
+optimal cost, while always offloading can be worse than never
+offloading, which is what ThunderAgent's collapse of vLLM$+$LMCache at
+high concurrency \citep[App.~A.2]{thunderagent} shows about a policy,
+not about the mechanism.\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{enabling\_offload\_never\_hurts}, \leanref{always\_offload\_can\_be\_worse}} (3)~A resuming turn
 goes to the node that minimises~\eqref{eq:lookahead} with $M_j$ priced
 at that node's prefill load. (4)~Sessions are admitted while $\theta$
 stays below the delay a waiting session would incur. SF, always-offload
@@ -734,10 +698,10 @@ metric.}
 \toprule
 Exp. & Tests & Where & Primary metric \\
 \midrule
-E1 & calibration of~\eqref{eq:prefill}, \eqref{eq:decode}, $\varphi$ & T & held-out MAPE \\
-E2 & \S\ref{sec:congestion}, Props.~\ref{prop:price}, \ref{prop:decode} & T, S & $\mathrm{CV}^2$ share, $\Delta L_P$ \\
-E3 & \S\ref{sec:offload} & T, S & turns/min \\
-E4 & Props.~\ref{prop:memory}, \ref{prop:guarded}, \ref{prop:evict}; \S\ref{sec:admission} & O, S, T & cost/OPT, p99 TTFT \\
+E1 & fits of~\eqref{eq:prefill}, \eqref{eq:decode}, $\varphi$ & T & held-out MAPE \\
+E2 & \S\ref{sec:congestion}, Props.~\ref{prop:price}, \ref{prop:decode} & T, S & $\mathrm{CV}^2$, $\Delta L_P$ \\
+E3 & keep/offload/drop rule (\S\ref{sec:admission}) & T, S & turns/s \\
+E4 & Props.~\ref{prop:memory}, \ref{prop:guarded}, \ref{prop:evict} & O, S, T & cost/OPT, TTFT \\
 E5 & Prop.~\ref{prop:routing} & T, S & inversion load \\
 E6 & decision faithfulness & T, S & Kendall $\tau$ \\
 \bottomrule
@@ -771,10 +735,10 @@ misses on a controlled fraction of turns to compare the rise in summed
 TTFT with Proposition~\ref{prop:price}(i).
 
 \paragraph{E3: Offloading.}\label{sec:exp-offload} \emph{Hypothesis:}
-priced offloading is never below never-offload, and always-offload falls
-below it once the tier saturates, at the concurrencies ThunderAgent
-reports; whether the stack fetches on the critical path decides the
-ranking (\S\ref{sec:sim}).
+the priced keep/offload/drop choice is never below never-offload, and
+always-offload falls below it once the tier saturates, at the
+concurrencies ThunderAgent reports; whether the stack fetches on the
+critical path decides the ranking.
 
 \paragraph{E4: Eviction and admission.}\label{sec:exp-evict}
 \emph{Hypothesis:} on replayed eviction events, SF is within a factor~2

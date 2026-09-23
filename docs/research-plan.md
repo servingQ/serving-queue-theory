@@ -74,9 +74,8 @@ KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L �
 | 2.5 | **The price of a miss** (`eq:price`, `eq:utility` = `w_i, v_i, u_i`) | `prop:price` (prefill queue: bracket; term ratios; unbounded), `prop:decode` (PS: monotone ⇒ ranking by work; closed form; unbounded) | none |
 | 3 | Congestion-priced scheduling (`sec:sched`) | | |
 | 3.1 | Eviction (+ ThunderAgent Def. 4.1, App. F.3, G.3) | `prop:guarded` (program-level 2-approx), `prop:memory` (θ threshold; blocks: optimal up to one block), `prop:evict` (SF as the special case `w=c²`) | covering knapsack, Dantzig greedy |
-| 3.2 | Offloading (+ ThunderAgent App. A.2/A.4): keep θcτ vs transfer vs drop w | option value (prose, inline proof) | none |
-| 3.3 | Routing | `prop:routing`, `eq:lookahead` | none |
-| 3.4 | Admission (thrashing; θ as the admission unit), scheduler summary | none (design) | none |
+| 3.2 | Routing | `prop:routing`, `eq:lookahead` | none |
+| 3.3 | Admission (thrashing; θ as the admission unit), scheduler summary incl. keep/offload/drop and the option-value sentence (ThunderAgent A.2 read there) | none (design) | none |
 | 4.1 | Uncalibrated simulation (`paper/simulation.tex`, tables generated into `paper/sim/`) | none (checks of the props above) | none |
 | 4.2 | Evaluation on a real system: overview table + hypotheses E1–E6; table layouts in §4.2a below | none | none |
 | App. A | Human-readable proofs | | |
@@ -168,7 +167,7 @@ each part established, and what it changes for phase 2:
 | Do the closed forms hold in their own model? (M/M/1, `prop:pk`, `prop:cache`, `eq:cv2`, `prop:pd`, `prop:evict`(ii)) | yes, within CI or 2 % | the simulator is usable for the questions below |
 | Does PK survive bursty arrivals? | no: it underestimates; Kingman's bound holds | E2 records interarrival CV² next to the PK ratio |
 | Does throughput fall with N only through the hit rate? | yes: with finite KV it falls; with ample KV it follows `min(N/(D+Z),1/D)` | E3 records hit rate and resident KV per concurrency level |
-| Is always-offload harmful? (option value, §3.2) | only with blocking fetches; with async fetches the tier queue acts as admission control and always-offload is best | E3 records whether the stack fetches synchronously; the policy ranking depends on it |
+| Is always-offload harmful? (option value, now one sentence in §3.3 scheduler paragraph; tab-offload generated but not shown) | only with blocking fetches; with async fetches the tier queue acts as admission control and always-offload is best | E3 records whether the stack fetches synchronously; the policy ranking depends on it |
 | Does the PK bracket of `prop:price`(i) hold in simulation? | yes: ΔL inside the bracket, near its upper end (δ=0.01, 0.05) | E2 forces misses on a controlled fraction and compares ΔL with the bracket |
 | Is the guard of `prop:guarded` needed, and does it help? | offline guarded ≤ 1.87×OPT everywhere and best mean in every row; plain density reaches 6.7× on random arbitrary-weight instances (unbounded only on the witness family) | E4 reports guarded next to plain density |
 | Does the offline density advantage carry over? (`prop:evict`(iii)) | offline density ≫ SF when `p_i` vary; in the closed system the two are within seed noise, LRU is worse | E4 reports end-to-end TTFT and throughput next to cost/OPT, and measures the spread of `p_i` |
@@ -200,7 +199,7 @@ rule 5).
 |----|----------|-------|-------|----------------------------|--------|
 | E1 | Fit `S_prefill(L,K,B)`, `S_decode(B,KV)`, `T_transfer(bytes)` | calibration | T | profiling harness | not started |
 | E2 | Is per-turn CV² dominated by the hit/miss mixture? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces, interarrival CV², miss injection | not started |
-| E3 | Is priced offloading never below never-offload? When is always-offload below it? | option value (§3.2) | T, S | E1, tier bandwidth, fetch mode (sync/async) | not started |
+| E3 | Is priced offloading never below never-offload? When is always-offload below it? | option value (§3.3) | T, S | E1, tier bandwidth, fetch mode (sync/async) | not started |
 | E4 | SF vs price per byte vs guarded vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs price | `prop:guarded`, `prop:evict` | O, S | traces with resume events, spread of `p_i`, a regime with mean wait comparable to a miss | not started |
 | (PD) | Does the PD inequality predict the winner? What is the latency cost at equal capacity? (follow-up paper, see §4.2b) | `prop:pd` | T | E1, measured `I, g_P, g_D` | not started |
 | E5 | At what load does affinity lose? Does lookahead predict it? | `prop:routing`, `eq:lookahead`, `eq:append` | T, S | E1, migration cost | not started |

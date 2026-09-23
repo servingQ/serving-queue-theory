@@ -135,7 +135,7 @@ Follow `docs/add-proposition.md`. Short version:
   prefill only; the CV² numbers are prefill times); §2.4 the KV-state
   problem with the memory shadow price θ; §2.5 `prop:price` (prefill
   queue, central) and `prop:decode` (PS, prices only work)); §3 congestion-priced
-  scheduling (eviction, offloading, routing), where each published claim
+  scheduling (eviction, routing, admission with the keep/offload/drop rule), where each published claim
   is read as a special case of the formulation; §4 experiments (§4.1
   uncalibrated simulation, §4.2 evaluation on a real system); App. A
   proofs. Prefill/decode (PD) disaggregation is out of this paper
