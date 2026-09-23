@@ -43,7 +43,11 @@ latency reproduction is secondary.
    readable next to the paper proposition so a human can check the
    correspondence, which CI cannot.
 7. **Do not commit or push unless asked.** Never commit `lean/.lake/`,
-   `*.log`, or `paper/main.pdf` (all gitignored).
+   `*.log`, or `paper/main.pdf` (all gitignored). Server-side branch
+   protection is unavailable on this private Free-plan repo; the
+   `.githooks/pre-push` hook (enable with `git config core.hooksPath
+   .githooks`) refuses non-fast-forward pushes to `main` and runs
+   `make check` first. Do not bypass it with `--no-verify`.
 
 ## Environment and commands
 

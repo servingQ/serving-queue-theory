@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Client-side stand-in for branch protection (GitHub refuses server-side
+# rules on a private Free-plan repo). Refuses to push to main unless
+# `make check` passes and the push is fast-forward.
+# Enable once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+remote="$1"
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ "$remote_ref" == "refs/heads/main" ]] || continue
+  if [[ "$local_sha" == 0000000000000000000000000000000000000000 ]]; then
+    echo "pre-push: refusing to delete main"; exit 1
+  fi
+  if [[ "$remote_sha" != 0000000000000000000000000000000000000000 ]] && \
+     ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+    echo "pre-push: refusing non-fast-forward push to main"; exit 1
+  fi
+  echo "pre-push: running make check before pushing to main..."
+  make check >/tmp/pre-push-check.log 2>&1 || {
+    echo "pre-push: make check FAILED (see /tmp/pre-push-check.log)"; exit 1; }
+  echo "pre-push: OK"
+done
+exit 0

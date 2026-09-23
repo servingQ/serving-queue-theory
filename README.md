@@ -22,6 +22,15 @@ scripts/ CI checks (see below)
 | 6 | Shortest-context-first eviction is **not** optimal (`{4,5,6}, ΔC=6`: 41 vs 36); breaks further with resume probabilities | `Eviction` | `shortestFirst_optimality_claim_false` |
 | 7 | Program-aware routing: myopic vs lookahead disagreement condition; affinity is never unconditionally optimal; PPD append-prefill rule | `Routing` | `lookahead_prefers_iff`, `affinity_not_always_optimal`, `append_prefill_rule` |
 
+## Branch policy
+
+GitHub branch protection/rulesets are not available for this private repo on
+the Free plan. Enable the local guard once per clone:
+
+```bash
+git config core.hooksPath .githooks   # pre-push: fast-forward only + make check
+```
+
 ## Working with coding agents
 
 `AGENTS.md` is the shared instruction file (Codex reads it directly, `CLAUDE.md`
