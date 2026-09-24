@@ -31,6 +31,7 @@ pub mod engine;
 pub mod models;
 pub mod stats;
 pub mod validation;
+pub mod workload;
 
 pub use dist::Dist;
 pub use engine::{Model, Scheduler, run};

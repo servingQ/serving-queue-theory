@@ -22,7 +22,6 @@ use libqueuingsim::models::batch::Phi;
 use libqueuingsim::models::eviction::{self, ResumeModel};
 use libqueuingsim::models::pd::{self, Load, Mode, PdConfig};
 use libqueuingsim::models::queue::{self, QueueConfig};
-use libqueuingsim::models::routing::{self, RoutePolicy, RoutingConfig};
 use libqueuingsim::stats::Estimate;
 use libqueuingsim::validation::{self, OpenEvictRow, offload_cfg, pd_cfg};
 
@@ -807,28 +806,57 @@ fn admission_table(open: &[OpenEvictRow], data: &mut Data) -> String {
     )
 }
 
-fn routing_table() -> String {
+const INVERSION_CSV_HEADER: &str = "bandwidth,move_over_service,rho_star,inversion_rate,hot_utilization,affinity,always_move,lookahead";
+
+/// §3.2 / Prop. routing beyond its model: the load at which always moving
+/// (fetching the state over a shared link) beats strict affinity, by link
+/// bandwidth, against `ρ*` of Prop. routing (i).
+fn inversion_table(data: &mut Data) -> String {
+    let rows_all = validation::inversion_scenario();
     let mut rows = vec![];
-    for rate in [0.6, 1.2, 1.6, 1.8] {
-        let mut cells = vec![format!("{rate:.1}")];
-        for pol in [
-            RoutePolicy::Affinity,
-            RoutePolicy::Myopic,
-            RoutePolicy::Lookahead,
-        ] {
-            let r = routing::simulate(&RoutingConfig::example(rate, pol));
-            cells.push(format!("{:.3} / {:.2}", r.response.mean, r.p99));
-        }
-        rows.push(cells.join(" & "));
+    let mut csv = vec![];
+    for r in &rows_all {
+        let f = |o: Option<f64>, d: usize| o.map_or("--".to_string(), |v| format!("{v:.d$}"));
+        rows.push(format!(
+            "{:.0}k & {:.2} & {:.2} & {} & {} & {} & {} & {}",
+            r.bandwidth / 1e3,
+            r.move_over_service,
+            r.rho_star,
+            f(r.inversion_rate, 1),
+            f(r.hot_utilization, 2),
+            f(r.affinity_response, 3),
+            f(r.move_response, 3),
+            f(r.lookahead_response, 3)
+        ));
+        csv.push(format!(
+            "{},{},{},{},{},{},{},{}",
+            r.bandwidth,
+            r.move_over_service,
+            r.rho_star,
+            r.inversion_rate.unwrap_or(f64::NAN),
+            r.hot_utilization.unwrap_or(f64::NAN),
+            r.affinity_response.unwrap_or(f64::NAN),
+            r.move_response.unwrap_or(f64::NAN),
+            r.lookahead_response.unwrap_or(f64::NAN)
+        ));
     }
-    table(
-        "Routing follow-up turns over 4 replicas, half of new programs placed \
-         on replica~0. Mean / p99 turn response time (s) by program arrival \
-         rate (per s).",
-        "tab:sim-routing",
-        "cccc",
-        "Rate & Affinity & KV-aware myopic & Lookahead",
+    data.push("inversion.csv", INVERSION_CSV_HEADER, &csv);
+    table_sep(
+        "Placement over 4 replicas with half of the new programs placed on \
+         replica~0 (the affinity node), follow-up turns of 5--15k-token contexts, \
+         state moved over one shared link of bandwidth $B$ (tokens/s) when that is \
+         cheaper than recomputing it. $x$: mean move cost over mean service; \
+         $\\rho^*=x/(1+x)$, the inversion utilisation of Proposition~\\ref{prop:routing}(i) \
+         for one node and an idle alternative; Inv.: the lowest program rate (per s) \
+         at which always moving to the least-loaded replica beats affinity in mean \
+         turn response beyond both confidence intervals; $\\rho_0$: utilisation of the \
+         affinity node at that rate; mean turn response (s) of affinity, always-move \
+         and the lookahead rule of Eq.~\\eqref{eq:lookahead} there.",
+        "tab:sim-inversion",
+        "cccccccc",
+        "$B$ & $x$ & $\\rho^*$ & Inv. & $\\rho_0$ & Affinity & Move & Lookahead",
         &rows,
+        "2pt",
     )
 }
 
@@ -911,6 +939,82 @@ fn pd_latency() -> String {
     )
 }
 
+const TRACE_CSV_HEADER: &str = "rate,pool,cap,hit,hit_hw,sessions,entry_wait,rho,cv2,mixture_share,\
+                                mixture_share_hw,wait,pk_wait,ttft,ttft_hw,ttft_p99,prefill_number,seeds";
+
+/// §4.1: the two-resource replica fed by replayed production sessions.
+fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
+    let corpus = libqueuingsim::workload::TraceCorpus::weka();
+    let mut rows = vec![];
+    let mut csv = vec![];
+    for r in rows_all {
+        let pool = if r.kv.is_finite() {
+            format!("{:.0}M", r.kv / 1e6)
+        } else {
+            "$\\infty$".to_string()
+        };
+        rows.push(format!(
+            "{:.3} & {pool} & {} & {} & {:.2} & {:.1} & {:.0} & {:.0} & {:.0}",
+            r.rate,
+            r.cap,
+            pm(r.hit_rate, 2),
+            r.mixture_share.mean,
+            r.cv2.mean,
+            r.wait.mean,
+            r.pk_wait.mean,
+            r.ttft.mean
+        ));
+        csv.push(format!(
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            r.rate,
+            r.kv,
+            r.cap,
+            r.hit_rate.mean,
+            r.hit_rate.half_width,
+            r.sessions.mean,
+            r.entry_wait.mean,
+            r.rho.mean,
+            r.cv2.mean,
+            r.mixture_share.mean,
+            r.mixture_share.half_width,
+            r.wait.mean,
+            r.pk_wait.mean,
+            r.ttft.mean,
+            r.ttft.half_width,
+            r.ttft_p99.mean,
+            r.prefill_number.mean,
+            validation::TRACE_SEEDS
+        ));
+    }
+    data.push("trace.csv", TRACE_CSV_HEADER, &csv);
+    table_sep(
+        &format!(
+            "Replayed production sessions on the two-resource replica: {} Claude Code \
+             sessions ({} turns, mean final context {:.0}k tokens, mean think time \
+             {:.0}\\,s) from the corpus of \\S\\ref{{sec:exp-traces}}, arriving Poisson at \
+             rate $\\Lambda$ (per s), each played turn by turn; cost model with \
+             $K_c=a/b=50$k tokens, batch cap 8, eviction by price per byte-second, \
+             at most Cap live sessions (the rest wait to enter). Follow-up hit rate; \
+             the share of $\\mathrm{{Var}}[S]$ of follow-up prefill work due to the \
+             hit/miss mixture (the rest is the spread of the appends) and the \
+             $\\mathrm{{CV}}^2$ of that work; observed mean prefill wait $W_q$ and the PK \
+             wait from the measured $\\lambda$, $\\E[S]$, $\\E[S^2]$ (s); mean TTFT (s). \
+             Entry waits of sessions held by the cap are in the data file. \
+             $\\pm$ is a 95\\,\\% half-width over {} seeds.",
+            corpus.sessions.len(),
+            corpus.turns(),
+            corpus.mean_final_context() / 1e3,
+            corpus.mean_think(),
+            validation::TRACE_SEEDS
+        ),
+        "tab:sim-trace",
+        "ccccccccc",
+        "$\\Lambda$ & Pool & Cap & Hit & Mix & $\\mathrm{{CV}}^2$ & $W_q$ & PK & TTFT",
+        &rows,
+        "2pt",
+    )
+}
+
 fn main() {
     let dir = std::env::args()
         .nth(1)
@@ -947,8 +1051,10 @@ fn main() {
     write("tab-ps.tex", &ps_table());
     write("tab-footprint.tex", &footprint_table());
     write("tab-lps.tex", &lps_table(&mut data));
-    write("tab-routing.tex", &routing_table());
+    write("tab-inversion.tex", &inversion_table(&mut data));
     write("tab-pd.tex", &pd_latency());
+    let trace_rows = validation::trace_replay_scenario();
+    write("tab-trace.tex", &trace_table(&trace_rows, &mut data));
     write("tab-pd-inmodel.tex", &pd_in_model());
 
     let mut m = String::from(HEADER);
@@ -958,6 +1064,126 @@ fn main() {
     writeln!(m, "\\newcommand{{\\simPdCells}}{{{total}}}").unwrap();
     writeln!(m, "\\newcommand{{\\simOffloadOk}}{{{ok}}}").unwrap();
     writeln!(m, "\\newcommand{{\\simOffloadCells}}{{{cells}}}").unwrap();
+    // Trace replay: ranges over cells (PK/W_q ratio; hit rate and mixture
+    // share at the tight cap; TTFT of the uncapped infinite pool).
+    let corpus = libqueuingsim::workload::TraceCorpus::weka();
+    let ratio: Vec<f64> = trace_rows
+        .iter()
+        .map(|r| r.pk_wait.mean / r.wait.mean)
+        .collect();
+    let tight: Vec<&validation::TraceRow> = trace_rows
+        .iter()
+        .filter(|r| {
+            r.kv.is_finite()
+                && r.cap == validation::trace_cap(&corpus, r.kv, validation::TRACE_CAP_FACTORS[0])
+        })
+        .collect();
+    let loose: Vec<&validation::TraceRow> = trace_rows
+        .iter()
+        .filter(|r| {
+            r.kv.is_finite()
+                && r.cap == validation::trace_cap(&corpus, r.kv, validation::TRACE_CAP_FACTORS[1])
+        })
+        .collect();
+    let open: Vec<&validation::TraceRow> =
+        trace_rows.iter().filter(|r| !r.kv.is_finite()).collect();
+    let fmin = |xs: &[f64]| xs.iter().cloned().fold(f64::INFINITY, f64::min);
+    let fmax = |xs: &[f64]| xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    writeln!(
+        m,
+        "\\newcommand{{\\simTracePkRatioMin}}{{{:.0}}}",
+        fmin(&ratio)
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTracePkRatioMax}}{{{:.0}}}",
+        fmax(&ratio)
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceOpenCvMin}}{{{:.0}}}",
+        fmin(&open.iter().map(|r| r.cv2.mean).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceOpenCvMax}}{{{:.0}}}",
+        fmax(&open.iter().map(|r| r.cv2.mean).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceOpenTtftMin}}{{{:.0}}}",
+        fmin(&open.iter().map(|r| r.ttft.mean).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceOpenTtftMax}}{{{:.0}}}",
+        fmax(&open.iter().map(|r| r.ttft.mean).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceTightHitMin}}{{{:.2}}}",
+        fmin(&tight.iter().map(|r| r.hit_rate.mean).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceTightMixMin}}{{{:.0}}}",
+        100.0
+            * fmin(
+                &tight
+                    .iter()
+                    .map(|r| r.mixture_share.mean)
+                    .collect::<Vec<_>>()
+            )
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceTightMixMax}}{{{:.0}}}",
+        100.0
+            * fmax(
+                &tight
+                    .iter()
+                    .map(|r| r.mixture_share.mean)
+                    .collect::<Vec<_>>()
+            )
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceLooseHitMax}}{{{:.2}}}",
+        fmax(&loose.iter().map(|r| r.hit_rate.mean).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceLooseTtftMin}}{{{:.0}}}",
+        fmin(&loose.iter().map(|r| r.ttft.mean).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceSessions}}{{{}}}",
+        corpus.sessions.len()
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceEntryMaxHours}}{{{:.0}}}",
+        fmax(
+            &trace_rows
+                .iter()
+                .map(|r| r.entry_wait.mean / 3600.0)
+                .collect::<Vec<_>>()
+        )
+    )
+    .unwrap();
     write("macros.tex", &m);
 
     // Machine-readable data behind the figures (scripts/plot_sim.py).

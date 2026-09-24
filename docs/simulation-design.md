@@ -53,7 +53,8 @@ and a seed gives bit-identical output on the same libm (CI runs on
 | `models::agentic` | closed or open agent programs on one replica with a finite KV pool; eviction, offload and fetch-mode policies |
 | `models::eviction` | offline instances; SF (and the literal Lean `shortestFirst`), density, exact DP optimum |
 | `models::pd` | aggregated pool vs prefill → KV link → decode tandem; saturated (capacity) or Poisson (latency) load |
-| `models::routing` | replicas with per-program KV locality; affinity, least-loaded, KV-aware myopic, lookahead with migration |
+| `models::routing` | replicas with per-program KV locality; affinity, least-loaded, least-loaded with fetch (always-move over a shared store), KV-aware myopic, lookahead with migration |
+| `workload` | replayed real sessions (`TraceCorpus`, bundled `data/weka-sessions.csv` from the cc-traces-weka corpus); `batch` plays them turn by turn |
 | `validation` | named checks, one or more per proposition; shared by tests, report and paper tables |
 
 ### Modelling choices in the agentic model
@@ -126,6 +127,20 @@ From `make report` (synthetic workloads; not measurements):
 - Strict affinity collapses when the hot replica saturates; lookahead with
   cheap migration stays flat. E6 must measure migration cost, which moves
   the inversion load.
+- Inversion load (`tab:sim-inversion`, 2026-09-24): always-move over a
+  shared link beats affinity at a load that rises as the link slows, as
+  `prop:routing`(ii) says; the affinity node's utilisation at the inversion
+  follows `ρ*` for cheap moves and exceeds it for a link slower than a
+  recompute, because the shared link saturates. Lookahead is below both at
+  every load.
+- Replayed production sessions (761 Claude Code sessions, contexts ~400k):
+  with no eviction the follow-up prefill work has CV² 35–43 from the
+  appends alone; with a finite pool the admission cap decides between a
+  regime where the mixture is 38–75 % of Var[S] (tight cap) and thrash
+  (loose cap). PK from measured moments overstates the prefill wait 4–20×:
+  the live sessions are a finite population (2–24) and arrivals are
+  self-limiting. E2 must report live sessions next to load, and a closed
+  (finite-population) correction of `prop:price` is a candidate result.
 
 ## 5. Out of scope
 
@@ -146,7 +161,7 @@ Each item is a new module or an extension, in Rust, behind the existing
 | Service model from E1 fits `S_prefill(L,K,B)`, `S_decode(B,KV)` evaluated per iteration, optional residual noise | new `service` module; fit files under `data/` | M5 |
 | Block-level KV pool per device and tier; residency map program → location | extend `agentic` | E3, E4 |
 | Links with fair-share bandwidth (replace FIFO tier and migration links) | new `transfer` module | E3, E6 |
-| Trace replay (per-turn arrivals, tokens, tool time, resume events) | new `workload` module | E2, E4, E7 |
+| ~~Trace replay (per-turn arrivals, tokens, tool time, resume events)~~ done 2026-09-24: `workload::TraceCorpus` + `BatchConfig::trace`; scenario `validation::trace_replay_scenario` → `paper/sim/tab-trace.tex` | `workload` | E2, E4, E7 |
 | Oracle eviction using realised future resumes (DP over blocks) | extend `eviction` + `agentic` | E4 lower bound |
 | Dynamic PD with per-turn append-prefill routing (`eq:append`) | extend `pd` / `routing` | E5, E6 |
 | Per-turn records (program, turn, arrival, first token, finish, hit length, replica, bytes, decisions) to CSV or Parquet; runs keyed by (config hash, seed); ≥ 5 seeds per point | new `records` module + CLI example | all |

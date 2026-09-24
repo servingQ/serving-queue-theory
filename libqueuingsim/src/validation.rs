@@ -84,6 +84,9 @@ pub fn all() -> Vec<Check> {
         pd_win_condition_decisions(),
         affinity_breaks_at_high_load(),
         lookahead_not_worse_than_affinity(),
+        trace_replay_variance_sources(),
+        inversion_load_closed_form(),
+        inversion_load_rises_with_move_cost(),
     ]
 }
 
@@ -1802,6 +1805,7 @@ pub fn open_session_cfg(rate: f64, cap: usize, ev: EvictionPolicy, seed: u64) ->
     BatchConfig {
         population: Population::Open { rate },
         max_sessions: Some(cap),
+        trace: None,
         classes: vec![
             ProgramClass {
                 weight: 1.0,
@@ -2026,4 +2030,474 @@ pub fn observations() -> Vec<Observation> {
     });
 
     out
+}
+
+// ------------------------------------------------ §4.1 trace replay ----
+
+/// Session arrival rates (per s) of the trace-replay scenario.
+pub const TRACE_RATES: [f64; 2] = [0.005, 0.01];
+/// KV pools (tokens) of the trace-replay scenario; `INFINITY` = no eviction.
+pub const TRACE_POOLS: [f64; 4] = [f64::INFINITY, 4.0e6, 2.0e6, 1.0e6];
+
+/// Cost model of the trace-replay scenario: the open-session model with a
+/// lighter attention term, `b = 4·10⁻¹⁰` (`K_c = 5·10^4`), since the
+/// replayed contexts are 10× longer than the synthetic ones.
+pub fn trace_cost() -> CostModel {
+    let mut cost = open_session_cost();
+    cost.prefill_quadratic = 4.0e-10;
+    cost
+}
+pub const TRACE_SEEDS: u64 = 5;
+
+/// The two-resource replica fed by replayed production sessions
+/// ([`crate::workload::TraceCorpus::weka`]): Poisson session arrivals at
+/// `rate`, each session a real one (its appends, outputs and think times),
+/// the cost model [`trace_cost`] (`a = 2·10⁻⁵`, `b = 4·10⁻¹⁰`, so the
+/// attention term overtakes the dense term at `K_c = a/b = 5·10^4` tokens,
+/// the order of a dense 70B model), KV pool `kv`, batch cap 8, at most 24
+/// live sessions, eviction by price per byte-second. The single
+/// class supplies the scheduler's estimates: `p_i` = the corpus resume
+/// fraction, `τ_i` = the corpus mean think time.
+pub fn trace_replay_cfg(
+    corpus: &std::sync::Arc<crate::workload::TraceCorpus>,
+    rate: f64,
+    kv: f64,
+    cap: usize,
+    ev: EvictionPolicy,
+    seed: u64,
+) -> BatchConfig {
+    BatchConfig {
+        population: Population::Open { rate },
+        max_sessions: Some(cap),
+        classes: vec![ProgramClass {
+            weight: 1.0,
+            resume_prob: corpus.resume_fraction(),
+            initial_tokens: Dist::Deterministic(0.0),
+            new_tokens: Dist::Deterministic(0.0),
+            output_tokens: Dist::Deterministic(0.0),
+            tool_time: Dist::Deterministic(corpus.mean_think()),
+        }],
+        trace: Some(corpus.clone()),
+        cost: trace_cost(),
+        work: Work::Tokens,
+        server: Server::TwoStage,
+        batch_cap: Some(8),
+        kv_capacity: kv,
+        max_context: if kv.is_finite() {
+            0.9 * kv
+        } else {
+            f64::INFINITY
+        },
+        eviction: ev,
+        block_tokens: 512.0,
+        step_time: None,
+        warmup: 6_000.0,
+        horizon: 66_000.0,
+        seed,
+    }
+}
+
+/// One (rate, pool) cell of the trace-replay scenario over [`TRACE_SEEDS`]
+/// seeds. Follow-up turns only for the variance split; all turns for the
+/// prefill queue.
+#[derive(Clone, Debug)]
+pub struct TraceRow {
+    pub rate: f64,
+    pub kv: f64,
+    pub cap: usize,
+    pub policy: EvictionPolicy,
+    pub hit_rate: Estimate,
+    /// Mean live sessions and mean entry-queue wait of admitted sessions.
+    pub sessions: Estimate,
+    pub entry_wait: Estimate,
+    /// Prefill load of the queue in stage time, `λ E[S]/availability`.
+    pub rho: Estimate,
+    /// `CV²` of the prefill work of follow-up turns.
+    pub cv2: Estimate,
+    /// Share of `Var[S]` (follow-up prefill work) from the hit/miss mixture,
+    /// by the law of total variance; the rest is the spread of the appends
+    /// and contexts within hits and within misses.
+    pub mixture_share: Estimate,
+    /// Mean prefill-queue wait (ready → prefill start), observed, and the
+    /// PK prediction from the measured `λ`, `E[S]`, `E[S²]` in stage time.
+    pub wait: Estimate,
+    pub pk_wait: Estimate,
+    pub ttft: Estimate,
+    pub ttft_p99: Estimate,
+    pub prefill_number: Estimate,
+    pub availability: Estimate,
+    pub truncated: Estimate,
+}
+
+pub fn trace_row(
+    corpus: &std::sync::Arc<crate::workload::TraceCorpus>,
+    rate: f64,
+    kv: f64,
+    cap: usize,
+    ev: EvictionPolicy,
+) -> TraceRow {
+    struct One {
+        hit: f64,
+        live: f64,
+        entry: f64,
+        rho: f64,
+        cv2: f64,
+        share: f64,
+        wait: f64,
+        pk: f64,
+        ttft: f64,
+        p99: f64,
+        lp: f64,
+        avail: f64,
+        trunc: f64,
+    }
+    let ones: Vec<One> = (1..=TRACE_SEEDS)
+        .map(|seed| {
+            let cfg = trace_replay_cfg(corpus, rate, kv, cap, ev, seed);
+            let (r, spans) = batch::simulate_traced(&cfg);
+            let cost = &cfg.cost;
+            let window = cfg.horizon - cfg.warmup;
+            let avail = r.mean_availability.max(0.05);
+            let mut hits = Welford::new();
+            let mut misses = Welford::new();
+            let mut all = Welford::new();
+            let mut all2 = 0.0;
+            let mut wait = Welford::new();
+            let mut n = 0usize;
+            for s in spans
+                .iter()
+                .filter(|s| s.enqueued >= cfg.warmup && s.start.is_finite())
+            {
+                let work = cost.overhead + cost.prefill(s.prefill_tokens, s.cached_tokens);
+                match s.kind {
+                    agentic::TurnKind::Hit => hits.push(work),
+                    agentic::TurnKind::Miss => misses.push(work),
+                    agentic::TurnKind::Cold => {}
+                }
+                let st = work / avail;
+                all.push(st);
+                all2 += st * st;
+                wait.push(s.start - s.enqueued);
+                n += 1;
+            }
+            let lam = n as f64 / window;
+            let es = all.mean();
+            let es2 = all2 / n.max(1) as f64;
+            let rho = lam * es;
+            let pk = if rho < 1.0 {
+                lam * es2 / (2.0 * (1.0 - rho))
+            } else {
+                f64::INFINITY
+            };
+            let (nh, nm) = (hits.n() as f64, misses.n() as f64);
+            let p = nh / (nh + nm).max(1.0);
+            let (mh, mm) = (hits.mean(), if nm > 0.0 { misses.mean() } else { 0.0 });
+            let (vh, vm) = (
+                hits.variance(),
+                if nm > 1.0 { misses.variance() } else { 0.0 },
+            );
+            let between = p * (1.0 - p) * (mm - mh).powi(2);
+            let within = p * vh + (1.0 - p) * vm;
+            let var = between + within;
+            let mean = p * mh + (1.0 - p) * mm;
+            One {
+                hit: r.hit_rate,
+                live: r.mean_sessions,
+                entry: r.entry_wait.mean(),
+                rho,
+                cv2: var / (mean * mean),
+                share: if var > 0.0 { between / var } else { 0.0 },
+                wait: wait.mean(),
+                pk,
+                ttft: r.ttft.mean(),
+                p99: r.ttft_p99,
+                lp: r.mean_prefill_number,
+                avail: r.mean_availability,
+                trunc: r.truncated as f64,
+            }
+        })
+        .collect();
+    let est = |f: fn(&One) -> f64| replications(&ones.iter().map(f).collect::<Vec<_>>());
+    TraceRow {
+        rate,
+        kv,
+        cap,
+        policy: ev,
+        hit_rate: est(|o| o.hit),
+        sessions: est(|o| o.live),
+        entry_wait: est(|o| o.entry),
+        rho: est(|o| o.rho),
+        cv2: est(|o| o.cv2),
+        mixture_share: est(|o| o.share),
+        wait: est(|o| o.wait),
+        pk_wait: est(|o| o.pk),
+        ttft: est(|o| o.ttft),
+        ttft_p99: est(|o| o.p99),
+        prefill_number: est(|o| o.lp),
+        availability: est(|o| o.avail),
+        truncated: est(|o| o.trunc),
+    }
+}
+
+/// Admission caps of the scenario as multiples of `pool / mean final
+/// context` (the number of finished sessions the pool holds): tight and
+/// loose. With an infinite pool the cap is [`TRACE_CAP_OPEN`].
+pub const TRACE_CAP_FACTORS: [f64; 2] = [0.8, 1.6];
+pub const TRACE_CAP_OPEN: usize = 24;
+
+/// Live-session cap for a pool: `factor · pool / mean final context`, at
+/// least 1; [`TRACE_CAP_OPEN`] for an infinite pool.
+pub fn trace_cap(corpus: &crate::workload::TraceCorpus, kv: f64, factor: f64) -> usize {
+    if kv.is_finite() {
+        ((factor * kv / corpus.mean_final_context()).floor() as usize).max(1)
+    } else {
+        TRACE_CAP_OPEN
+    }
+}
+
+/// Every cell of the scenario: for each rate the uncapped infinite pool,
+/// then each finite pool at the tight and the loose cap (whole-session
+/// eviction by price per byte-second). Block eviction was also run and
+/// changed no cell beyond seed noise; it is left out of the table.
+pub fn trace_replay_scenario() -> Vec<TraceRow> {
+    let corpus = std::sync::Arc::new(crate::workload::TraceCorpus::weka());
+    let mut rows = vec![];
+    for rate in TRACE_RATES {
+        rows.push(trace_row(
+            &corpus,
+            rate,
+            f64::INFINITY,
+            TRACE_CAP_OPEN,
+            EvictionPolicy::PricedMemory,
+        ));
+        for kv in TRACE_POOLS.iter().copied().filter(|k| k.is_finite()) {
+            for f in TRACE_CAP_FACTORS {
+                let cap = trace_cap(&corpus, kv, f);
+                rows.push(trace_row(
+                    &corpus,
+                    rate,
+                    kv,
+                    cap,
+                    EvictionPolicy::PricedMemory,
+                ));
+            }
+        }
+    }
+    rows
+}
+
+/// §2.3 / E2 on a real workload: with no eviction the prefill-work variance
+/// of follow-up turns comes from the appends alone (mixture share 0); with
+/// a finite pool and a tight admission cap the hit/miss mixture supplies a
+/// large share of `Var[S]`; and the PK wait computed from the measured
+/// moments is an upper bound on the observed prefill wait in every cell
+/// (the live sessions are a finite population, so arrivals are
+/// self-limiting and the open M/G/1 queue overstates the wait).
+pub fn trace_replay_variance_sources() -> Check {
+    let corpus = std::sync::Arc::new(crate::workload::TraceCorpus::weka());
+    let rate = TRACE_RATES[0];
+    let rows: Vec<TraceRow> = TRACE_POOLS
+        .iter()
+        .map(|&kv| {
+            trace_row(
+                &corpus,
+                rate,
+                kv,
+                trace_cap(&corpus, kv, TRACE_CAP_FACTORS[0]),
+                EvictionPolicy::PricedMemory,
+            )
+        })
+        .collect();
+    let open_has_no_mixture = rows[0].mixture_share.mean < 1e-9 && rows[0].hit_rate.mean > 0.999;
+    let finite_has_mixture = rows[1..].iter().all(|r| r.mixture_share.mean > 0.3);
+    let pk_upper = rows.iter().all(|r| r.pk_wait.mean >= r.wait.mean);
+    Check {
+        id: "trace_replay_variance_sources",
+        paper: "sec:congestion, sec:exp-variance, sec:limits",
+        lean: &["pkWait_mixture_antitone", "mixtureCV2_agentic_example"],
+        kind: Kind::BeyondModel,
+        claim: "on replayed production sessions, prefill-work variance has two sources: the appends (all of it with no eviction) and the hit/miss mixture (a large share once the pool is finite); PK from measured moments is an upper bound on the prefill wait of a finite live population",
+        expected: "mixture share 0 with an infinite pool and > 0.3 for every finite pool at the tight cap; PK ≥ observed wait in every cell".into(),
+        observed: rows
+            .iter()
+            .map(|r| {
+                format!(
+                    "pool {} cap {}: hit {:.3} ρ {:.2} CV² {:.1} mix {:.2} Wq {:.1}s PK {:.1}s TTFT {:.1}s",
+                    if r.kv.is_finite() { format!("{:.1e}", r.kv) } else { "∞".into() },
+                    r.cap,
+                    r.hit_rate.mean,
+                    r.rho.mean,
+                    r.cv2.mean,
+                    r.mixture_share.mean,
+                    r.wait.mean,
+                    r.pk_wait.mean,
+                    r.ttft.mean
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; "),
+        pass: open_has_no_mixture && finite_has_mixture && pk_upper,
+    }
+}
+
+// ------------------------------------------- §3.2 inversion load ----
+
+/// Migration-link bandwidths (tokens/s) of the inversion-load scenario,
+/// from a shared KV store that moves a context in a few milliseconds to a
+/// slow link that takes longer than a recompute.
+pub const INVERSION_BANDWIDTHS: [f64; 4] = [2.0e7, 2.0e6, 5.0e5, 1.25e5];
+/// Program arrival rates (per s) swept for the inversion.
+pub const INVERSION_RATES: [f64; 19] = [
+    0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0,
+];
+
+/// One link bandwidth of the inversion-load scenario.
+#[derive(Clone, Debug)]
+pub struct InversionRow {
+    pub bandwidth: f64,
+    /// Mean move cost over mean service, `M̄/E[S]`, with `M̄` the mean of
+    /// the cheaper of fetch and recompute over the follow-up contexts.
+    pub move_over_service: f64,
+    /// `ρ* = x/(1+x)` with `x = M̄/E[S]` and `F = 0`: Prop. routing (i) for
+    /// one M/M/1 node and an idle alternative.
+    pub rho_star: f64,
+    /// Lowest swept program rate at which always moving to the least
+    /// loaded replica (fetching the state) beats affinity in mean response
+    /// by more than both half-widths.
+    pub inversion_rate: Option<f64>,
+    /// Utilisation of the hot replica under affinity at that rate.
+    pub hot_utilization: Option<f64>,
+    pub affinity_response: Option<f64>,
+    pub move_response: Option<f64>,
+    /// Lookahead (state-dependent) mean response at that rate.
+    pub lookahead_response: Option<f64>,
+}
+
+/// For each bandwidth, sweep the rate and find the inversion of affinity
+/// against always-move; the move cost is measured on the affinity run.
+pub fn inversion_scenario() -> Vec<InversionRow> {
+    let aff: Vec<routing::RoutingReport> = INVERSION_RATES
+        .iter()
+        .map(|&r| routing::simulate(&RoutingConfig::example(r, RoutePolicy::Affinity)))
+        .collect();
+    let cost = RoutingConfig::example(1.0, RoutePolicy::Affinity).cost;
+    INVERSION_BANDWIDTHS
+        .iter()
+        .map(|&bw| {
+            let mut found = None;
+            for (i, &r) in INVERSION_RATES.iter().enumerate() {
+                let mut cfg = RoutingConfig::example(r, RoutePolicy::LeastLoadedFetch);
+                cfg.migrate_bandwidth = bw;
+                let mv = routing::simulate(&cfg);
+                let a = &aff[i];
+                if mv.response.mean + mv.response.half_width
+                    < a.response.mean - a.response.half_width
+                {
+                    let mut lcfg = RoutingConfig::example(r, RoutePolicy::Lookahead);
+                    lcfg.migrate_bandwidth = bw;
+                    let look = routing::simulate(&lcfg);
+                    found = Some((i, mv, look));
+                    break;
+                }
+            }
+            let i = found.as_ref().map_or(INVERSION_RATES.len() - 1, |f| f.0);
+            let a = &aff[i];
+            let c = a.mean_context;
+            let m = (c / bw).min(cost.miss_penalty(c));
+            let x = m / a.service.mean();
+            InversionRow {
+                bandwidth: bw,
+                move_over_service: x,
+                rho_star: x / (1.0 + x),
+                inversion_rate: found.as_ref().map(|_| INVERSION_RATES[i]),
+                hot_utilization: found.as_ref().map(|_| a.utilization[0]),
+                affinity_response: found.as_ref().map(|_| a.response.mean),
+                move_response: found.as_ref().map(|f| f.1.response.mean),
+                lookahead_response: found.as_ref().map(|f| f.2.response.mean),
+            }
+        })
+        .collect()
+}
+
+/// Prop. routing (ii) beyond its model (4 replicas, skewed placement, a
+/// shared link): the load at which always moving (fetching the state) beats
+/// strict affinity exists for every finite move cost and never falls as the
+/// link slows.
+pub fn inversion_load_rises_with_move_cost() -> Check {
+    let rows = inversion_scenario();
+    let all_found = rows.iter().all(|r| r.inversion_rate.is_some());
+    let monotone = rows.windows(2).all(|w| {
+        w[0].inversion_rate.unwrap_or(f64::INFINITY) <= w[1].inversion_rate.unwrap_or(f64::INFINITY)
+    });
+    Check {
+        id: "inversion_load_rises_with_move_cost",
+        paper: "prop:routing (ii)",
+        lean: &["inversionLoad_mono", "affinity_loses_iff"],
+        kind: Kind::BeyondModel,
+        claim: "a cheaper move lowers the load at which always moving beats strict affinity; every finite move cost has such a load",
+        expected: "an inversion rate for every bandwidth, nondecreasing as the link slows; hot-replica utilisation at the inversion near ρ*".into(),
+        observed: rows
+            .iter()
+            .map(|r| {
+                format!(
+                    "B={:.2e}: M̄/E[S] {:.2} ρ* {:.2} inversion at {} (hot util {})",
+                    r.bandwidth,
+                    r.move_over_service,
+                    r.rho_star,
+                    r.inversion_rate
+                        .map_or("none".into(), |x| format!("{x:.1}/s")),
+                    r.hot_utilization.map_or("-".into(), |u| format!("{u:.2}"))
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; "),
+        pass: all_found && monotone,
+    }
+}
+
+/// Prop. routing (i) in its model: an M/M/1 affinity node with `μ = 10`
+/// against an idle node plus a move cost `M + F = x/μ`. The simulated mean
+/// response is below the move cost `(1+x)/μ` at utilisation `ρ* − 0.05` and
+/// above it at `ρ* + 0.05`, with `ρ* = x/(1+x)`.
+pub fn inversion_load_closed_form() -> Check {
+    let mu = 10.0;
+    let mut obs = vec![];
+    let mut pass = true;
+    for (i, x) in [0.25, 1.0, 4.0].into_iter().enumerate() {
+        let rho_star = x / (1.0 + x);
+        let threshold = (1.0 + x) / mu;
+        let mut side = vec![];
+        for (k, d) in [-0.05, 0.05].into_iter().enumerate() {
+            let lam = (rho_star + d) * mu;
+            let r = queue::simulate(&QueueConfig::mg1(
+                lam,
+                Dist::exp(1.0 / mu),
+                2_000_000,
+                40 + 2 * i as u64 + k as u64,
+            ));
+            let ok = if d < 0.0 {
+                r.sojourn.hi() < threshold
+            } else {
+                r.sojourn.lo() > threshold
+            };
+            pass &= ok;
+            side.push(format!(
+                "ρ={:.2}: W {} {} {threshold:.3}",
+                rho_star + d,
+                r.sojourn,
+                if d < 0.0 { "<" } else { ">" }
+            ));
+        }
+        obs.push(format!("x={x} (ρ*={rho_star:.2}): {}", side.join(", ")));
+    }
+    Check {
+        id: "inversion_load_closed_form",
+        paper: "prop:routing (i)",
+        lean: &["affinity_loses_iff", "inversionLoad_utilization", "inversionLoad_stable"],
+        kind: Kind::InModel,
+        claim: "affinity's M/M/1 response exceeds the cost of moving to an idle node iff ρ > ρ* = μ(M+F)/(1+μ(M+F))",
+        expected: "W below (1+x)/μ at ρ*−0.05 and above it at ρ*+0.05 for x = M+F over service ∈ {0.25, 1, 4}".into(),
+        observed: obs.join("; "),
+        pass,
+    }
 }

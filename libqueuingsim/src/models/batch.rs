@@ -85,6 +85,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, VecDeque};
+use std::sync::Arc;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -93,6 +94,7 @@ use crate::analytic::stationary_mean;
 use crate::dist::Dist;
 use crate::engine::{Model, Scheduler, run};
 use crate::stats::{Estimate, TimeAverage, Welford, batch_means, quantile};
+use crate::workload::TraceCorpus;
 
 pub use super::agentic::{
     CostModel, EvictionPolicy, Population, PriceEstimator, ProgramClass, TurnKind, TurnSpan,
@@ -211,7 +213,14 @@ pub struct BatchConfig {
     /// Open population only: at most this many live sessions; later
     /// arrivals wait in an entry queue.
     pub max_sessions: Option<usize>,
+    /// Session classes. With [`BatchConfig::trace`] set they only supply the
+    /// scheduler's estimates (`resume_prob` as `p_i`, `tool_time.mean()` as
+    /// `τ_i`); tokens, outputs, think times and whether a session continues
+    /// then come from the replayed session.
     pub classes: Vec<ProgramClass>,
+    /// Replay real sessions (see [`crate::workload`]): each new session is
+    /// a uniformly drawn corpus session, played turn by turn.
+    pub trace: Option<Arc<TraceCorpus>>,
     pub cost: CostModel,
     pub work: Work,
     pub server: Server,
@@ -245,6 +254,7 @@ impl BatchConfig {
         Self {
             population: Population::Open { rate },
             max_sessions: None,
+            trace: None,
             classes: vec![ProgramClass {
                 weight: 1.0,
                 resume_prob: 0.0,
@@ -366,6 +376,8 @@ struct Session {
     turn_no: u32,
     /// The current turn's trace record, while it is at the replica.
     span: Option<TurnSpan>,
+    /// Replayed session: (corpus session index, index of the current turn).
+    replay: Option<(usize, usize)>,
 }
 
 /// A job in the PS pool, keyed by its virtual finish time.
@@ -641,6 +653,11 @@ impl Batch {
             self.entry_wait.push(now - arrived);
         }
         let class = self.pick_class();
+        let replay = self
+            .cfg
+            .trace
+            .as_ref()
+            .map(|c| (self.flow_rng.random_range(0..c.sessions.len()), 0));
         let sess = Session {
             class,
             context: 0.0,
@@ -658,6 +675,7 @@ impl Batch {
             serial: self.next_serial,
             turn_no: 0,
             span: None,
+            replay,
         };
         self.next_serial += 1;
         let id = match self.free_slots.pop() {
@@ -675,14 +693,25 @@ impl Batch {
     }
 
     /// The session's next turn becomes ready and joins the FIFO wait.
+    /// The replayed turn record of session `id`, if it is a replay.
+    fn replay_turn(&self, id: usize) -> Option<crate::workload::TraceTurn> {
+        let (si, ti) = self.sessions[id].replay?;
+        Some(self.cfg.trace.as_ref()?.sessions[si].turns[ti])
+    }
+
     fn new_turn(&mut self, id: usize, now: f64) {
         let cls = &self.cfg.classes[self.sessions[id].class];
-        let new = if self.sessions[id].cold {
-            cls.initial_tokens.sample(&mut self.work_rng)
-        } else {
-            cls.new_tokens.sample(&mut self.work_rng)
+        let (new, out) = match self.replay_turn(id) {
+            Some(t) => (t.new, t.out),
+            None => (
+                if self.sessions[id].cold {
+                    cls.initial_tokens.sample(&mut self.work_rng)
+                } else {
+                    cls.new_tokens.sample(&mut self.work_rng)
+                },
+                cls.output_tokens.sample(&mut self.work_rng),
+            ),
         };
-        let out = cls.output_tokens.sample(&mut self.work_rng);
         let sampled = match &self.cfg.work {
             Work::Tokens => (0.0, 0.0),
             Work::Sampled { prefill, decode } => (
@@ -1066,9 +1095,21 @@ impl Batch {
             self.end_session(id, now);
             return;
         }
+        let think = match (self.replay_turn(id), self.sessions[id].replay) {
+            (Some(t), Some((si, ti))) => {
+                // The trace decides whether the session continues.
+                if ti + 1 >= self.cfg.trace.as_ref().unwrap().sessions[si].turns.len() {
+                    self.end_session(id, now);
+                    return;
+                }
+                t.think
+            }
+            _ => {
+                let cls = &self.cfg.classes[self.sessions[id].class];
+                cls.tool_time.sample(&mut self.flow_rng)
+            }
+        };
         self.sessions[id].phase = Phase::Tool;
-        let cls = &self.cfg.classes[self.sessions[id].class];
-        let think = cls.tool_time.sample(&mut self.flow_rng);
         s.after(think, Ev::ToolDone(id));
     }
 
@@ -1127,11 +1168,17 @@ impl Model for Batch {
                 }
             }
             Ev::ToolDone(id) => {
-                let class = self.sessions[id].class;
-                if self.flow_rng.random::<f64>() >= self.cfg.classes[class].resume_prob {
-                    self.end_session(id, now);
-                } else {
+                if let Some((si, ti)) = self.sessions[id].replay {
+                    // Continuation was decided from the trace at turn end.
+                    self.sessions[id].replay = Some((si, ti + 1));
                     self.new_turn(id, now);
+                } else {
+                    let class = self.sessions[id].class;
+                    if self.flow_rng.random::<f64>() >= self.cfg.classes[class].resume_prob {
+                        self.end_session(id, now);
+                    } else {
+                        self.new_turn(id, now);
+                    }
                 }
             }
             Ev::PrefillDone(id) => {
@@ -1324,6 +1371,7 @@ mod tests {
         BatchConfig {
             population: a.population,
             max_sessions: None,
+            trace: None,
             classes: a.classes.clone(),
             cost: a.cost.clone(),
             work: Work::Tokens,

@@ -177,6 +177,61 @@ thrashed. Synthetic, uncalibrated.}
 \label{fig:sim-admission}
 \end{figure}
 
+\input{sim/tab-inversion}
+
+\paragraph{Placement and a shared KV store.} Table~\ref{tab:sim-inversion}
+takes Proposition~\ref{prop:routing} out of its model: four replicas
+instead of one node and an idle alternative, a skewed placement that
+loads one replica, and a state that is moved over one shared link
+rather than recomputed, as a shared KV store would move it. The row
+order is the proposition's: the faster the link, the cheaper the move
+and the lower the load at which always moving beats strict affinity.
+With a link that moves a context in a millisecond the inversion is
+below the lowest load swept; with a link slower than a recompute it
+sits near saturation. The utilisation of the affinity node at the
+inversion follows $\rho^*$ for cheap moves and exceeds it for the
+expensive one, because the link is itself a shared resource: at the
+loads where a slow link would pay off, every program is moving and the
+link saturates, which the single-node proposition does not see. The
+lookahead rule, which moves only when the observed wait exceeds the
+move cost, is below both at every load, so the choice a deployment
+faces is not affinity or a store but how the store's transfer is priced
+at decision time.
+
+\input{sim/tab-trace}
+
+\paragraph{Replayed production sessions.} Table~\ref{tab:sim-trace}
+replaces the synthetic classes by the production sessions of
+\S\ref{sec:exp-traces}: sessions still arrive Poisson, but each one
+replays a real session's appends, outputs, think times and length, so
+the workload side of the model is measured and only the replica is
+simulated. Three things follow. First, with no eviction every follow-up
+turn hits and the prefill work still has
+$\mathrm{CV}^2=\simTraceOpenCvMin$--$\simTraceOpenCvMax$, from the
+appends alone; the mean TTFT is
+\simTraceOpenTtftMin--\simTraceOpenTtftMax\,s at these loads because a
+new session's first prompt, of a few hundred thousand tokens, is a
+cold prefill that every turn behind it waits for. Second, once the pool
+is finite the admission cap decides the regime. At the tight cap the
+hit rate stays at or above \simTraceTightHitMin{} and the hit/miss
+mixture supplies \simTraceTightMixMin--\simTraceTightMixMax\,\% of the
+variance of follow-up prefill work, the split that E2 measures; at the
+loose cap the replica thrashes, the hit rate falls to at most
+\simTraceLooseHitMax{} and the mean TTFT exceeds
+\simTraceLooseTtftMin\,s. The price of a tight cap is the entry wait,
+up to \simTraceEntryMaxHours{} hours in the mean where the pool cannot
+carry the offered sessions.
+Third, the PK wait computed from the measured $\lambda$, $\E[S]$ and
+$\E[S^2]$ of the prefill queue is above the observed wait in every cell,
+by a factor of \simTracePkRatioMin{} to \simTracePkRatioMax. The live
+sessions are a finite population of two to twenty-four, and a session
+that is waiting cannot generate its next turn, so arrivals thin out as
+the queue grows; the open M/G/1 queue of \S\ref{sec:batch} has no such
+feedback and overstates the wait. The bracket of
+Proposition~\ref{prop:price} is therefore conservative for small
+populations, and E2 has to report the number of live sessions next to
+the load.
+
 \subsubsection{What the Simulation Does Not Show}\label{sec:sim-limits}
 
 The simulator shares the model's abstractions. It does not model

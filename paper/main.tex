@@ -936,7 +936,9 @@ model treats the prefill stage as a FIFO server with a fixed available
 fraction, although the budget left by the decode batch fluctuates and
 session feedback makes arrivals non-Poisson, so Eq.~\eqref{eq:pk} is an
 approximation there; Kingman's bound says bursty arrivals add delay on
-top of it. Decode capacity depends on the number of turns in the batch,
+top of it, and the replayed sessions of \S\ref{sec:sim} show the
+opposite error when the live population is small, where the open queue
+overstates the wait several-fold. Decode capacity depends on the number of turns in the batch,
 with the KV dependence of a step carried by~\eqref{eq:decode} alone. A
 real batch limit admits turns in FIFO order and is not insensitive;
 \S\ref{sec:sim} finds the error of the saturating $\varphi$ follows the

@@ -58,4 +58,7 @@ checks!(
     pd_win_condition_decisions,
     affinity_breaks_at_high_load,
     lookahead_not_worse_than_affinity,
+    trace_replay_variance_sources,
+    inversion_load_closed_form,
+    inversion_load_rises_with_move_cost,
 );

@@ -28,6 +28,11 @@ pub enum RoutePolicy {
     Affinity,
     /// Least unfinished work, ignoring where the KV is.
     LeastLoaded,
+    /// Least unfinished work; off-home the state is fetched over the link
+    /// when that is cheaper than recomputing it (a shared KV store). The
+    /// "always move" alternative of Prop. routing (i), against which the
+    /// inversion load `ρ*` is defined.
+    LeastLoadedFetch,
     /// KV-aware myopic: `min_j W_j + S_j`, with `S_j` a miss off-home.
     Myopic,
     /// `min_j W_j + S_j + M_j + F_j` with `F_j = 0`, where moving may
@@ -100,6 +105,9 @@ pub struct RoutingReport {
     /// Busy fraction per replica.
     pub utilization: Vec<f64>,
     pub service: Welford,
+    /// Mean context (tokens) of follow-up turns at their routing decision:
+    /// what a migration would move.
+    pub mean_context: f64,
 }
 
 struct Prog {
@@ -133,6 +141,7 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
         recomputes: u64,
         service: Welford,
         turns: u64,
+        context: Welford,
     }
 
     impl Sim {
@@ -176,6 +185,16 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
                             Choice::Recompute
                         },
                     )
+                }
+                RoutePolicy::LeastLoadedFetch => {
+                    let (j, _) = pick(&|j| (self.wait(j, now), Choice::Hit));
+                    if j == home {
+                        (j, Choice::Hit)
+                    } else if migrate < miss_s - hit_s {
+                        (j, Choice::Migrate)
+                    } else {
+                        (j, Choice::Recompute)
+                    }
                 }
                 RoutePolicy::Myopic => pick(&|j| {
                     if j == home {
@@ -249,6 +268,9 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
                         let svc = self.cfg.cost.turn(new, 0.0, out);
                         (j, Choice::Recompute, svc, self.free_at[j].max(now))
                     } else {
+                        if warm {
+                            self.context.push(self.progs[id].context);
+                        }
                         let (j, choice, svc) = self.route(id, now, new, out);
                         let mut ready = now;
                         if let Choice::Migrate = choice {
@@ -313,6 +335,7 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
         recomputes: 0,
         service: Welford::new(),
         turns: 0,
+        context: Welford::new(),
     };
     let mut s = Scheduler::new();
     s.at(0.0, Ev::Arrival);
@@ -328,5 +351,6 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
         recomputes: m.recomputes,
         utilization: m.busy.iter().map(|b| b / span).collect(),
         service: m.service,
+        mean_context: m.context.mean(),
     }
 }

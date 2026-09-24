@@ -128,11 +128,24 @@ not what moves TTFT.
   in the heavy cache-write tail (dataset README); requests above 990,016
   tokens were removed by the dataset authors.
 
+## Replay in the simulator (2026-09-24)
+
+`scripts/trace_stats_weka.py --export-csv` writes `libqueuingsim/data/weka-sessions.csv`
+(main-agent requests, sessions split at gaps > 600 s: 761 sessions, 26,395
+turns, mean 34.7 turns, mean think 22.7 s, mean final context 391k).
+`libqueuingsim::workload::TraceCorpus` loads it and `BatchConfig::trace`
+replays one real session per Poisson arrival. Results in paper §4.1
+(`tab:sim-trace`, generated): appends alone give CV² 35–43; a tight
+admission cap keeps hits ≥ 0.80 with the mixture at 38–75 % of Var[S]; a
+loose cap thrashes; PK from measured moments overstates the observed
+prefill wait 4–20× because 2–24 live sessions are a finite population.
+Block eviction changed nothing beyond seed noise. Cost model: `a = 2e-5`,
+`b = 4e-10` (`K_c = 50k`, dense-70B order), `β = 2e-9`, `ω = 2e-4`.
+
 ## Next
 
 - Add the other harbor harnesses (parse their own formats) to see whether
   append CV² and reuse are harness properties.
-- Feed the Weka per-session (n_t, K_t, o_t, think_t) sequences to
-  `libqueuingsim` as a replayed workload (roadmap item "trace replay") and
-  run the E2 forced-miss experiment in simulation before the testbed.
+- Forced-miss injection on the replayed workload (the `prop:price` bracket
+  with real appends) and a finite-population correction of PK.
 - E1 calibration turns the `K_c` sweep into one column.

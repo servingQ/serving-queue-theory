@@ -10,3 +10,6 @@ paper/_build/
 
 # trace_html example output
 libqueuingsim/*.html
+
+# trace corpora (large, downloaded; see docs/trace-analysis.md)
+/data/
