@@ -128,6 +128,22 @@ not what moves TTFT.
   in the heavy cache-write tail (dataset README); requests above 990,016
   tokens were removed by the dataset authors.
 
+## Harness comparison (2026-09-24)
+
+`scripts/trace_stats_harbor.py` on the other SWE-bench Pro harnesses
+(openhands-sdk has no ATIF trajectory.json for most trials and is skipped):
+
+| Harness (SWE-bench Pro, MiniMax-M2.5) | sessions | turns median | context median | append median / CV² | reuse | gap median / CV² |
+|---|---|---|---|---|---|---|
+| claude-code | 99 | 16 | 30K | 259 / 6.8 | 96.6 % | 83 s / 0.66 |
+| terminus-2 | 100 | 65 | 27K | 146 / 2.3 | 98.9 % | 14 s / 4.7 |
+| mini-swe-agent | 83 | 40 | 21K | 280 / 1.9 | 97.2 % | 18 s / 2.7 |
+
+Append variance is a harness property (Claude Code's tool outputs and
+sub-agent results are the largest); reuse is not (97–99 % everywhere).
+Resume probability in the production corpus: 0.85–0.99 by turn index or
+preceding gap; expected next gap 4–65 s (table `tab-weka-resume.tex`).
+
 ## Replay in the simulator (2026-09-24)
 
 `scripts/trace_stats_weka.py --export-csv` writes `libqueuingsim/data/weka-sessions.csv`

@@ -213,4 +213,99 @@ theorem missPrice_unbounded {m1 m2 sh sm : ℝ} (hm1 : 0 < m1) (hm2 : 0 < m2)
   have hMabs : M ≤ |M| := le_abs_self M
   linarith
 
+/-! ### The price within a replica: monotone in the context
+
+Under the prefill cost `P(n, K) = a n + b n (K + n/2)` of `eq:prefill`, the
+miss penalty of a program with context `K` and append `n` is
+`ΔS = P(K + n, 0) - P(n, K) = a K + b K² / 2`, increasing in `K`; both
+`S^miss - S^hit` and `S^miss + S^hit` grow with `K`, so at one replica and
+one load `Φ` orders programs by context length. The load changes the
+*ratios* between programs, not their order, until `p_i` and `τ_i` enter
+(`price_order_flips_with_load`). -/
+
+/-- Prefill work of `eq:prefill`: `a n + b n (K + n/2)`. -/
+noncomputable def prefillWork (a b n K : ℝ) : ℝ := a * n + b * n * (K + n / 2)
+
+/-- `ΔS = P(K+n, 0) - P(n, K) = a K + b K² / 2`. -/
+theorem prefillWork_miss_delta (a b n K : ℝ) :
+    prefillWork a b (K + n) 0 - prefillWork a b n K = a * K + b * K ^ 2 / 2 := by
+  unfold prefillWork; ring
+
+theorem prefillWork_nonneg {a b n K : ℝ} (ha : 0 ≤ a) (hb : 0 ≤ b) (hn : 0 ≤ n) (hK : 0 ≤ K) :
+    0 ≤ prefillWork a b n K := by
+  unfold prefillWork; positivity
+
+theorem prefillWork_mono_context {a b n : ℝ} (hb : 0 ≤ b) (hn : 0 ≤ n) {K K' : ℝ}
+    (hKK : K ≤ K') : prefillWork a b n K ≤ prefillWork a b n K' := by
+  unfold prefillWork; nlinarith [mul_nonneg hb hn]
+
+theorem prefillWork_miss_mono_context {a b n : ℝ} (ha : 0 ≤ a) (hb : 0 ≤ b) (hn : 0 ≤ n)
+    {K K' : ℝ} (hK : 0 ≤ K) (hKK : K ≤ K') :
+    prefillWork a b (K + n) 0 ≤ prefillWork a b (K' + n) 0 := by
+  unfold prefillWork
+  have h1 : 0 ≤ (K' + n) - (K + n) := by linarith
+  have h2 : 0 ≤ (K' + n) + (K + n) := by linarith
+  nlinarith [mul_nonneg ha h1, mul_nonneg hb (mul_nonneg h1 h2)]
+
+/-- **Within a replica the price of a miss is monotone in the context.** At
+fixed `lam ≥ 0`, `m2 ≥ 0`, `rho < 1` and append `n ≥ 0`, a longer context
+`K' ≥ K ≥ 0` has a price at least as high. -/
+theorem missPrice_mono_context {a b n lam m2 rho : ℝ} (ha : 0 ≤ a) (hb : 0 ≤ b) (hn : 0 ≤ n)
+    (hlam : 0 ≤ lam) (hm2 : 0 ≤ m2) (hrho : rho < 1) {K K' : ℝ} (hK : 0 ≤ K) (hKK : K ≤ K') :
+    missPrice lam m2 rho (prefillWork a b n K) (prefillWork a b (K + n) 0)
+      ≤ missPrice lam m2 rho (prefillWork a b n K') (prefillWork a b (K' + n) 0) := by
+  have hK' : 0 ≤ K' := le_trans hK hKK
+  -- the four service times and their order
+  set sh := prefillWork a b n K with hsh
+  set sm := prefillWork a b (K + n) 0 with hsm
+  set sh' := prefillWork a b n K' with hsh'
+  set sm' := prefillWork a b (K' + n) 0 with hsm'
+  have hd : sm - sh = a * K + b * K ^ 2 / 2 := prefillWork_miss_delta a b n K
+  have hd' : sm' - sh' = a * K' + b * K' ^ 2 / 2 := prefillWork_miss_delta a b n K'
+  have hdd : sm - sh ≤ sm' - sh' := by
+    rw [hd, hd']
+    have h1 : 0 ≤ K' - K := by linarith
+    nlinarith [mul_nonneg ha h1, mul_nonneg hb (mul_nonneg h1 (add_nonneg hK hK'))]
+  have hd0 : 0 ≤ sm - sh := by rw [hd]; positivity
+  have hsh0 : 0 ≤ sh := prefillWork_nonneg ha hb hn hK
+  have hsm0 : 0 ≤ sm := prefillWork_nonneg ha hb (by linarith) le_rfl
+  have hshm : sh ≤ sh' := prefillWork_mono_context hb hn hKK
+  have hsmm : sm ≤ sm' := prefillWork_miss_mono_context ha hb hn hK hKK
+  have hsum : sm + sh ≤ sm' + sh' := by linarith
+  have hsum0 : 0 ≤ sm + sh := by linarith
+  have hsq : sm ^ 2 - sh ^ 2 ≤ sm' ^ 2 - sh' ^ 2 := by
+    have e1 : sm ^ 2 - sh ^ 2 = (sm - sh) * (sm + sh) := by ring
+    have e2 : sm' ^ 2 - sh' ^ 2 = (sm' - sh') * (sm' + sh') := by ring
+    rw [e1, e2]
+    exact mul_le_mul hdd hsum hsum0 (by linarith)
+  have hu : 0 < 1 - rho := by linarith
+  have hw : 0 ≤ pkWait lam m2 rho := by unfold pkWait; positivity
+  unfold missPrice
+  have t2 : lam * (sm ^ 2 - sh ^ 2) / (2 * (1 - rho)) ≤ lam * (sm' ^ 2 - sh' ^ 2) / (2 * (1 - rho)) := by
+    apply div_le_div_of_nonneg_right _ (by positivity)
+    exact mul_le_mul_of_nonneg_left hsq hlam
+  have t3 : lam * pkWait lam m2 rho * (sm - sh) / (1 - rho)
+      ≤ lam * pkWait lam m2 rho * (sm' - sh') / (1 - rho) := by
+    apply div_le_div_of_nonneg_right _ hu.le
+    exact mul_le_mul_of_nonneg_left hdd (mul_nonneg hlam hw)
+  linarith
+
+/-- **The eviction order by price per byte can flip with the load.** Two
+programs on one replica, `a = 2·10⁻⁵`, `b = 4·10⁻¹⁰`, appends of 1000
+tokens: program 1 has a 200k context and resumes with probability 0.3,
+program 2 a 20k context and probability 0.9; sizes are proportional to
+context. At an idle queue (`lam = 0`) program 1 has the lower price per
+byte and is evicted first; at `lam = 0.2`, `rho = 0.5`, `W = 2 s`
+(`m2 = 10`) the order is reversed. -/
+theorem price_order_flips_with_load :
+    let P := fun n K : ℝ => prefillWork (1 / 50000) (1 / 2500000000) n K
+    (3 / 10 : ℝ) * missPrice 0 0 0 (P 1000 200000) (P 201000 0) / 200000
+        < (9 / 10) * missPrice 0 0 0 (P 1000 20000) (P 21000 0) / 20000 ∧
+    (9 / 10 : ℝ) * missPrice (1 / 5) 10 (1 / 2) (P 1000 20000) (P 21000 0) / 20000
+        < (3 / 10) * missPrice (1 / 5) 10 (1 / 2) (P 1000 200000) (P 201000 0) / 200000 := by
+  intro P
+  simp only [P]
+  unfold missPrice pkWait prefillWork
+  constructor <;> norm_num
+
 end ServingQueueTheory

@@ -2284,10 +2284,12 @@ pub fn trace_cap(corpus: &crate::workload::TraceCorpus, kv: f64, factor: f64) ->
     }
 }
 
-/// Every cell of the scenario: for each rate the uncapped infinite pool,
-/// then each finite pool at the tight and the loose cap (whole-session
-/// eviction by price per byte-second). Block eviction was also run and
-/// changed no cell beyond seed noise; it is left out of the table.
+/// Every cell of the scenario. The infinite pool is open and is run at
+/// each rate. A finite pool with a cap is a closed system once the cap
+/// binds (the entry queue then grows for the whole horizon and the arrival
+/// rate is irrelevant), so each (pool, cap) is run once, at the higher
+/// rate, and reported with `N = cap` live sessions. Block eviction was also
+/// run and changed no cell beyond seed noise; it is left out of the table.
 pub fn trace_replay_scenario() -> Vec<TraceRow> {
     let corpus = std::sync::Arc::new(crate::workload::TraceCorpus::weka());
     let mut rows = vec![];
@@ -2299,17 +2301,18 @@ pub fn trace_replay_scenario() -> Vec<TraceRow> {
             TRACE_CAP_OPEN,
             EvictionPolicy::PricedMemory,
         ));
-        for kv in TRACE_POOLS.iter().copied().filter(|k| k.is_finite()) {
-            for f in TRACE_CAP_FACTORS {
-                let cap = trace_cap(&corpus, kv, f);
-                rows.push(trace_row(
-                    &corpus,
-                    rate,
-                    kv,
-                    cap,
-                    EvictionPolicy::PricedMemory,
-                ));
-            }
+    }
+    let rate = TRACE_RATES[TRACE_RATES.len() - 1];
+    for kv in TRACE_POOLS.iter().copied().filter(|k| k.is_finite()) {
+        for f in TRACE_CAP_FACTORS {
+            let cap = trace_cap(&corpus, kv, f);
+            rows.push(trace_row(
+                &corpus,
+                rate,
+                kv,
+                cap,
+                EvictionPolicy::PricedMemory,
+            ));
         }
     }
     rows
@@ -2396,6 +2399,8 @@ pub struct InversionRow {
     pub inversion_rate: Option<f64>,
     /// Utilisation of the hot replica under affinity at that rate.
     pub hot_utilization: Option<f64>,
+    /// Utilisation of the shared link under always-move at that rate.
+    pub link_utilization: Option<f64>,
     pub affinity_response: Option<f64>,
     pub move_response: Option<f64>,
     /// Lookahead (state-dependent) mean response at that rate.
@@ -2440,6 +2445,7 @@ pub fn inversion_scenario() -> Vec<InversionRow> {
                 rho_star: x / (1.0 + x),
                 inversion_rate: found.as_ref().map(|_| INVERSION_RATES[i]),
                 hot_utilization: found.as_ref().map(|_| a.utilization[0]),
+                link_utilization: found.as_ref().map(|f| f.1.link_utilization),
                 affinity_response: found.as_ref().map(|_| a.response.mean),
                 move_response: found.as_ref().map(|f| f.1.response.mean),
                 lookahead_response: found.as_ref().map(|f| f.2.response.mean),

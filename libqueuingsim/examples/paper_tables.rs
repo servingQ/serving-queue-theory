@@ -174,7 +174,7 @@ fn in_model() -> String {
     let g = queue::simulate(&QueueConfig::mg1(lam, d.clone(), 4_000_000, 60)).wait;
     let m = queue::simulate(&QueueConfig::mg1(lam, Dist::exp(d.mean()), 4_000_000, 60)).wait;
     rows.push(format!(
-        "$W_q$ / M/M/1, $\\mathrm{{CV}}^2{{=}}{:.1}$ & Eq.~\\eqref{{eq:cv2}} & {:.2} & {:.2}",
+        "$W_q$ / M/M/1, $\\mathrm{{CV}}^2{{=}}{:.1}$ & \\S\\ref{{sec:congestion}} & {:.2} & {:.2}",
         d.cv2(),
         (1.0 + d.cv2()) / 2.0,
         g.mean / m.mean
@@ -266,7 +266,7 @@ fn kingman() -> String {
     }
     table(
         "Bursty (hyperexponential) arrivals with the service law of \
-         Eq.~\\eqref{eq:cv2}, $\\rho=0.7$. $c_a^2$ is the interarrival \
+         \\S\\ref{sec:congestion}, $\\rho=0.7$. $c_a^2$ is the interarrival \
          $\\mathrm{CV}^2$. Mean waits in seconds.",
         "tab:sim-kingman",
         "cccc",
@@ -436,8 +436,9 @@ fn evict_offline(data: &mut Data) -> String {
          10--60\\,\\% of the total); the lowest mean and the lowest max per \
          row in bold. First three rows: costs $p_ic_i^2$. \
          Last row: weights $w_i$ log-uniform on $[10^{-4},10^5]$, independent \
-         of $c_i$. Guarded: the guarded density greedy of \
-         Prop.~\\ref{prop:guarded}.",
+         of $c_i$; shortest-first does not see $w_i$ there, and its ratio is \
+         the price of ignoring the weights. Guarded: the guarded density greedy \
+         of \\S\\ref{sec:evict}.",
         "tab:sim-evict",
         "lccc",
         "Costs & SF & Density & Guarded",
@@ -531,7 +532,7 @@ fn footprint_table() -> String {
     table(
         "Expected number of requests admitted in arrival order into $M=12$ \
          tokens of KV until the first that does not fit \
-         (Prop.~\\ref{prop:footprint}). Footprints $K$ i.i.d.; the two laws in \
+         (\\S\\ref{sec:batch}). Footprints $K$ i.i.d.; the two laws in \
          each pair have the same mean. Simulated: $10^6$ draws, $\\pm$ a \
          95\\,\\% half-width.",
         "tab:sim-footprint",
@@ -733,13 +734,13 @@ fn evict_open(open: &[OpenEvictRow], data: &mut Data) -> String {
              response (s), and the number of the {} seeds that thrashed (hit \
              rate below $0.5$); $\\pm$ is a 95\\,\\% half-width over seeds; \
              the best throughput, hit rate, TTFT and p99 per load in bold. \
-             Priced: $q_i\\Phi_i/c_i$ with the FIFO price of \
+             Priced: $p_i\\Phi_i/c_i$ with the FIFO price of \
              Prop.~\\ref{{prop:price}} from online estimates of the prefill \
-             queue; Priced/$\\tau$: per byte-second, $q_i\\Phi_i/(c_i\\tau_i)$ \
-             with $\\tau_i$ the class mean tool time (the threshold rule of \
-             Prop.~\\ref{{prop:memory}}); Blocks: the same price on 512-token \
-             tail blocks, a partial miss re-prefilling only the evicted \
-             suffix.",
+             queue; Priced/$\\tau$: per byte-second, $p_i\\Phi_i/(c_i\\tau_i)$ \
+             (the threshold rule of \\S\\ref{{sec:evict}}); Blocks: the same price \
+             on 512-token tail blocks, a partial miss re-prefilling only the \
+             evicted suffix. The priced rules take $p_i$ and $\\tau_i$ from the \
+             generating class (an oracle); the fixed keys see neither.",
             validation::OPEN_CAP,
             validation::OPEN_SEEDS
         ),
@@ -806,7 +807,7 @@ fn admission_table(open: &[OpenEvictRow], data: &mut Data) -> String {
     )
 }
 
-const INVERSION_CSV_HEADER: &str = "bandwidth,move_over_service,rho_star,inversion_rate,hot_utilization,affinity,always_move,lookahead";
+const INVERSION_CSV_HEADER: &str = "bandwidth,move_over_service,rho_star,inversion_rate,hot_utilization,link_utilization,affinity,always_move,lookahead";
 
 /// §3.2 / Prop. routing beyond its model: the load at which always moving
 /// (fetching the state over a shared link) beats strict affinity, by link
@@ -818,23 +819,25 @@ fn inversion_table(data: &mut Data) -> String {
     for r in &rows_all {
         let f = |o: Option<f64>, d: usize| o.map_or("--".to_string(), |v| format!("{v:.d$}"));
         rows.push(format!(
-            "{:.0}k & {:.2} & {:.2} & {} & {} & {} & {} & {}",
+            "{:.0}k & {:.2} & {:.2} & {} & {} & {} & {} & {} & {}",
             r.bandwidth / 1e3,
             r.move_over_service,
             r.rho_star,
-            f(r.inversion_rate, 1),
+            f(r.inversion_rate, 2),
             f(r.hot_utilization, 2),
+            f(r.link_utilization, 2),
             f(r.affinity_response, 3),
             f(r.move_response, 3),
             f(r.lookahead_response, 3)
         ));
         csv.push(format!(
-            "{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{}",
             r.bandwidth,
             r.move_over_service,
             r.rho_star,
             r.inversion_rate.unwrap_or(f64::NAN),
             r.hot_utilization.unwrap_or(f64::NAN),
+            r.link_utilization.unwrap_or(f64::NAN),
             r.affinity_response.unwrap_or(f64::NAN),
             r.move_response.unwrap_or(f64::NAN),
             r.lookahead_response.unwrap_or(f64::NAN)
@@ -846,15 +849,18 @@ fn inversion_table(data: &mut Data) -> String {
          replica~0 (the affinity node), follow-up turns of 5--15k-token contexts, \
          state moved over one shared link of bandwidth $B$ (tokens/s) when that is \
          cheaper than recomputing it. $x$: mean move cost over mean service; \
-         $\\rho^*=x/(1+x)$, the inversion utilisation of Proposition~\\ref{prop:routing}(i) \
-         for one node and an idle alternative; Inv.: the lowest program rate (per s) \
-         at which always moving to the least-loaded replica beats affinity in mean \
-         turn response beyond both confidence intervals; $\\rho_0$: utilisation of the \
-         affinity node at that rate; mean turn response (s) of affinity, always-move \
-         and the lookahead rule of Eq.~\\eqref{eq:lookahead} there.",
+         $\\rho^*=x/(1+x)$, the inversion utilisation of Eq.~\\eqref{eq:rhostar} \
+         for one node and an idle alternative; Inv.: the lowest program rate (per s, \
+         swept in steps of 0.05) at which always moving to the least-loaded replica \
+         beats affinity in mean turn response beyond both confidence intervals; \
+         $\\rho_0$: utilisation of the affinity node at that rate; $\\rho_L$: \
+         utilisation of the shared link under always-move there; mean turn response \
+         (s) of affinity, always-move and the lookahead rule of \
+         Eq.~\\eqref{eq:lookahead}. The idle alternative gives the earliest \
+         inversion, so $\\rho^*$ is a lower bound for any real alternative.",
         "tab:sim-inversion",
-        "cccccccc",
-        "$B$ & $x$ & $\\rho^*$ & Inv. & $\\rho_0$ & Affinity & Move & Lookahead",
+        "ccccccccc",
+        "$B$ & $x$ & $\\rho^*$ & Inv. & $\\rho_0$ & $\\rho_L$ & Affinity & Move & Lookahead",
         &rows,
         "2pt",
     )
@@ -953,13 +959,17 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
         } else {
             "$\\infty$".to_string()
         };
+        let regime = if r.kv.is_finite() {
+            format!("closed $N{{=}}{}$", r.cap)
+        } else {
+            format!("open $\\Lambda{{=}}{:.3}$", r.rate)
+        };
         rows.push(format!(
-            "{:.3} & {pool} & {} & {} & {:.2} & {:.1} & {:.0} & {:.0} & {:.0}",
-            r.rate,
-            r.cap,
-            pm(r.hit_rate, 2),
+            "{pool} & {regime} & {:.2} & {:.2} & {:.1} & {:.2} & {:.0} & {:.0} & {:.0}",
+            r.hit_rate.mean,
             r.mixture_share.mean,
             r.cv2.mean,
+            r.rho.mean,
             r.wait.mean,
             r.pk_wait.mean,
             r.ttft.mean
@@ -991,16 +1001,20 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
         &format!(
             "Replayed production sessions on the two-resource replica: {} Claude Code \
              sessions ({} turns, mean final context {:.0}k tokens, mean think time \
-             {:.0}\\,s) from the corpus of \\S\\ref{{sec:exp-traces}}, arriving Poisson at \
-             rate $\\Lambda$ (per s), each played turn by turn; cost model with \
-             $K_c=a/b=50$k tokens, batch cap 8, eviction by price per byte-second, \
-             at most Cap live sessions (the rest wait to enter). Follow-up hit rate; \
+             {:.0}\\,s; a gap above 10\\,min starts a new session) from the corpus of \
+             \\S\\ref{{sec:exp-traces}}, each played turn by turn; cost model with \
+             $K_c=a/b=50$k tokens, batch cap 8, eviction by price per byte-second. \
+             With no pool limit the replica is open (Poisson sessions at rate \
+             $\\Lambda$ per s, at most 24 live). With a finite pool the cap on live \
+             sessions binds throughout the run, so the replica is a closed system of \
+             $N$ sessions and the arrival rate is immaterial; the entry queue grows \
+             for the whole horizon (waits in the data file). Follow-up hit rate; \
              the share of $\\mathrm{{Var}}[S]$ of follow-up prefill work due to the \
              hit/miss mixture (the rest is the spread of the appends) and the \
-             $\\mathrm{{CV}}^2$ of that work; observed mean prefill wait $W_q$ and the PK \
-             wait from the measured $\\lambda$, $\\E[S]$, $\\E[S^2]$ (s); mean TTFT (s). \
-             Entry waits of sessions held by the cap are in the data file. \
-             $\\pm$ is a 95\\,\\% half-width over {} seeds.",
+             $\\mathrm{{CV}}^2$ of that work; prefill load $\\rho$ in stage time; observed \
+             mean prefill wait $W_q$ and the PK wait from the measured $\\lambda$, \
+             $\\E[S]$, $\\E[S^2]$ (s); mean TTFT (s). Means over {} seeds; the \
+             half-widths are in the data file.",
             corpus.sessions.len(),
             corpus.turns(),
             corpus.mean_final_context() / 1e3,
@@ -1008,8 +1022,8 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             validation::TRACE_SEEDS
         ),
         "tab:sim-trace",
-        "ccccccccc",
-        "$\\Lambda$ & Pool & Cap & Hit & Mix & $\\mathrm{{CV}}^2$ & $W_q$ & PK & TTFT",
+        "clccccccc",
+        "Pool & Regime & Hit & Mix & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
         &rows,
         "2pt",
     )

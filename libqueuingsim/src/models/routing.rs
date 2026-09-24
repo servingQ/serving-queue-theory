@@ -108,6 +108,8 @@ pub struct RoutingReport {
     /// Mean context (tokens) of follow-up turns at their routing decision:
     /// what a migration would move.
     pub mean_context: f64,
+    /// Busy fraction of the migration link.
+    pub link_utilization: f64,
 }
 
 struct Prog {
@@ -142,6 +144,7 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
         service: Welford,
         turns: u64,
         context: Welford,
+        link_busy: f64,
     }
 
     impl Sim {
@@ -278,6 +281,9 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
                             let st = self.link_free_at.max(now);
                             self.link_free_at = st + c / self.cfg.migrate_bandwidth;
                             ready = self.link_free_at;
+                            if warm {
+                                self.link_busy += c / self.cfg.migrate_bandwidth;
+                            }
                         }
                         (j, choice, svc, self.free_at[j].max(ready))
                     };
@@ -336,6 +342,7 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
         service: Welford::new(),
         turns: 0,
         context: Welford::new(),
+        link_busy: 0.0,
     };
     let mut s = Scheduler::new();
     s.at(0.0, Ev::Arrival);
@@ -352,5 +359,6 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
         utilization: m.busy.iter().map(|b| b / span).collect(),
         service: m.service,
         mean_context: m.context.mean(),
+        link_utilization: m.link_busy / span,
     }
 }

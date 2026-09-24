@@ -66,6 +66,9 @@ open ServingQueueTheory
 #print axioms missPrice_own_vs_queue_ratio
 #print axioms missPrice_queue_terms_ratio
 #print axioms missPrice_unbounded
+#print axioms prefillWork_miss_delta
+#print axioms missPrice_mono_context
+#print axioms price_order_flips_with_load
 -- prop:guarded (§3.1): guarded density greedy
 #print axioms densityFirst_unbounded
 #print axioms threshold_prefix_le
@@ -82,4 +85,5 @@ open ServingQueueTheory
 #print axioms footprint_variance_helps
 -- prop:memory (§3.1): memory shadow price and block-level eviction
 #print axioms threshold_rule_optimal
+#print axioms threshold_rule_optimal_byte_seconds
 #print axioms density_prefix_plus_one

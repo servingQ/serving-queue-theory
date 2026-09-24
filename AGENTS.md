@@ -137,30 +137,41 @@ Follow `docs/add-proposition.md`. Short version:
 ## Paper conventions
 
 - ICML two-column; do not change fonts, margins, or the `.sty`.
-- Structure: §1 intro states the thesis (the price of a miss); §2 problem
-  formulation (§2.1 sessions: Poisson session arrivals, closed turn/tool
-  loop inside a session, BCMP, M/G/∞ memory pressure; §2.2 the replica
-  as two resources plus a memory pool: prefill = FIFO queue served from
-  the budget the decode batch leaves (chunking protects decode, not
-  prefill order), decode = bandwidth PS with demand ∝ o·K,
-  footprint examples as prose; §2.3 prefill work under KV reuse (hit/miss lives in
-  prefill only; the CV² numbers are prefill times); §2.4 the KV-state
-  problem with the memory shadow price θ; §2.5 `prop:price` (prefill
-  queue, central) and `prop:decode` (PS, prices only work)); §3 congestion-priced
-  scheduling: Algorithm 1 up front, then §3.1 eviction (`prop:memory`,
-  `prop:guarded`, `prop:blind`: price-blind keys have no constant ratio;
-  SF is the `w=c²` special case), §3.2 placement (`prop:routing`),
-  §3.3 admission and offloading (keep/offload/drop rule), closing with
-  one "Fixed rules as special cases" paragraph; §4 experiments (§4.1
-  uncalibrated simulation, §4.2 evaluation on a real system); App. A
-  proofs. Prefill/decode (PD) disaggregation is out of this paper
-  (follow-up); its text is in paper/pd-followup.tex, not \input. Do not
-  reintroduce it into the main text or an appendix. Do not reintroduce a "layered" framing, a section that collects
-  all propositions, a separate section for other papers' claims, or a
-  "special cases" section, and no "The claim" / "Reading the claim"
-  paragraphs (removed 2026-09-23): §3 proposes our scheduler, and a
-  published rule appears only as the special case of a step, in the
-  sentence where the formulation meets it.
+- Structure (v0.8, after the 2026-09-24 professor review): §1 intro
+  states the thesis (the price of a miss) and three contributions; §2
+  problem formulation, 2.5 pages incl. Table 1 "the model at a glance"
+  (§2.1 sessions: Poisson session arrivals, closed turn/tool loop, BCMP
+  in one sentence; §2.2 the replica as two resources plus a memory pool:
+  prefill = FIFO queue served from the budget the decode batch leaves,
+  decode = bandwidth PS, footprint examples as prose, units κ bytes/token
+  for memory and β, ω seconds for decode; §2.3 prefill work under KV
+  reuse with the trace-derived variance split `tab:cv2` (append vs
+  hit/miss mixture); §2.4 = `sec:price`: the decision problem and
+  `prop:price` (bracket only; term ratios, divergence, monotonicity in K
+  and the load-flip example are prose with inline `\provedby`),
+  `prop:decode`); §3 congestion-priced scheduling: Algorithm 1 up front
+  (step 7 = admission cap from the resident-KV estimate), §3.1 eviction
+  (threshold rule, block prefix, byte-second variant and guarded greedy
+  as *cited known results* with inline `\provedby`; `prop:blind` is the
+  one proposition; trace evidence on p_i, τ_i spread), §3.2 placement
+  (`eq:rhostar` inversion load as prose), §3.3 admission and offloading
+  (Campbell estimate lives here); §4 Evidence: §4.1 what the traces say,
+  §4.2 uncalibrated simulation (`paper/simulation.tex`, summaries only;
+  tables in App. B `simulation-appendix.tex`), §4.3 evaluation on a real
+  system (one overview table + one paragraph of hypotheses, no `\tbd`
+  cells); §5 related work (one page, with the novelty sentence); §6
+  limitations incl. "what would falsify"; App. A proofs (price, decode,
+  blind), App. B simulation tables, App. C trace tables. Three
+  propositions total; do not re-promote the demoted knapsack facts or the
+  inversion load to propositions (review M3). Prefill/decode (PD)
+  disaggregation is out of this paper (follow-up); its text is in
+  paper/pd-followup.tex, not \input. Do not reintroduce it into the main
+  text or an appendix. Do not reintroduce a "layered" framing, a section
+  that collects all propositions, a separate section for other papers'
+  claims, or a "special cases" section, and no "The claim" / "Reading
+  the claim" paragraphs (removed 2026-09-23): §3 proposes our scheduler,
+  and a published rule appears only as the special case of a step, in
+  the sentence where the formulation meets it.
 - Standard results from the literature are stated in prose with a
   citation, keeping their assumptions in a clause. Display a formula
   only when a proposition or proof refers to it (e.g. `eq:pk`); do not

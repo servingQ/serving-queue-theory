@@ -71,19 +71,21 @@ KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L �
 | § | Content | Our results | Cited results (prose) |
 |---|---------|-------------|----------------|
 | 1 | Intro: thesis, three contributions | 10× example (inline) | none |
-| 2.1 | Sessions, turns and tools (`sec:sessions` = `sec:closed`): Poisson sessions, closed loop inside, memory pressure | none | BCMP, closed-network monotonicity, Campbell (M/G/∞) |
-| 2.2 | A replica: two resources and a memory pool (`sec:batch` = `sec:queue`): `eq:prefill`, `eq:decode`; prefill FIFO, decode PS; Table 1 (the model at a glance) | footprint examples (prose, `footprint_variance_*`) | Sarathi-Serve (chunked prefill), BCMP/Kelly insensitivity, PK (`eq:pk`), Kingman |
-| 2.3 | Prefill work under KV reuse (`sec:congestion`) | `prop:pk`, `prop:cache`, `eq:cv2` (prefill times) | SRPT |
-| 2.4 | The KV-state problem (`eq:mdp`, `eq:numsys` = L_P + L_D, shadow price θ) | none | Little |
-| 2.5 | **The price of a miss** (`eq:price`, `eq:utility` = `w_i, v_i, u_i`) | `prop:price` (prefill queue: bracket; term ratios; unbounded), `prop:decode` (PS: monotone ⇒ ranking by work; closed form; unbounded) | none |
+| 2.1 | Sessions, turns and tools (`sec:sessions` = `sec:closed`): Poisson sessions, closed loop inside, BCMP in one sentence | none | BCMP |
+| 2.2 | A replica: two resources and a memory pool (`sec:batch` = `sec:queue`): `eq:prefill`, `eq:decode`; prefill FIFO, decode PS; Table 1 (the model at a glance); units κ (bytes/token), β, ω (s) | footprint examples (prose, `footprint_variance_*`) | Sarathi-Serve (chunked prefill), BCMP/Kelly insensitivity, PK (`eq:pk`) |
+| 2.3 | Prefill work under KV reuse (`sec:congestion`) with `tab:cv2` (trace-derived split: append vs mixture; generated `paper/traces/tab-weka-cv2.tex`) | `prop:pk`, `prop:cache` as prose | none |
+| 2.4 | **The price of a miss** (`sec:price` = `sec:problem`; decision problem, θ, `eq:price`, `eq:utility`) | `prop:price` (bracket only); prose with inline `\provedby`: term ratios, divergence, `missPrice_mono_context`, `price_order_flips_with_load`; `prop:decode` (stability condition added) | Mendelson–Whang / Dewan–Mendelson externality (UNVERIFIED bib) |
 | 3 | Congestion-priced scheduling (`sec:sched`) | | |
-| 3 (intro) | Algorithm 1: observe, price, set θ, evict, keep/offload/drop, place, admit; inputs and how θ is set | none (design) | none |
-| 3.1 | Eviction; "Fixed keys" paragraph (SF, LRU, idle, TTL as price-blind keys; ThunderAgent Def. 4.1 / App. F.3 contradicted in one sentence) | `prop:memory` (θ threshold; blocks: optimal up to one block), `prop:guarded` (program-level 2-approx), `prop:blind` ((i) price-blind keys unbounded, (ii) SF as the `w=c²` price-per-byte order, tight 2-approx) | covering knapsack, Dantzig greedy |
-| 3.2 | Placement (with or without a shared KV store: `M_j` = `Φ_i` or the priced fetch) | `prop:routing` (i) inversion load `λ* = μ − 1/(1/μ+M+F)`, `ρ* = μ(M+F)/(1+μ(M+F))`, (ii) monotone in `M`, `F`; `eq:lookahead` | none |
-| 3.3 | Admission and offloading (thrashing; θ as the admission unit; keep/offload/drop; option-value sentence with ThunderAgent A.2 as a clause); closing paragraph "Fixed rules as special cases" | none (design) | none |
-| 4.1 | Uncalibrated simulation (`paper/simulation.tex`, tables generated into `paper/sim/`) | none (checks of the props above) | none |
-| 4.2 | Evaluation on a real system: overview table + hypotheses E1–E6; table layouts in §4.2a below | none | none |
-| App. A | Human-readable proofs | | |
+| 3 (intro) | Algorithm 1: observe, price, set θ, evict, keep/offload/drop, place, admit (cap from the resident-KV estimate); inputs are estimates | none (design) | none |
+| 3.1 | Eviction: threshold rule, block prefix, byte-second variant, guarded greedy as cited known results (inline `\provedby`); "Fixed keys" paragraph with trace evidence (p 0.85–0.99, τ 4–65 s; `tab:resume` in App. C) | `prop:blind` ((i) price-blind keys unbounded, (ii) SF as the `w=c²` price-per-byte order, tight 2-approx); SF non-optimality instance as prose | Dantzig 1957, Csirik et al. 1991, Carnes–Shmoys 2008 |
+| 3.2 | Placement: `eq:lookahead`, `eq:rhostar` (inversion load ρ* = μ(M+F)/(1+μ(M+F)), monotone in M, F; lower bound for any real alternative) as prose | inline `\provedby` (`affinity_loses_iff`, `inversionLoad_*`) | none |
+| 3.3 | Admission and offloading (thrashing = Ao et al. 2026 instability with reuse; Campbell resident-KV estimate → cap; keep/offload/drop; option value; fixed rules as constants in one sentence) | none (design) | Campbell (M/G/∞), Ao et al. 2026 |
+| 4.1 | What the traces say (`sec:exp-traces`, `tab:traces`; TTFT and resume tables in App. C) | none (workload measurements) | cc-traces-weka |
+| 4.2 | Uncalibrated simulation (`paper/simulation.tex`: summaries + `tab:sim-inmodel`, `fig:sim-admission`, `tab:sim-trace`; other tables in App. B) | none (checks of the props above) | none |
+| 4.3 | Evaluation on a real system: overview table + one paragraph E1–E6; result-table layouts in §4.2a below | none | none |
+| App. A | Human-readable proofs (price, decode, blind) | | |
+| App. B | Simulation tables (`paper/simulation-appendix.tex`) | | |
+| App. C | Trace tables (TTFT by append; resume probability and gap) | | |
 | (removed) | PD disaggregation → `paper/pd-followup.tex`, see §4.2b | `prop:pd`, `eq:append` (Lean kept) | |
 
 Conventions that follow from the user's review of v0.1:

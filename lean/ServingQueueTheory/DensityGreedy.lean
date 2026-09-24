@@ -128,6 +128,20 @@ theorem threshold_rule_optimal (w c : ι → ℝ) (S : Finset ι) (pool : Finset
     linarith [not_le.mp hnot]
   · exact hcap
 
+
+/-- **The threshold rule per byte-second.** With the memory a state holds
+measured in byte-seconds `c i * τ i` (its size for its expected remaining
+suspension), dropping exactly the states whose price per byte-second
+`w i / (c i τ i)` is at most `θ` costs no more than any other choice that
+frees at least as many byte-seconds: `threshold_rule_optimal` with sizes
+`c i * τ i`. -/
+theorem threshold_rule_optimal_byte_seconds (w c τ : ι → ℝ) (S : Finset ι) (pool : Finset ι)
+    {θ : ℝ} (hθ : 0 ≤ θ) (hS : S ⊆ pool)
+    (hcap : ∑ i ∈ pool.filter (fun i => w i ≤ θ * (c i * τ i)), c i * τ i
+      ≤ ∑ i ∈ S, c i * τ i) :
+    ∑ i ∈ pool.filter (fun i => w i ≤ θ * (c i * τ i)), w i ≤ ∑ i ∈ S, w i :=
+  threshold_rule_optimal w (fun i => c i * τ i) S pool hθ hS hcap
+
 /-- **Prop. memory (ii): block-level eviction.**  When state is evicted in
 blocks, density order is optimal up to one block: the density prefix `P`
 taken before the block `x` that completes the target costs at most any
