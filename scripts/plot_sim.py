@@ -193,7 +193,7 @@ def fig_admission(data: Path, out: Path) -> None:
                             ax.annotate(
                                 f"{t}/{seeds}",
                                 (c, y),
-                                xytext=(14 * (k - 1), -8),
+                                xytext=(22 * (k - 1), -8 - 7 * (k % 2)),
                                 textcoords="offset points",
                                 ha="center",
                                 va="top",

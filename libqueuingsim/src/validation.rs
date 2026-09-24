@@ -2077,6 +2077,9 @@ pub fn trace_cost() -> CostModel {
     cost
 }
 pub const TRACE_SEEDS: u64 = 5;
+/// Warm-up and horizon (s) of every replay run.
+pub const TRACE_WARMUP: f64 = 6_000.0;
+pub const TRACE_HORIZON: f64 = 66_000.0;
 
 /// The two-resource replica fed by replayed production sessions
 /// ([`crate::workload::TraceCorpus::weka`]): Poisson session arrivals at
@@ -2121,8 +2124,8 @@ pub fn trace_replay_cfg(
         eviction: ev,
         block_tokens: 512.0,
         step_time: None,
-        warmup: 6_000.0,
-        horizon: 66_000.0,
+        warmup: TRACE_WARMUP,
+        horizon: TRACE_HORIZON,
         seed,
     }
 }
@@ -2557,11 +2560,21 @@ pub const TRACE_PRICE_DELTAS: [f64; 3] = [0.01, 0.03, 0.1];
 pub struct TracePriceRow {
     pub rate: f64,
     pub delta: f64,
+    /// Baseline prefill load and mean live sessions.
     pub rho: f64,
     pub live: f64,
+    /// Forced run: prefill load `ρ'` implied by the added work, mean live
+    /// sessions, baseline `L_P`.
+    pub rho1: f64,
+    pub live1: f64,
+    pub l_p: f64,
     pub dl_p: Estimate,
     pub lo: f64,
     pub hi: f64,
+    /// Exact M/M/1//N price of the added mean work (`finite_source_price`)
+    /// with `N` the baseline's mean live count rounded, `Z` the corpus mean
+    /// think time and the baseline's mean prefill service in stage time.
+    pub finite: f64,
     pub hit_rate: f64,
 }
 
@@ -2573,8 +2586,11 @@ pub fn trace_price_row(
     let mut dl = vec![];
     let (mut lo_sum, mut hi_sum, mut rho_sum, mut live_sum, mut hit_sum) =
         (0.0, 0.0, 0.0, 0.0, 0.0);
+    let (mut rho1_sum, mut live1_sum, mut lp_sum, mut fin_sum) = (0.0, 0.0, 0.0, 0.0);
     for seed in 1..=TRACE_PRICE_SEEDS {
-        let mut base = trace_replay_cfg(
+        // The open-pool configuration of `trace_replay_scenario`: at most
+        // `TRACE_CAP_OPEN` live sessions, as the paper's table states.
+        let base = trace_replay_cfg(
             corpus,
             rate,
             f64::INFINITY,
@@ -2582,7 +2598,6 @@ pub fn trace_price_row(
             EvictionPolicy::PricedMemory,
             seed,
         );
-        base.max_sessions = None;
         let mut forced = base.clone();
         forced.force_miss = delta;
         let (r0, spans0) = batch::simulate_traced(&base);
@@ -2629,11 +2644,19 @@ pub fn trace_price_row(
         } else {
             f64::INFINITY
         };
+        // Finite-source price: M/M/1//N with N = baseline mean live count,
+        // Z = corpus mean think time, mean work es → es + added work per turn.
+        let n_live = r0.mean_sessions.round().max(1.0) as usize;
+        let es1 = es + ds_sum / n as f64;
+        fin_sum += finite_source_price(n_live, corpus.mean_think(), es, es1);
         dl.push(r1.mean_prefill_number - r0.mean_prefill_number);
         lo_sum += lo;
         hi_sum += hi;
         rho_sum += rho;
+        rho1_sum += rho1;
         live_sum += r0.mean_sessions;
+        live1_sum += r1.mean_sessions;
+        lp_sum += r0.mean_prefill_number;
         hit_sum += r1.hit_rate;
     }
     let k = TRACE_PRICE_SEEDS as f64;
@@ -2642,9 +2665,13 @@ pub fn trace_price_row(
         delta,
         rho: rho_sum / k,
         live: live_sum / k,
+        rho1: rho1_sum / k,
+        live1: live1_sum / k,
+        l_p: lp_sum / k,
         dl_p: replications(&dl),
         lo: lo_sum / k,
         hi: hi_sum / k,
+        finite: fin_sum / k,
         hit_rate: hit_sum / k,
     }
 }

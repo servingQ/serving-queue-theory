@@ -214,3 +214,21 @@ pub fn finite_source_nu_for_utilization(n: usize, mu: f64, rho: f64) -> f64 {
     }
     (lo * hi).sqrt()
 }
+
+/// Mean number at the server of the M/M/1//`n` system by mean value
+/// analysis, `Q 0 = 0`, `Q (k+1) = (k+1)(1 + Q k)/(c + 1 + Q k)` with
+/// `c = Z / E[S]` (the Lean `mvaQ`).
+pub fn mva_q(c: f64, n: usize) -> f64 {
+    let mut q = 0.0;
+    for k in 0..n {
+        q = (k as f64 + 1.0) * (1.0 + q) / (c + 1.0 + q);
+    }
+    q
+}
+
+/// Exact finite-source price of longer work: the rise of the mean number
+/// at the server of an M/M/1//`n` system with think time `z` when the mean
+/// work grows from `s0` to `s1` (Lean `mvaQ_anti_c` gives its sign).
+pub fn finite_source_price(n: usize, z: f64, s0: f64, s1: f64) -> f64 {
+    mva_q(z / s1, n) - mva_q(z / s0, n)
+}

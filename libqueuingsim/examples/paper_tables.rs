@@ -217,7 +217,7 @@ fn in_model() -> String {
          $\\delta$ of turns changes from hit ($0.05$\\,s) to miss ($0.5$\\,s) at \
          hit rate $0.8$, $\\rho=0.6$, against the bracket \
          $[\\lambda\\delta\\Phi,\\ \\tfrac{1-\\rho}{1-\\rho'}\\lambda\\delta\\Phi]$. \
-         SF/OPT: worst of the 9000 instances of the first three rows of \\
+         SF/OPT: worst of the 9000 instances of the first three rows of \
          Table~\\ref{tab:sim-evict}. $\\pm$ is a \
          95\\,\\% batch-means half-width. Times in seconds.",
         "tab:sim-inmodel",
@@ -1026,7 +1026,8 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
              sessions ({} turns, mean final context {:.0}k tokens, mean think time \
              {:.0}\\,s; a gap above 10\\,min starts a new session) from the corpus of \
              \\S\\ref{{sec:exp-traces}}, each played turn by turn; cost model with \
-             $K_c=a/b=50$k tokens, batch cap 8, eviction by price per byte-second. \
+             $K_c=a/b=50$k tokens, batch cap 8, eviction by price per byte-second \
+             where the pool is finite. \
              With no pool limit the replica is open (Poisson sessions at rate \
              $\\Lambda$ per s, at most 24 live). With a finite pool the cap on live \
              sessions binds throughout the run, so the replica is a closed system of \
@@ -1110,7 +1111,8 @@ fn finite_source_table(data: &mut Data) -> String {
     )
 }
 
-const TRACE_PRICE_CSV_HEADER: &str = "rate,delta,rho,live,hit,dl_p,dl_p_hw,lo,hi,seeds";
+const TRACE_PRICE_CSV_HEADER: &str =
+    "rate,delta,rho,rho1,live,live1,l_p,hit,dl_p,dl_p_hw,lo,hi,finite,seeds";
 
 /// Prop. price on the replayed workload: forced misses against the bracket.
 fn trace_price_table(rows_all: &[validation::TracePriceRow], data: &mut Data) -> String {
@@ -1120,54 +1122,70 @@ fn trace_price_table(rows_all: &[validation::TracePriceRow], data: &mut Data) ->
         let hi = if r.hi.is_finite() {
             format!("{:.1}", r.hi)
         } else {
-            "$\\infty$".to_string()
+            "$\\rho'\\ge1$".to_string()
         };
         rows.push(format!(
-            "{:.3} & {:.2} & {:.1} & {:.2} & {} & {:.1} & {} & {:.2}",
+            "{:.3} & {:.2} & {:.1} & {:.1} & {:.2} & {:.2} & {:.1} & {} & {:.1} & {} & {:.1} & {:.1}",
             r.rate,
             r.delta,
             r.live,
+            r.live1,
             r.rho,
+            r.rho1,
+            r.l_p,
             pm(r.dl_p, 1),
             r.lo,
             hi,
-            r.dl_p.mean / r.lo
+            r.finite,
+            r.live1 - r.l_p
         ));
         csv.push(format!(
-            "{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             r.rate,
             r.delta,
             r.rho,
+            r.rho1,
             r.live,
+            r.live1,
+            r.l_p,
             r.hit_rate,
             r.dl_p.mean,
             r.dl_p.half_width,
             r.lo,
             r.hi,
+            r.finite,
             validation::TRACE_PRICE_SEEDS
         ));
     }
     data.push("trace-price.csv", TRACE_PRICE_CSV_HEADER, &csv);
-    table_sep(
+    table_sized(
         &format!(
             "Forced misses on the replayed production sessions with no pool limit \
-             (open, Poisson sessions at rate $\\Lambda$ per s, at most 24 live, the \
-             configuration of the first rows of Table~\\ref{{tab:sim-trace}}): a share \
-             $\\delta$ of follow-up turns whose context is resident is forced to miss. \
-             $\\bar N$: mean live sessions; $\\rho$: prefill load of the baseline; \
-             $\\Delta L_P$: rise of the time-average number in the prefill stage over \
-             the baseline, mean and 95\\,\\% half-width over {} seeds; \
-             $[\\mathrm{{lo}}, \\mathrm{{hi}}]$: the bracket of \
+             (open, Poisson sessions at rate $\\Lambda$ per s, at most 24 live, \
+             {:.0}\\,s of measurement after {:.0}\\,s of warm-up: the configuration of \
+             the first rows of Table~\\ref{{tab:sim-trace}}). A share $\\delta$ of \
+             follow-up turns whose context is resident is forced to miss. $\\bar N$, \
+             $\\bar N'$: mean live sessions in the baseline and in the forced run; \
+             $\\rho$: prefill load of the baseline; $\\rho'$: the load the added work \
+             implies; $L_P$: baseline mean number in the prefill stage; $\\Delta L_P$: \
+             its rise in the forced run, mean and 95\\,\\% half-width over {} seeds; \
+             $[\\mathrm{{lo}},\\mathrm{{hi}}]$: the bracket of \
              Proposition~\\ref{{prop:price}} from the baseline's measured $\\lambda$, \
              $\\rho$, $W$ and each forced turn's own $S^{{\\mathrm{{hit}}}}$, \
-             $S^{{\\mathrm{{miss}}}}$; last column $\\Delta L_P/\\mathrm{{lo}}$.",
+             $S^{{\\mathrm{{miss}}}}$ ($\\rho'\\ge1$: the open queue would be unstable); \
+             Finite: the rise of Proposition~\\ref{{prop:finite}}'s recursion for the \
+             added mean work, with $N=\\bar N$ rounded and the corpus mean think time; \
+             Fin.: that finite-source rise; cap: $\\bar N'-L_P$.",
+            validation::TRACE_HORIZON - validation::TRACE_WARMUP,
+            validation::TRACE_WARMUP,
             validation::TRACE_PRICE_SEEDS
         ),
         "tab:sim-trace-price",
-        "cccccccc",
-        "$\\Lambda$ & $\\delta$ & $\\bar N$ & $\\rho$ & $\\Delta L_P$ & lo & hi & ratio",
+        "cccccccccccc",
+        "$\\Lambda$ & $\\delta$ & $\\bar N$ & $\\bar N'$ & $\\rho$ & $\\rho'$ & $L_P$ & $\\Delta L_P$ & lo & hi & Fin. & cap",
         &rows,
         "2pt",
+        "scriptsize",
     )
 }
 
@@ -1440,6 +1458,29 @@ fn main() {
         m,
         "\\newcommand{{\\simPriceLiveMax}}{{{:.0}}}",
         fmax(&price_rows.iter().map(|r| r.live).collect::<Vec<_>>())
+    )
+    .unwrap();
+    let fin_ratio: Vec<f64> = price_rows.iter().map(|r| r.dl_p.mean / r.finite).collect();
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceFiniteRatioMin}}{{{:.0}}}",
+        fmin(&fin_ratio)
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceFiniteRatioMax}}{{{:.0}}}",
+        fmax(&fin_ratio)
+    )
+    .unwrap();
+    let over: Vec<f64> = price_rows.iter().map(|r| r.lo / r.dl_p.mean).collect();
+    writeln!(m, "\\newcommand{{\\simPriceOverMin}}{{{:.0}}}", fmin(&over)).unwrap();
+    writeln!(m, "\\newcommand{{\\simPriceOverMax}}{{{:.0}}}", fmax(&over)).unwrap();
+    let cap_ok = price_rows.iter().all(|r| r.dl_p.mean <= r.live1 - r.l_p);
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceCapHolds}}{{{}}}",
+        if cap_ok { "every" } else { "not every" }
     )
     .unwrap();
     let fin = validation::finite_source_scenario();

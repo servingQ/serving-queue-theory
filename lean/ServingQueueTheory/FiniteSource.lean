@@ -106,6 +106,30 @@ theorem mvaQ_gt_sub {c : ℝ} (hc : 0 < c) : ∀ n : ℕ, (n : ℝ) - c < mvaQ c
     push_cast
     nlinarith
 
+/-- `g` is nonincreasing in `c` on `q ≥ 0`: more think time relative to
+service, a smaller fraction of the cycle at the server. -/
+theorem mvaG_anti_c {c c' q : ℝ} (hc : 0 < c) (hcc : c ≤ c') (hq : 0 ≤ q) :
+    mvaG c' q ≤ mvaG c q := by
+  unfold mvaG
+  have h1 : 0 < c + 1 + q := by positivity
+  have h2 : 0 < c' + 1 + q := by linarith
+  rw [div_le_div_iff₀ h2 h1]
+  nlinarith
+
+/-- **The mean number at the server is nonincreasing in `c = μZ`.** With
+`n` sessions, longer think time or shorter service leaves fewer turns at
+the server; read with `c = Z/E[S]`, a rise of the mean work from `1/μ` to
+`1/μ'` raises `Q n` by the exact finite-source price of the longer job. -/
+theorem mvaQ_anti_c {c c' : ℝ} (hc : 0 < c) (hcc : c ≤ c') : ∀ n, mvaQ c' n ≤ mvaQ c n
+  | 0 => le_rfl
+  | n + 1 => by
+    have ih := mvaQ_anti_c hc hcc n
+    have hc' : 0 < c' := by linarith
+    rw [mvaQ_succ, mvaQ_succ]
+    apply mul_le_mul_of_nonneg_left _ (by positivity)
+    calc mvaG c' (mvaQ c' n) ≤ mvaG c' (mvaQ c n) := mvaG_mono hc' (mvaQ_nonneg hc' n) ih
+      _ ≤ mvaG c (mvaQ c n) := mvaG_anti_c hc hcc (mvaQ_nonneg hc n)
+
 /-! ### Throughput, utilisation and the wait with `n + 1` sessions -/
 
 /-- Response time with `n + 1` sessions: `(1 + Q n) / μ` (arrival theorem). -/

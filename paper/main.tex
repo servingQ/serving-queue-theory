@@ -76,8 +76,8 @@
 ]
 
 
-\printAffiliationsAndNotice{Working draft v0.8. Measurements on a serving
-system (\S\ref{sec:exp-real}) are pending.}
+\printAffiliationsAndNotice{Working draft v0.10. Measurements on a serving
+system (Appendix~\ref{app:design}) are pending.}
 
 
 \begin{abstract}
@@ -95,10 +95,11 @@ the keys in use are the special cases in which a price is replaced by a
 constant. Production traces show that, under a linear cost model, the
 appends contribute as much prefill variance as the misses. With few
 sessions live the prefill queue is a finite-source system; we prove
-that the open-queue wait bounds its Markovian form, and simulation on
-replayed sessions shows that admission, not the eviction order, decides
-the regime, and that the open price overstates the cost of a few misses
-several-fold and understates that of many.
+that the open-queue wait bounds its Markovian form. Simulation shows
+that the admission cap, not the eviction order, decides whether a
+replica thrashes, and on replayed production sessions that the open
+price overstates the cost of forced misses several-fold while the
+Markovian finite-source price understates it.
 \end{abstract}
 
 % ===========================================================================
@@ -155,9 +156,9 @@ price is monotone in the context, so the load changes the order of
 programs only through their resume probabilities and suspension times,
 and it can reverse that order. With $N$ sessions live the prefill queue
 is a finite-source system, and for its Markovian form we prove that
-the open-queue wait at the same utilisation is an upper bound and that
-no policy change moves the mean number in the stage by more than
-$N-L_P$ (Proposition~\ref{prop:finite}).
+the open-queue wait at the same utilisation is an upper bound
+(Proposition~\ref{prop:finite}); no policy change raises the mean
+number in the stage by more than $N-L_P$.
 \item \textbf{Congestion-priced scheduling} (\S\ref{sec:sched}). One
 price per suspended program, its expected price per byte-second of
 memory, is the variable shared by eviction, offloading, placement and
@@ -174,13 +175,17 @@ programs.
 \item \textbf{Evidence} (\S\ref{sec:exp}). Production traces give the
 workload side: the append alone has a prefill-work $\mathrm{CV}^2$ of
 \wkCvN, resume probabilities vary little and suspension times vary
-widely. Simulation on replayed sessions shows that the admission cap,
-not the eviction order, decides whether the replica thrashes, that the
-thrashing is the instability \citet{ao2026congestion} describe, and
-that the open price overstates the cost of a few forced misses by
-several times at \simPriceLiveMin{} to \simPriceLiveMax{} live sessions
-and understates the cost of many. An experimental design for a
-rack-scale NPU testbed (Appendix~\ref{app:design}) takes decision
+widely. Simulation on synthetic sessions shows that the admission cap,
+not the eviction order, decides whether a replica thrashes (the priced
+order beats shortest-first only within seed noise), and that the
+thrashing is the instability \citet{ao2026congestion} describe. On
+replayed production sessions with \simPriceLiveMin{} to
+\simPriceLiveMax{} live, the open price overstates the rise that forced
+misses cause by \simPriceOverMin{} to \simPriceOverMax{} times, the
+Markovian finite-source price understates it by
+\simPriceFiniteRatioMin{} to \simPriceFiniteRatioMax{} times, and the
+cap $N-L_P$ holds in \simPriceCapHolds{} cell. An experimental design
+for a rack-scale NPU testbed (Appendix~\ref{app:design}) takes decision
 faithfulness as its primary metric; no measurement is reported in this
 draft.
 \end{enumerate}
@@ -311,10 +316,10 @@ non-Poisson and the budget fluctuates, so~\eqref{eq:pk} is an
 approximation here. With $N$ sessions live the queue is a finite-source
 system, and a session that is waiting cannot generate its next turn:
 Proposition~\ref{prop:finite} shows that the open formula then bounds
-the Markovian wait from above, by
-$\simFiniteRatioMax\times$ at $N=\simFiniteNMin$ and
-$\simFiniteRatioMin\times$ at $N=\simFiniteNMax$ at utilisation
-$\simFiniteRho$ (Table~\ref{tab:sim-finite}). The two stages thus differ in what they need
+the Markovian wait from above; Table~\ref{tab:sim-finite} puts the
+ratio at $\simFiniteRatioMax\times$ for $N=\simFiniteNMin$ and
+$\simFiniteRatioMin\times$ for $N=\simFiniteNMax$ at utilisation
+$\simFiniteRho$. The two stages thus differ in what they need
 from the cache: the decode stage needs only mean demands, which the
 cache does not change; the prefill stage needs the second moment of its
 work, which the cache sets.
@@ -322,12 +327,10 @@ work, which the cache sets.
 \paragraph{Memory pool.} The batch and the suspended states share one
 pool of $M$ bytes, so a replica admits turns into the batch until the
 next one does not fit. The batch that fits is a property of the
-footprint law and the admission rule, not of the mean footprint: with
-$12$ free tokens, footprints of $6$ admit $2$ turns while footprints of
-$5$ or $7$ (equally likely) admit $7/4$ on average, whereas footprints
-of $7$ admit $1$ and footprints of $2$ or $12$ admit
-$95/64$,\provedby{\leanref{footprint\_variance\_hurts}, \leanref{footprint\_variance\_helps}}
-so $\varphi$ is calibrated (\S\ref{sec:exp-real}), not derived. Every
+footprint law and the admission rule, not of the mean footprint (a
+more variable footprint can shrink the batch or enlarge
+it),\provedby{\leanref{footprint\_variance\_hurts}, \leanref{footprint\_variance\_helps}}
+so $\varphi$ is calibrated (Appendix~\ref{app:design}), not derived. Every
 byte a suspended session holds is a byte the batch cannot use, and once
 resident KV exceeds the pool the policy has to choose what to drop,
 which sets the hit rate~$p$. A shared KV store \citep{mooncake-vllm}
@@ -375,15 +378,12 @@ which then supplies $\wkMixLinMin$ to $\wkMixLinMax\,\%$ of the
 variance under the linear model and $\wkMixAttMin$ to
 $\wkMixAttMax\,\%$ once attention dominates, so the append is never
 less than $\wkAppendShareMin\,\%$ of the variance at these hit rates.
-The mixture becomes the larger source only once eviction is active, at
-the hit rates of \simTraceTightHitMin{} and above that the replay of
-\S\ref{sec:sim} reaches under a tight admission cap, where it supplies
-\simTraceTightMixMin{} to \simTraceTightMixMax\,\%. Both sources fall on the TTFT,
-which is the prefill wait plus the prefill, and not on the decode
-stage, whose demand~\eqref{eq:decode} is the same for a hit and a miss
-and whose occupancy is insensitive in any case. What the price of a
-miss must capture is therefore not a ratio of $\mathrm{CV}^2$ but the
-rise of $\lambda\E[S^2]/(2(1-\rho))$ that one more miss causes.
+The mixture rivals or exceeds the appends only once eviction is
+active (\simTraceTightMixMin{} to \simTraceTightMixMax\,\% at hit rates
+of \simTraceTightHitMin{} and above in the replay of \S\ref{sec:sim}).
+What the price of a miss must capture is therefore not a ratio of
+$\mathrm{CV}^2$ but the rise of $\lambda\E[S^2]/(2(1-\rho))$ that one
+more miss causes.
 
 \subsection{The Price of a Miss}\label{sec:problem}\label{sec:price}
 
@@ -469,32 +469,38 @@ cannot submit its next turn. The Markovian finite-source model makes
 the correction exact.
 
 \begin{proposition}[Finite population]\label{prop:finite}
-Let $N\ge1$ sessions each think for an exponential time of mean $Z>0$
-and then submit a turn of exponential work with mean $1/\mu$ to one
-FIFO server, and let $Q_n$ be the mean number at the server with $n$
-sessions, given exactly by $Q_0=0$ and
-$Q_{n}=n\,(1+Q_{n-1})/(\mu Z+1+Q_{n-1})$. With $N$ sessions the
+Let $N\ge1$ sessions each think for a time of mean $Z>0$ and then
+submit a turn of exponential work with mean $1/\mu$ to one FIFO server.
+The mean number at the server with $n$ sessions is given exactly by
+mean value analysis \citep[\S6]{lazowska1984} as $Q_0=0$,
+$Q_{n}=n\,(1+Q_{n-1})/(\mu Z+1+Q_{n-1})$; with $N$ sessions the
 utilisation is $\rho_N=N/(\mu Z+1+Q_{N-1})<1$ and the mean wait in
 queue is $W_N=Q_{N-1}/\mu$.
 \begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
-\item $Q_n$ is nondecreasing in $n$, and $Q_n\le n$.
+\item $Q_n$ is nondecreasing in $n$, $Q_n\le n$, and $Q_n$ is
+  nonincreasing in $\mu Z$.
 \item $W_N\le\rho_N/(\mu(1-\rho_N))$, the open M/M/1 wait at the same
   utilisation.
-\item Any change of policy at fixed $N$ changes the mean number in the
-  prefill stage by at most $N-L_P$.
 \end{enumerate}
-\provedby{\leanref{mvaQ\_mono}, \leanref{mvaQ\_le\_card}, \leanref{finite\_source\_rho\_lt\_one}, \leanref{finite\_source\_wait\_le\_open}, \leanref{closed\_price\_cap}}
+\provedby{\leanref{mvaQ\_mono}, \leanref{mvaQ\_le\_card}, \leanref{mvaQ\_anti\_c}, \leanref{finite\_source\_rho\_lt\_one}, \leanref{finite\_source\_wait\_le\_open}}
 \end{proposition}
 
-Part~(ii) says that the price of Proposition~\ref{prop:price}, which
-uses the open wait, does not understate the Markovian finite-source
-wait; with two sessions and $Z=2/\mu$ the open wait is $4.5$ times the
-finite-source wait,\provedby{\leanref{finite\_source\_two\_sessions\_example}}
-and Table~\ref{tab:sim-finite} shows the ratio falling to
-$\simFiniteRatioMin$ at $N=\simFiniteNMax$. The usable price of a
-miss at a replica with $N$ live sessions is therefore the smaller of
-the bracket and $N-L_P$. For general work laws (M/G/1//$N$) the
-inequality is a conjecture that the replay of \S\ref{sec:sim} tests.
+The think-time law enters only through $Z$, since the delay station
+is insensitive. Part~(ii) says that the wait $W$ that enters the price
+of Proposition~\ref{prop:price} does not understate the Markovian
+finite-source wait; with two sessions and $Z=2/\mu$ the open wait is
+$4.5$ times the finite-source
+wait,\provedby{\leanref{finite\_source\_two\_sessions\_example}} and
+Table~\ref{tab:sim-finite} shows the ratio falling to
+$\simFiniteRatioMin$ at $N=\simFiniteNMax$. Since at most $N$ turns
+exist, a policy change at a replica with $N$ live sessions raises $L_P$
+by at most $N-L_P$, whatever the work
+law,\provedby{\leanref{closed\_price\_cap}} and the last part of~(i)
+gives the finite-source price of longer work: the rise of $Q_N$ when
+the mean work grows. Whether the open price or that finite-source
+price is closer to the rise a real workload shows, with its
+non-exponential appends and misses, is what the replay of
+\S\ref{sec:sim} measures.
 
 \begin{proposition}[The decode stage prices only work]\label{prop:decode}
 Consider the PS decode stage of \S\ref{sec:batch} with any nondecreasing
@@ -660,9 +666,7 @@ node~1 iff, by definition,
 The price of a miss supplies $M_j$: a move turns the next turn into a
 miss served at node~$j$, so $M_j$ is $\Phi_i$ at node~$j$'s prefill
 load, small at an idle node even for a long context and large at a
-loaded one. With a shared KV store \citep{mooncake-vllm} the state is
-fetched rather than recomputed, and $M_j$ is the priced fetch of
-\S\ref{sec:admission}, smaller still. Session affinity, the rule that
+loaded one. Session affinity, the rule that
 never moves a program, sets $M_j=\infty$ for every other node. Against
 an idle node of the same speed, moving costs $1/\mu+M+F$, and the
 M/M/1 response time of the affinity node exceeds it exactly when its
@@ -671,15 +675,14 @@ utilisation exceeds
   \rho^*=\frac{\mu(M+F)}{1+\mu(M+F)},
 \end{equation}
 which is nondecreasing in $M$ and
-$F$:\provedby{\leanref{affinity\_loses\_iff}, \leanref{inversionLoad\_stable}, \leanref{inversionLoad\_utilization}, \leanref{inversionLoad\_mono}, \leanref{affinity\_not\_always\_optimal}, \leanref{mm1Wait\_unbounded}}
-a move costing four service times keeps affinity optimal up to
-$80\,\%$ utilisation, one costing a quarter of a service time only up to
-$20\,\%$.\provedby{\leanref{inversionLoad\_examples}} The idle
-alternative gives the earliest inversion, so $\rho^*$ is a lower bound
-on the load at which affinity loses to any real alternative; a shared
-KV store lowers $M$ and with it that load, which is why affinity and a
-store are alternatives rather than complements in the simulated
-configurations of \S\ref{sec:sim}.
+$F$.\provedby{\leanref{affinity\_loses\_iff}, \leanref{inversionLoad\_stable}, \leanref{inversionLoad\_utilization}, \leanref{inversionLoad\_mono}, \leanref{affinity\_not\_always\_optimal}, \leanref{mm1Wait\_unbounded}, \leanref{inversionLoad\_examples}}
+The idle alternative gives the earliest inversion, so $\rho^*$ is a
+lower bound on the load at which affinity loses to any real
+alternative. A shared KV store \citep{mooncake-vllm} fetches the state
+instead of recomputing it, so $M_j$ becomes the priced fetch of
+\S\ref{sec:admission} and that load falls; affinity and a store are
+alternatives rather than complements in the simulated configurations
+of \S\ref{sec:sim}.
 
 \subsection{Admission and Offloading}\label{sec:admission}
 
@@ -715,7 +718,7 @@ offloading.\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{en
 The collapse of an always-offloading stack at high concurrency reported
 by \citet[App.~A.2]{thunderagent} is therefore a property of that
 policy, not of the mechanism. Every rule in use replaces one price by a
-constant: shortest-first sets $w_i=c_i^2$, recency and time-to-live
+constant: shortest-first sets $w_i\propto c_i^2$, recency and time-to-live
 keys set $p_i$ to a constant, always offloading sets the priced fetch
 to zero, strict affinity sets $M_j=\infty$, and admitting every session
 sets $\theta=0$.
@@ -724,14 +727,11 @@ sets $\theta=0$.
 \section{Evidence}\label{sec:exp}
 % ===========================================================================
 
-Two kinds of evidence bear on the model so far. Production traces fix
-the workload side (\S\ref{sec:exp-traces}). Simulation asks whether
-each proposition's closed form holds inside its model and whether the
-decision it implies survives when an assumption is dropped, including
-on replayed production sessions (\S\ref{sec:sim}). Measurements on a
-serving system, which alone can decide whether the model ranks policies
-as the system does, are designed in Appendix~\ref{app:design} and not
-yet reported.
+Production traces fix the workload side of the model
+(\S\ref{sec:exp-traces}), and a simulated replica serving those
+sessions tests the propositions where an assumption fails
+(\S\ref{sec:sim}); measurements on a serving system are designed in
+Appendix~\ref{app:design} and not yet reported.
 
 \subsection{What the Traces Say}\label{sec:exp-traces}
 
@@ -794,9 +794,8 @@ reasoning budgets set the second moment, and \citet{shahout2024trail}
 give a memory-aware SRPT variant; a prefill queue that serves in order,
 as the schedulers we know of do by default, is the FIFO case of that
 world, and reordering prefills would change the head-of-line term, not
-remove the miss. Fluid and stability analyses cover throughput
-\citep{dai2025workconserving,ao2025fluid,nie2026stability,dong2026flowcontrol,bari2025optimal,lin2026pdcontention};
-closest to our memory results, \citet{ao2026congestion} show that the
+remove the miss. Closest to our memory results,
+\citet{ao2026congestion} show that the
 eviction-free equilibrium of a memory-constrained replica is unstable
 and converges to a limit cycle, which is the thrashing of
 \S\ref{sec:sim} without reuse. None of these models KV reuse across
@@ -816,11 +815,11 @@ program's KV through its tool call for a time-to-live set from the
 reload cost and the queueing delay an eviction would induce, which is
 the price of a miss without its head-of-line term and load factor (a
 reading of the abstract). MORI \citep{xia2026mori} offloads by the
-idleness of tool calls, which gives $\tau_i$ its role. TokenCake
-\citep{bian2025tokencake}, KVFlow \citep{pan2025kvflow} and CacheScout
-\citep{zhang2026cachescout} predict reuse from the workflow; TOPAS
-\citep{ni2026topas} states the trade-off between a retained prefix and
-the batch memory it displaces. KVLearn \citep{kvlearn2026} learns a
+idleness of tool calls, which gives $\tau_i$ its role; TokenCake,
+KVFlow, CacheScout and TOPAS
+\citep{bian2025tokencake,pan2025kvflow,zhang2026cachescout,ni2026topas}
+predict reuse from the workflow or trade a retained prefix against
+batch memory. KVLearn \citep{kvlearn2026} learns a
 retention score from recompute, transfer and storage costs and adapts
 its threshold to observed pressure; it takes the same inputs as $u_i$
 and $\theta$, and what the analysis adds is the form of the price, its
@@ -829,9 +828,6 @@ prefill \citep{sarathi2024} protects decoding from long prefills; the
 head-of-line blocking among prefills that remains motivates
 \citet{hsieh2026flowprefill}, \citet{liu2026chunkedfair} and
 \citet{lyu2025fairbatching}, and is the term our price keeps.
-Production traces \citep{vllm-agentx,cc-traces-weka}, distributed KV
-stores \citep{mooncake-vllm} and PPD's append-prefill routing
-\citep{ppd} supply the setting.
 
 % ===========================================================================
 \section{Limitations}\label{sec:limits}
@@ -841,34 +837,34 @@ The propositions are about the model, not the world, and the
 measurements of Appendix~\ref{app:design} have not been run. The prefill
 stage is a FIFO server with a fixed available fraction, although the
 budget the decode batch leaves fluctuates and session feedback makes
-arrivals non-Poisson; \eqref{eq:pk} is an approximation there in both
-directions, since Kingman's bound \citep{kingman1962} says bursty
-arrivals add delay while Proposition~\ref{prop:finite} and the replay
-of \S\ref{sec:sim} show the open queue overstating the wait when few
-sessions are live, a regime the memory model implies whenever contexts
-are long. The finite-source bound is proved for exponential work only;
-for the work laws of real appends and misses it is a conjecture that the
-replay supports for a few misses and refutes for many, so the usable
-price is the smaller of the bracket and $N-L_P$. Decode capacity
-depends on the number of turns in the batch, with the KV dependence of
-a step carried by~\eqref{eq:decode} alone; a real batch limit admits
-turns in FIFO order and is not insensitive. The propositions concern
-means, while service objectives are tails, and they price an eviction
-as a stationary fraction of misses, whereas a real eviction is one
-event with a transient effect that can be a thrash. The scheduler uses
-estimates of load, wait, $p_i$ and $\tau_i$. The trace statistics
+arrivals non-Poisson; \eqref{eq:pk} is an approximation there, and
+Proposition~\ref{prop:finite} and the replay of \S\ref{sec:sim} show
+the open queue overstating the wait when few sessions are live, a
+regime the memory model implies whenever contexts are long. The
+finite-source bound is proved for exponential work (and any think-time
+law); for the appends and misses of a real workload the open price and
+the Markovian finite-source price bracket the observed rise from above
+and below, so a policy change raises $L_P$ by at most
+$\min(\mathrm{hi},N-L_P)$ and the price a scheduler should use inside
+that range is open. The propositions concern means, while service
+objectives are tails, and they price an eviction as a stationary
+fraction of misses, whereas a real eviction is one event with a
+transient effect that can be a thrash. The scheduler uses estimates of
+load, wait, $p_i$ and $\tau_i$, and it uses the order of $u_i$, so the
+level of $\Phi_i$ matters only against $\theta$. The trace statistics
 describe two Claude Code workloads; other harnesses append and reuse
 differently (append $\mathrm{CV}^2$ of $2$ to $7$ in our runs of three
 other agents), the prefill-work split rests on an assumed cost model,
 and the proxy's TTFT comes from a stack and load we could not observe.
+The simulator shares the model's abstractions: no block-level
+allocation beyond tail blocks, no cross-session prefix hits, no
+collective contention, one capacity function for prefill and decode.
 What would falsify the model: a prefill wait that does not rise with
-$\lambda\E[S^2]/(2(1-\rho))$ at a controlled load (E2); an eviction
-order that beats the price on a replayed trace without seeing $p_i$ and
+$\lambda\E[S^2]/(2(1-\rho))$ at a controlled load, or one inside the
+open bracket with two to sixteen sessions live (E2); an eviction order
+that beats the price on a replayed trace without seeing $p_i$ and
 $\tau_i$ (E4); an inversion load far from $\rho^*$ once the move cost
-is measured (E5); a prefill wait inside the open bracket with two to
-sixteen sessions live, which would make the finite-source correction
-unnecessary (E2). The ThunderAgent statements we discuss were checked
-against arXiv:2602.13692v3; we have not reproduced its experiments.
+is measured (E5).
 
 \section*{Impact Statement}
 This work provides analytical tools for capacity planning and scheduling
@@ -893,7 +889,9 @@ human readers and do not follow the formal proofs step by step. The
 known results quoted in \S\ref{sec:evict} (the threshold rule, the
 block prefix and the guarded greedy) and the closed
 form~\eqref{eq:rhostar} are verified there as well and not re-proved
-here.
+here. For Proposition~\ref{prop:finite} the mean value recursion is
+taken as the model, as the arrival theorem gives it; the inequalities
+are proved from it.
 
 
 \begin{proof}[Proof of Proposition~\ref{prop:decode}]
@@ -910,17 +908,16 @@ symmetrically for $n<m$ both factors are non-positive, so every term is
 non-negative. This holds for every truncation of the sums at a finite
 $N$, and $L$ is the limit of the truncated means, so it holds for $L$.
 By insensitivity, $L$ depends on the policy only through $\rho$, and a
-policy that adds expected work $A$ per arrival moves the load to
+policy that adds expected demand $A$ per arrival moves the load to
 $\rho+\lambda A$.
 
 (ii) With constant capacity $\pi$ is geometric and $L=\rho/(C-\rho)$.
-With $\rho'=\rho+\lambda A$ and $A=\sum_iq_i\Delta S_i$,
+With $\rho'=\rho+\lambda A$ and $A=\sum_iq_i\Delta D_i$,
 \[
   L(\rho')-L(\rho)=\frac{C\,\lambda A}{(C-\rho)(C-\rho')}
   =\frac{C-\rho}{C-\rho'}\cdot\frac{C\,\lambda A}{(C-\rho)^2},
 \]
-with $A=\sum_iq_i\Delta D_i$ the added demand per arrival, and the
-last factor is $\lambda\sum_iq_i\Phi^D_i$. Since $\rho'\ge\rho$ the
+and the last factor is $\lambda\sum_iq_i\Phi^D_i$. Since $\rho'\ge\rho$ the
 prefactor is at least one.
 \end{proof}
 
@@ -942,11 +939,17 @@ $\rho_n<1$: it is equivalent to $Q_{n-1}>n-1-c$, and $Q_n>n-c$ holds
 for all $n$ by induction, since
 $Q_{n+1}-(n+1-c)=c\,(Q_n+c-n)/(c+1+Q_n)>0$.
 
+$Q_n$ is nonincreasing in $c$: $g$ is nonincreasing in $c$ at fixed
+$q$, so if $Q_{n-1}(c')\le Q_{n-1}(c)$ for $c\le c'$ then
+$Q_n(c')=n\,g_{c'}(Q_{n-1}(c'))\le n\,g_{c'}(Q_{n-1}(c))\le
+n\,g_c(Q_{n-1}(c))=Q_n(c)$.
+
 (ii) $W_N\le\rho_N/(\mu(1-\rho_N))$ is $Q_{N-1}(1-\rho_N)\le\rho_N$,
 that is $Q_{N-1}\le\rho_N(1+Q_{N-1})=Q_N$, which is~(i).
 
-(iii) The mean number at the server of a closed system of $N$ sessions
-lies in $[0,N]$ under any policy, so $L_P'-L_P\le N-L_P$.
+The cap stated after the proposition: the mean number at the server of
+a closed system of $N$ sessions lies in $[0,N]$ under any policy, so
+$L_P'-L_P\le N-L_P$.
 \end{proof}
 
 \begin{proof}[Proof of Proposition~\ref{prop:price} and of the remarks after it]
