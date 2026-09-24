@@ -1806,6 +1806,7 @@ pub fn open_session_cfg(rate: f64, cap: usize, ev: EvictionPolicy, seed: u64) ->
         population: Population::Open { rate },
         max_sessions: Some(cap),
         trace: None,
+        force_miss: 0.0,
         classes: vec![
             ProgramClass {
                 weight: 1.0,
@@ -2001,6 +2002,33 @@ pub fn observations() -> Vec<Observation> {
         result: lines.join("; "),
     });
 
+    // Prop. price on the replayed workload: forced misses vs the bracket.
+    let corpus = std::sync::Arc::new(crate::workload::TraceCorpus::weka());
+    let mut lines = vec![];
+    for rate in TRACE_RATES {
+        for delta in TRACE_PRICE_DELTAS {
+            let r = trace_price_row(&corpus, rate, delta);
+            lines.push(format!(
+                "Λ={rate} δ={delta}: ρ {:.2} live {:.1} ΔL_P {} vs [{:.2}, {}]",
+                r.rho,
+                r.live,
+                r.dl_p,
+                r.lo,
+                if r.hi.is_finite() {
+                    format!("{:.2}", r.hi)
+                } else {
+                    "∞".into()
+                }
+            ));
+        }
+    }
+    out.push(Observation {
+        id: "trace_replay_miss_price",
+        paper: "prop:price, sec:exp-variance, sec:limits",
+        question: "On replayed production sessions with no eviction, forcing a share δ of resident follow-up turns to miss: does the rise of the time-average number in the prefill stage fall inside the bracket of Prop. price computed from the baseline's measured λ, ρ, W (open M/G/1)? The live sessions are a finite population.",
+        result: lines.join("; "),
+    });
+
     // Tandem vs pooled latency at equal capacity.
     let mut lines = vec![];
     for rate in [1.0, 1.6, 1.9] {
@@ -2078,6 +2106,7 @@ pub fn trace_replay_cfg(
             tool_time: Dist::Deterministic(corpus.mean_think()),
         }],
         trace: Some(corpus.clone()),
+        force_miss: 0.0,
         cost: trace_cost(),
         work: Work::Tokens,
         server: Server::TwoStage,
@@ -2499,5 +2528,111 @@ pub fn inversion_load_closed_form() -> Check {
         expected: "W below (1+x)/μ at ρ*−0.05 and above it at ρ*+0.05 for x = M+F over service ∈ {0.25, 1, 4}".into(),
         observed: obs.join("; "),
         pass,
+    }
+}
+
+/// Prop. price on the replayed workload with no eviction: force a share
+/// `δ` of resident follow-up turns to miss and compare the rise of the
+/// time-average number in the prefill stage with the bracket
+/// `[λΣq_iΦ_i, (1-ρ)/(1-ρ') λΣq_iΦ_i]`, with `Φ_i` from the baseline's
+/// measured `λ`, `ρ`, `W` in stage time and each forced turn's own
+/// `S^hit`, `S^miss`.
+pub const TRACE_PRICE_SEEDS: u64 = 10;
+/// Forced-miss shares of the replayed price scenario.
+pub const TRACE_PRICE_DELTAS: [f64; 3] = [0.01, 0.03, 0.1];
+
+#[derive(Clone, Debug)]
+pub struct TracePriceRow {
+    pub rate: f64,
+    pub delta: f64,
+    pub rho: f64,
+    pub live: f64,
+    pub dl_p: Estimate,
+    pub lo: f64,
+    pub hi: f64,
+    pub hit_rate: f64,
+}
+
+pub fn trace_price_row(
+    corpus: &std::sync::Arc<crate::workload::TraceCorpus>,
+    rate: f64,
+    delta: f64,
+) -> TracePriceRow {
+    let mut dl = vec![];
+    let (mut lo_sum, mut hi_sum, mut rho_sum, mut live_sum, mut hit_sum) =
+        (0.0, 0.0, 0.0, 0.0, 0.0);
+    for seed in 1..=TRACE_PRICE_SEEDS {
+        let mut base = trace_replay_cfg(
+            corpus,
+            rate,
+            f64::INFINITY,
+            TRACE_CAP_OPEN,
+            EvictionPolicy::PricedMemory,
+            seed,
+        );
+        base.max_sessions = None;
+        let mut forced = base.clone();
+        forced.force_miss = delta;
+        let (r0, spans0) = batch::simulate_traced(&base);
+        let (r1, spans1) = batch::simulate_traced(&forced);
+        let cost = &base.cost;
+        let window = base.horizon - base.warmup;
+        let avail = r0.mean_availability.max(0.05);
+        // Baseline prefill queue in stage time.
+        let mut s1 = 0.0;
+        let mut s2 = 0.0;
+        let mut n = 0usize;
+        for s in spans0
+            .iter()
+            .filter(|s| s.enqueued >= base.warmup && s.start.is_finite())
+        {
+            let st = (cost.overhead + cost.prefill(s.prefill_tokens, s.cached_tokens)) / avail;
+            s1 += st;
+            s2 += st * st;
+            n += 1;
+        }
+        let lam = n as f64 / window;
+        let (es, es2) = (s1 / n as f64, s2 / n as f64);
+        let rho = lam * es;
+        // Forced turns of the δ run: every miss (no eviction otherwise). A
+        // miss re-prefilled `prefill_tokens = context + new`; the hit would
+        // have prefilled `new` onto `context`.
+        let mut phi_sum = 0.0;
+        let mut ds_sum = 0.0;
+        for s in spans1
+            .iter()
+            .filter(|s| s.enqueued >= forced.warmup && s.kind == agentic::TurnKind::Miss)
+        {
+            let s_miss = (cost.overhead + cost.prefill(s.prefill_tokens, 0.0)) / avail;
+            let s_hit = (cost.overhead
+                + cost.prefill(s.new_tokens, s.prefill_tokens - s.new_tokens))
+                / avail;
+            phi_sum += miss_price(lam, es2, rho, s_hit, s_miss);
+            ds_sum += s_miss - s_hit;
+        }
+        let lo = phi_sum / window; // = λ Σ q_i Φ_i (rate of forced turns × mean Φ)
+        let rho1 = rho + ds_sum / window;
+        let hi = if rho1 < 1.0 {
+            (1.0 - rho) / (1.0 - rho1) * lo
+        } else {
+            f64::INFINITY
+        };
+        dl.push(r1.mean_prefill_number - r0.mean_prefill_number);
+        lo_sum += lo;
+        hi_sum += hi;
+        rho_sum += rho;
+        live_sum += r0.mean_sessions;
+        hit_sum += r1.hit_rate;
+    }
+    let k = TRACE_PRICE_SEEDS as f64;
+    TracePriceRow {
+        rate,
+        delta,
+        rho: rho_sum / k,
+        live: live_sum / k,
+        dl_p: replications(&dl),
+        lo: lo_sum / k,
+        hi: hi_sum / k,
+        hit_rate: hit_sum / k,
     }
 }

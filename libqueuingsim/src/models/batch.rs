@@ -221,6 +221,11 @@ pub struct BatchConfig {
     /// Replay real sessions (see [`crate::workload`]): each new session is
     /// a uniformly drawn corpus session, played turn by turn.
     pub trace: Option<Arc<TraceCorpus>>,
+    /// Probability that a follow-up turn whose context is resident is
+    /// forced to miss (its KV dropped at admission), drawn from its own
+    /// random stream so that runs differing only in this share the rest.
+    /// The `q_i` of Prop. price.
+    pub force_miss: f64,
     pub cost: CostModel,
     pub work: Work,
     pub server: Server,
@@ -255,6 +260,7 @@ impl BatchConfig {
             population: Population::Open { rate },
             max_sessions: None,
             trace: None,
+            force_miss: 0.0,
             classes: vec![ProgramClass {
                 weight: 1.0,
                 resume_prob: 0.0,
@@ -421,6 +427,7 @@ struct Batch {
     arrivals_rng: StdRng,
     work_rng: StdRng,
     flow_rng: StdRng,
+    miss_rng: StdRng,
     sessions: Vec<Session>,
     free_slots: Vec<usize>,
     entry: VecDeque<f64>,
@@ -491,6 +498,7 @@ impl Batch {
             arrivals_rng: StdRng::seed_from_u64(seed),
             work_rng: StdRng::seed_from_u64(seed ^ 0x9e37_79b9_7f4a_7c15),
             flow_rng: StdRng::seed_from_u64(seed ^ 0x5851_f42d_4c95_7f2d),
+            miss_rng: StdRng::seed_from_u64(seed ^ 0x2545_f491_4f6c_dd1d),
             sessions: Vec::new(),
             free_slots: Vec::new(),
             entry: VecDeque::new(),
@@ -945,6 +953,13 @@ impl Batch {
 
     fn admit(&mut self, id: usize, target: f64, s: &mut Scheduler<Ev>) {
         let now = s.now();
+        if self.cfg.force_miss > 0.0 {
+            let p = &self.sessions[id];
+            if !p.cold && p.kv >= p.context && self.miss_rng.random::<f64>() < self.cfg.force_miss {
+                self.used_kv -= p.kv;
+                self.sessions[id].kv = 0.0;
+            }
+        }
         let cost = &self.cfg.cost;
         let p = &self.sessions[id];
         let hit = !p.cold && p.kv >= p.context;
@@ -1007,6 +1022,7 @@ impl Batch {
             prefill_tokens: missing + p.new,
             cached_tokens: p.kv,
             decode_tokens: p.out,
+            new_tokens: p.new,
         });
         self.used_kv += target - p.kv;
         let p = &mut self.sessions[id];
@@ -1372,6 +1388,7 @@ mod tests {
             population: a.population,
             max_sessions: None,
             trace: None,
+            force_miss: 0.0,
             classes: a.classes.clone(),
             cost: a.cost.clone(),
             work: Work::Tokens,

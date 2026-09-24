@@ -411,6 +411,8 @@ pub struct TurnSpan {
     pub cached_tokens: f64,
     /// Tokens decoded.
     pub decode_tokens: f64,
+    /// Tokens appended by the turn (the prefill of a hit).
+    pub new_tokens: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -833,6 +835,7 @@ impl Agentic {
                     prefill_tokens: if hit { new } else { context + new },
                     cached_tokens: if hit { context } else { 0.0 },
                     decode_tokens: out,
+                    new_tokens: new,
                 });
             }
             p.context = target;
