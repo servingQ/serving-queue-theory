@@ -149,8 +149,9 @@ Follow `docs/add-proposition.md`. Short version:
   hit/miss mixture); §2.4 = `sec:price`: the decision problem and
   `prop:price` (bracket only; term ratios, divergence, monotonicity in K
   and the load-flip example are prose with inline `\provedby`),
-  `prop:finite` (M/M/1//N via mean value analysis: Q_n monotone, open
-  wait ≥ finite-source wait, ΔL_P ≤ N − L_P; added round 3),
+  `prop:finite` (M/M/1//N via mean value analysis: Q_n monotone in n and
+  antitone in μZ, open wait ≥ finite-source wait; the cap ΔL_P ≤ N − L_P is
+  a prose sentence with `closed_price_cap`; added rounds 3–4),
   `prop:decode`); §3 congestion-priced scheduling: Algorithm 1 up front
   (step 7 = admission cap from the resident-KV estimate), §3.1 eviction
   (threshold rule, block prefix, byte-second variant and guarded greedy
@@ -158,10 +159,13 @@ Follow `docs/add-proposition.md`. Short version:
   one proposition; trace evidence on p_i, τ_i spread), §3.2 placement
   (`eq:rhostar` inversion load as prose), §3.3 admission and offloading
   (Campbell estimate lives here); §4 Evidence: §4.1 what the traces say,
-  §4.2 uncalibrated simulation (`paper/simulation.tex`, summaries only;
-  tables in App. B `simulation-appendix.tex`); the real-system
-  experimental design (E1–E6, one overview table, no `\tbd` cells) is
-  App. D `app:design` since round 2 (page budget); §5 related work (one page, with the novelty sentence); §6
+  §4.2 "Simulation on Replayed Production Sessions" (`paper/simulation.tex`:
+  the real sessions are the workload, the replica is simulated, the cost
+  model is the one uncalibrated element; synthetic in-model/beyond-model
+  checks are one summary paragraph, their tables and Figure 1 in App. B
+  `simulation-appendix.tex`); the real-system experimental design (E1–E6,
+  one overview table, no `\tbd` cells) is App. D `app:design` since
+  round 2 (page budget); §5 related work (one page, with the novelty sentence); §6
   limitations incl. "what would falsify"; App. A proofs (price, decode,
   blind, finite), App. B simulation tables, App. C trace tables, App. D
   experimental design. Four propositions total; do not re-promote the demoted knapsack facts or the
