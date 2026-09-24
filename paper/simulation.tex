@@ -7,7 +7,7 @@
 %   uv run ... python scripts/plot_sim.py
 % scripts/check_sim.sh fails if the generated files are stale.
 % ===========================================================================
-\input{sim/macros}
+% (sim/macros is \input in the preamble of main.tex)
 
 \subsection{Uncalibrated Simulation}\label{sec:sim}
 
@@ -105,15 +105,18 @@ measured and only the replica is simulated. A gap above ten minutes
 starts a new session, whose first prompt is the whole accumulated
 context (median \wkFirstCtxSplit k tokens against \wkFirstCtxNew k for
 a genuinely new session; \wkSplitShare\,\% of replayed sessions start
-this way), and the cost model uses $b=4\cdot10^{-10}$, so that
-attention overtakes the dense term at $50$k tokens, since the contexts
-are ten times longer than the synthetic ones. Three things follow.
-First, with no eviction every follow-up turn hits and the prefill work
-still has $\mathrm{CV}^2=\simTraceOpenCvMin$--$\simTraceOpenCvMax$, from
-the appends alone; the mean TTFT of
-\simTraceOpenTtftMin--\simTraceOpenTtftMax\,s is set by those cold
-first prompts, which every turn behind them waits for. Second, once the
-pool is finite the cap on live sessions binds throughout the run, the
+this way); splitting at thirty minutes instead changes the corpus but
+leaves the open-pool row within seed noise
+(Table~\ref{tab:sim-trace-split}). The cost model uses
+$b=4\cdot10^{-10}$, so that attention overtakes the dense term at
+$50$k tokens, since the contexts are ten times longer than the
+synthetic ones. Three things follow. First, with no eviction every
+follow-up turn hits and the prefill work of follow-up turns still has
+$\mathrm{CV}^2=\simTraceOpenCvMin$--$\simTraceOpenCvMax$, from the
+appends alone; the mean TTFT of
+\simTraceOpenTtftMin--\simTraceOpenTtftMax\,s is set by the cold first
+prompts, which every turn behind them waits for. Second, once the pool
+is finite the cap on live sessions binds throughout the run, the
 replica is a closed system of $N$ sessions and the entry queue grows
 for the whole horizon (up to \simTraceEntryMaxHours{} hours of mean
 wait). At the tight cap the hit rate stays at or above
@@ -127,19 +130,24 @@ computed from the measured $\lambda$, $\E[S]$ and $\E[S^2]$ of the
 prefill queue is above the observed wait in every cell, by a factor of
 \simTracePkRatioMin{} to \simTracePkRatioMax; the largest factors are in
 the cells with $\rho$ near one, where the open formula is near its pole,
-but the direction holds even at $\rho=0.25$ with five sessions live. A
-session that is waiting cannot generate its next turn, so arrivals thin
-out as the queue grows, which the open M/G/1 queue of \S\ref{sec:batch}
-does not see. The price of Proposition~\ref{prop:price} is therefore
-conservative for small populations: forcing $1$--$3\,\%$ of resident
-turns to miss on this workload raises the number in the prefill stage
-by a quarter to a seventh of the bracket's lower end, and at $10\,\%$
-the bracket's upper end diverges while the closed system saturates
-gracefully (data in the code). A pool of a few million tokens holds
-about ten sessions of this workload, so the small population is the
-regime long contexts imply, not an artefact of the experiment; E2 has
-to report the number of live sessions next to the load, and a
-finite-source form of the price is the open theoretical question.
+but the direction holds at $\rho=0.25$ with five sessions live, as
+Proposition~\ref{prop:finite} says it must for exponential work. For
+the price itself, Table~\ref{tab:sim-trace-price} forces a share
+$\delta$ of resident follow-up turns to miss with no pool limit and
+compares the rise of the number in the prefill stage with the bracket
+of Proposition~\ref{prop:price} from the baseline's measured moments.
+At $\delta\le3\,\%$, with \simPriceLiveMin{} to \simPriceLiveMax{}
+sessions live, the observed rise is \simPriceSmallRatioMin{} to
+\simPriceSmallRatioMax{} of the bracket's lower end, so the open price
+overstates the cost of a few misses, as the finite population predicts;
+at $\delta=10\,\%$ the observed rise is \simPriceLargeRatioMin{} to
+\simPriceLargeRatioMax{} times the lower end and the upper end
+diverges, because the added load puts the open queue near its pole
+while the closed system saturates gracefully, and because the misses of
+long-context sessions lengthen the sessions themselves, which the
+stationary price does not count. The open price is therefore a bound
+for a few misses and not for many, and E2 has to report the number of
+live sessions next to the load.
 
 \paragraph{What the simulation does not show.} The simulator shares
 the model's abstractions: no block-level KV allocation beyond tail

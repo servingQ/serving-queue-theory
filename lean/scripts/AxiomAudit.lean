@@ -69,6 +69,13 @@ open ServingQueueTheory
 #print axioms prefillWork_miss_delta
 #print axioms missPrice_mono_context
 #print axioms price_order_flips_with_load
+-- prop:finite (§2.4): the prefill queue with a finite population (M/M/1//N)
+#print axioms mvaQ_mono
+#print axioms mvaQ_le_card
+#print axioms finite_source_rho_lt_one
+#print axioms finite_source_wait_le_open
+#print axioms closed_price_cap
+#print axioms finite_source_two_sessions_example
 -- prop:guarded (§3.1): guarded density greedy
 #print axioms densityFirst_unbounded
 #print axioms threshold_prefix_le

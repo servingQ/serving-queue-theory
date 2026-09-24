@@ -110,13 +110,27 @@ fn table_sep(
     rows: &[String],
     colsep: &str,
 ) -> String {
+    table_sized(caption, label, cols, head, rows, colsep, "small")
+}
+
+/// `size` is the font size command of the tabular (`small` by default;
+/// `footnotesize` for the widest tables).
+fn table_sized(
+    caption: &str,
+    label: &str,
+    cols: &str,
+    head: &str,
+    rows: &[String],
+    colsep: &str,
+    size: &str,
+) -> String {
     let mut s = String::from(HEADER);
     writeln!(s, "\\begin{{table}}[t]").unwrap();
     writeln!(s, "\\caption{{{caption}}}").unwrap();
     writeln!(s, "\\label{{{label}}}").unwrap();
     writeln!(
         s,
-        "\\centering\\small\\setlength{{\\tabcolsep}}{{{colsep}}}"
+        "\\centering\\{size}\\setlength{{\\tabcolsep}}{{{colsep}}}"
     )
     .unwrap();
     writeln!(s, "\\begin{{tabular}}{{@{{}}{cols}@{{}}}}").unwrap();
@@ -203,7 +217,8 @@ fn in_model() -> String {
          $\\delta$ of turns changes from hit ($0.05$\\,s) to miss ($0.5$\\,s) at \
          hit rate $0.8$, $\\rho=0.6$, against the bracket \
          $[\\lambda\\delta\\Phi,\\ \\tfrac{1-\\rho}{1-\\rho'}\\lambda\\delta\\Phi]$. \
-         SF/OPT: worst of 9000 instances with equal $p_i$. $\\pm$ is a \
+         SF/OPT: worst of the 9000 instances of the first three rows of \\
+         Table~\\ref{tab:sim-evict}. $\\pm$ is a \
          95\\,\\% batch-means half-width. Times in seconds.",
         "tab:sim-inmodel",
         "l@{\\hspace{4pt}}lcc",
@@ -791,7 +806,7 @@ fn admission_table(open: &[OpenEvictRow], data: &mut Data) -> String {
              session (s), and the number of the {} seeds that thrashed. Means \
              over seeds; the best throughput, hit rate, TTFT and p99 per \
              ($\\Lambda$, cap) in bold. The 95\\,\\% half-widths over seeds \
-             are the whiskers of the accompanying figure; \
+             are the whiskers of Figure~\\ref{{fig:sim-admission}}; \
              Table~\\ref{{tab:sim-evict-dyn}} states them for the rows it \
              shares. An entry wait of hundreds of \
              seconds means the replica does not carry the offered turn rate \
@@ -823,7 +838,12 @@ fn inversion_table(data: &mut Data) -> String {
             r.bandwidth / 1e3,
             r.move_over_service,
             r.rho_star,
-            f(r.inversion_rate, 2),
+            match r.inversion_rate {
+                Some(x) if x <= validation::INVERSION_RATES[0] + 1e-9 => {
+                    format!("$\\le {x:.2}$")
+                }
+                other => f(other, 2),
+            },
             f(r.hot_utilization, 2),
             f(r.link_utilization, 2),
             f(r.affinity_response, 3),
@@ -844,7 +864,7 @@ fn inversion_table(data: &mut Data) -> String {
         ));
     }
     data.push("inversion.csv", INVERSION_CSV_HEADER, &csv);
-    table_sep(
+    table_sized(
         "Placement over 4 replicas with half of the new programs placed on \
          replica~0 (the affinity node), follow-up turns of 5--15k-token contexts, \
          state moved over one shared link of bandwidth $B$ (tokens/s) when that is \
@@ -863,6 +883,7 @@ fn inversion_table(data: &mut Data) -> String {
         "$B$ & $x$ & $\\rho^*$ & Inv. & $\\rho_0$ & $\\rho_L$ & Affinity & Move & Lookahead",
         &rows,
         "2pt",
+        "scriptsize",
     )
 }
 
@@ -965,7 +986,9 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             format!("open $\\Lambda{{=}}{:.3}$", r.rate)
         };
         rows.push(format!(
-            "{pool} & {regime} & {:.2} & {:.2} & {:.1} & {:.2} & {:.0} & {:.0} & {:.0}",
+            "{pool} & {regime} & {:.1} & {:.3} & {:.2} & {:.2} & {:.1} & {:.2} & {:.0} & {:.0} & {:.0}",
+            r.sessions.mean,
+            r.throughput.mean,
             r.hit_rate.mean,
             r.mixture_share.mean,
             r.cv2.mean,
@@ -997,7 +1020,7 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
         ));
     }
     data.push("trace.csv", TRACE_CSV_HEADER, &csv);
-    table_sep(
+    table_sized(
         &format!(
             "Replayed production sessions on the two-resource replica: {} Claude Code \
              sessions ({} turns, mean final context {:.0}k tokens, mean think time \
@@ -1008,7 +1031,8 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
              $\\Lambda$ per s, at most 24 live). With a finite pool the cap on live \
              sessions binds throughout the run, so the replica is a closed system of \
              $N$ sessions and the arrival rate is immaterial; the entry queue grows \
-             for the whole horizon (waits in the data file). Follow-up hit rate; \
+             for the whole horizon. Mean live sessions $\\bar N$ and throughput $X$ \
+             (turns/s); follow-up hit rate; \
              the share of $\\mathrm{{Var}}[S]$ of follow-up prefill work due to the \
              hit/miss mixture (the rest is the spread of the appends) and the \
              $\\mathrm{{CV}}^2$ of that work; prefill load $\\rho$ in stage time; observed \
@@ -1022,10 +1046,11 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             validation::TRACE_SEEDS
         ),
         "tab:sim-trace",
-        "clccccccc",
-        "Pool & Regime & Hit & Mix & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
+        "clccccccccc",
+        "Pool & Regime & $\\bar N$ & $X$ & Hit & Mix & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
         &rows,
         "2pt",
+        "scriptsize",
     )
 }
 
@@ -1085,6 +1110,106 @@ fn finite_source_table(data: &mut Data) -> String {
     )
 }
 
+const TRACE_PRICE_CSV_HEADER: &str = "rate,delta,rho,live,hit,dl_p,dl_p_hw,lo,hi,seeds";
+
+/// Prop. price on the replayed workload: forced misses against the bracket.
+fn trace_price_table(rows_all: &[validation::TracePriceRow], data: &mut Data) -> String {
+    let mut rows = vec![];
+    let mut csv = vec![];
+    for r in rows_all {
+        let hi = if r.hi.is_finite() {
+            format!("{:.1}", r.hi)
+        } else {
+            "$\\infty$".to_string()
+        };
+        rows.push(format!(
+            "{:.3} & {:.2} & {:.1} & {:.2} & {} & {:.1} & {} & {:.2}",
+            r.rate,
+            r.delta,
+            r.live,
+            r.rho,
+            pm(r.dl_p, 1),
+            r.lo,
+            hi,
+            r.dl_p.mean / r.lo
+        ));
+        csv.push(format!(
+            "{},{},{},{},{},{},{},{},{},{}",
+            r.rate,
+            r.delta,
+            r.rho,
+            r.live,
+            r.hit_rate,
+            r.dl_p.mean,
+            r.dl_p.half_width,
+            r.lo,
+            r.hi,
+            validation::TRACE_PRICE_SEEDS
+        ));
+    }
+    data.push("trace-price.csv", TRACE_PRICE_CSV_HEADER, &csv);
+    table_sep(
+        &format!(
+            "Forced misses on the replayed production sessions with no pool limit \
+             (open, Poisson sessions at rate $\\Lambda$ per s, at most 24 live, the \
+             configuration of the first rows of Table~\\ref{{tab:sim-trace}}): a share \
+             $\\delta$ of follow-up turns whose context is resident is forced to miss. \
+             $\\bar N$: mean live sessions; $\\rho$: prefill load of the baseline; \
+             $\\Delta L_P$: rise of the time-average number in the prefill stage over \
+             the baseline, mean and 95\\,\\% half-width over {} seeds; \
+             $[\\mathrm{{lo}}, \\mathrm{{hi}}]$: the bracket of \
+             Proposition~\\ref{{prop:price}} from the baseline's measured $\\lambda$, \
+             $\\rho$, $W$ and each forced turn's own $S^{{\\mathrm{{hit}}}}$, \
+             $S^{{\\mathrm{{miss}}}}$; last column $\\Delta L_P/\\mathrm{{lo}}$.",
+            validation::TRACE_PRICE_SEEDS
+        ),
+        "tab:sim-trace-price",
+        "cccccccc",
+        "$\\Lambda$ & $\\delta$ & $\\bar N$ & $\\rho$ & $\\Delta L_P$ & lo & hi & ratio",
+        &rows,
+        "2pt",
+    )
+}
+
+/// Sensitivity of the open-pool replay to the split rule.
+fn trace_split_table() -> String {
+    let rows_all = validation::trace_split_scenario();
+    let corpus10 = libqueuingsim::workload::TraceCorpus::weka();
+    let corpus30 = libqueuingsim::workload::TraceCorpus::weka_split_30min();
+    let mut rows = vec![];
+    for ((name, r, turns, think), c) in rows_all.iter().zip([&corpus10, &corpus30]) {
+        rows.push(format!(
+            "{name} & {} & {:.1} & {:.0} & {:.1} & {:.3} & {:.1} & {:.2} & {:.0} & {:.0} & {:.0}",
+            c.sessions.len(),
+            turns,
+            think,
+            r.sessions.mean,
+            r.throughput.mean,
+            r.cv2.mean,
+            r.rho.mean,
+            r.wait.mean,
+            r.pk_wait.mean,
+            r.ttft.mean
+        ));
+    }
+    table_sized(
+        &format!(
+            "Sensitivity of the open-pool replay ($\\Lambda={}$, no pool limit) to \
+             the rule that starts a new session at a gap longer than the threshold: \
+             sessions in the corpus, mean turns and mean think time (s) per session, \
+             then mean live sessions, throughput (turns/s), follow-up prefill-work \
+             $\\mathrm{{CV}}^2$, load, observed and PK prefill wait (s) and mean TTFT (s).",
+            validation::TRACE_RATES[0]
+        ),
+        "tab:sim-trace-split",
+        "lcccccccccc",
+        "Split & Sessions & Turns & Think & $\\bar N$ & $X$ & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
+        &rows,
+        "2pt",
+        "scriptsize",
+    )
+}
+
 fn main() {
     let dir = std::env::args()
         .nth(1)
@@ -1123,6 +1248,21 @@ fn main() {
     write("tab-lps.tex", &lps_table(&mut data));
     write("tab-inversion.tex", &inversion_table(&mut data));
     write("tab-finite.tex", &finite_source_table(&mut data));
+    let corpus_price = std::sync::Arc::new(libqueuingsim::workload::TraceCorpus::weka());
+    let price_rows: Vec<validation::TracePriceRow> = validation::TRACE_RATES
+        .iter()
+        .flat_map(|&rate| {
+            validation::TRACE_PRICE_DELTAS
+                .iter()
+                .map(move |&d| (rate, d))
+        })
+        .map(|(rate, d)| validation::trace_price_row(&corpus_price, rate, d))
+        .collect();
+    write(
+        "tab-trace-price.tex",
+        &trace_price_table(&price_rows, &mut data),
+    );
+    write("tab-trace-split.tex", &trace_split_table());
     write("tab-pd.tex", &pd_latency());
     let trace_rows = validation::trace_replay_scenario();
     write("tab-trace.tex", &trace_table(&trace_rows, &mut data));
@@ -1253,6 +1393,79 @@ fn main() {
                 .map(|r| r.entry_wait.mean / 3600.0)
                 .collect::<Vec<_>>()
         )
+    )
+    .unwrap();
+    // Forced-miss replay: ratio of the observed rise to the bracket's lower end.
+    let small: Vec<f64> = price_rows
+        .iter()
+        .filter(|r| r.delta <= 0.03)
+        .map(|r| r.dl_p.mean / r.lo)
+        .collect();
+    let large: Vec<f64> = price_rows
+        .iter()
+        .filter(|r| r.delta > 0.03)
+        .map(|r| r.dl_p.mean / r.lo)
+        .collect();
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceSmallRatioMin}}{{{:.2}}}",
+        fmin(&small)
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceSmallRatioMax}}{{{:.2}}}",
+        fmax(&small)
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceLargeRatioMin}}{{{:.1}}}",
+        fmin(&large)
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceLargeRatioMax}}{{{:.1}}}",
+        fmax(&large)
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceLiveMin}}{{{:.0}}}",
+        fmin(&price_rows.iter().map(|r| r.live).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simPriceLiveMax}}{{{:.0}}}",
+        fmax(&price_rows.iter().map(|r| r.live).collect::<Vec<_>>())
+    )
+    .unwrap();
+    let fin = validation::finite_source_scenario();
+    writeln!(
+        m,
+        "\\newcommand{{\\simFiniteRatioMax}}{{{:.1}}}",
+        fin[0].wait_open / fin[0].wait_exact
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simFiniteRatioMin}}{{{:.2}}}",
+        fin.last().unwrap().wait_open / fin.last().unwrap().wait_exact
+    )
+    .unwrap();
+    writeln!(m, "\\newcommand{{\\simFiniteNMin}}{{{}}}", fin[0].n).unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simFiniteNMax}}{{{}}}",
+        fin.last().unwrap().n
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simFiniteRho}}{{{}}}",
+        validation::FINITE_SOURCE_RHO
     )
     .unwrap();
     write("macros.tex", &m);

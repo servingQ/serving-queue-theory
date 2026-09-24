@@ -74,7 +74,7 @@ KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L �
 | 2.1 | Sessions, turns and tools (`sec:sessions` = `sec:closed`): Poisson sessions, closed loop inside, BCMP in one sentence | none | BCMP |
 | 2.2 | A replica: two resources and a memory pool (`sec:batch` = `sec:queue`): `eq:prefill`, `eq:decode`; prefill FIFO, decode PS; Table 1 (the model at a glance); units κ (bytes/token), β, ω (s) | footprint examples (prose, `footprint_variance_*`) | Sarathi-Serve (chunked prefill), BCMP/Kelly insensitivity, PK (`eq:pk`) |
 | 2.3 | Prefill work under KV reuse (`sec:congestion`) with `tab:cv2` (trace-derived split: append vs mixture; generated `paper/traces/tab-weka-cv2.tex`) | `prop:pk`, `prop:cache` as prose | none |
-| 2.4 | **The price of a miss** (`sec:price` = `sec:problem`; decision problem, θ, `eq:price`, `eq:utility`) | `prop:price` (bracket only); prose with inline `\provedby`: term ratios, divergence, `missPrice_mono_context`, `price_order_flips_with_load`; `prop:decode` (stability condition added) | Mendelson–Whang / Dewan–Mendelson externality (UNVERIFIED bib) |
+| 2.4 | **The price of a miss** (`sec:price` = `sec:problem`; decision problem, θ, `eq:price`, `eq:utility`) | `prop:price` (bracket only); prose with inline `\provedby`: term ratios, divergence, `missPrice_mono_context`, `price_order_flips_with_load`; **`prop:finite`** (M/M/1//N: `mvaQ_mono`, `finite_source_wait_le_open`, `closed_price_cap`; usable price = min(bracket, N − L_P)); `prop:decode` (stability condition added) | Mendelson–Whang / Dewan–Mendelson externality (UNVERIFIED bib) |
 | 3 | Congestion-priced scheduling (`sec:sched`) | | |
 | 3 (intro) | Algorithm 1: observe, price, set θ, evict, keep/offload/drop, place, admit (cap from the resident-KV estimate); inputs are estimates | none (design) | none |
 | 3.1 | Eviction: threshold rule, block prefix, byte-second variant, guarded greedy as cited known results (inline `\provedby`); "Fixed keys" paragraph with trace evidence (p 0.85–0.99, τ 4–65 s; `tab:resume` in App. C) | `prop:blind` ((i) price-blind keys unbounded, (ii) SF as the `w=c²` price-per-byte order, tight 2-approx); SF non-optimality instance as prose | Dantzig 1957, Csirik et al. 1991, Carnes–Shmoys 2008 |
@@ -82,7 +82,7 @@ KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L �
 | 3.3 | Admission and offloading (thrashing = Ao et al. 2026 instability with reuse; Campbell resident-KV estimate → cap; keep/offload/drop; option value; fixed rules as constants in one sentence) | none (design) | Campbell (M/G/∞), Ao et al. 2026 |
 | 4.1 | What the traces say (`sec:exp-traces`, `tab:traces`; TTFT and resume tables in App. C) | none (workload measurements) | cc-traces-weka |
 | 4.2 | Uncalibrated simulation (`paper/simulation.tex`: summaries + `tab:sim-inmodel`, `fig:sim-admission`, `tab:sim-trace`; other tables in App. B) | none (checks of the props above) | none |
-| 4.3 | Evaluation on a real system: overview table + one paragraph E1–E6; result-table layouts in §4.2a below | none | none |
+| App. D | Experimental design for a real system (`app:design` = `sec:exp-real`): overview table + one paragraph E1–E6; result-table layouts in §4.2a below | none | none |
 | App. A | Human-readable proofs (price, decode, blind) | | |
 | App. B | Simulation tables (`paper/simulation-appendix.tex`) | | |
 | App. C | Trace tables (TTFT by append; resume probability and gap) | | |
@@ -130,13 +130,11 @@ only standard axioms (`make lean` reports `OK: 57 theorems audited`).
 
 Candidate results, not yet in the paper. Each needs a Lean proof, or a
 citation to an established theorem, before it becomes a proposition:
-- **Finite-source price (review round 1, item 6).** With N live sessions the
-  prefill queue is M/G/1//N, not M/G/1. Simulation (`tab:sim-finite`,
-  M/M/1//N at ρ = 0.6): the open wait is 4.5× the exact wait at N = 2, 1.09×
-  at N = 64. Candidate statement: the open price is an upper bound, and
-  the closed-network cap ΔL_P ≤ N − L_P. The M/M/1//N closed form is a
-  cited standard result (Kleinrock §3.8); a Lean proof of "open ≥ finite
-  source at equal utilisation" for general N is open.
+- ~~Finite-source price~~ done round 3 as `prop:finite` (Lean `FiniteSource.lean`:
+  MVA recursion, `mvaQ_mono`, `finite_source_wait_le_open`,
+  `closed_price_cap`). Still open: the M/G/1//N inequality for general
+  work laws (the replay supports it for a few misses and refutes it for
+  many: `tab:sim-trace-price`).
 - **Price with priorities.** Serving hits before misses (Cobham's
   formula) changes the externality in `Φ_i`; a priced rule for queue
   order would complete the scheduler.

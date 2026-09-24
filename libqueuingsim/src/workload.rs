@@ -69,9 +69,16 @@ impl TraceCorpus {
         Self { sessions }
     }
 
-    /// The bundled production Claude Code corpus (see the module doc).
+    /// The bundled production Claude Code corpus (see the module doc):
+    /// sessions split at gaps above 10 minutes.
     pub fn weka() -> Self {
         Self::from_csv(include_str!("../data/weka-sessions.csv"))
+    }
+
+    /// The same corpus split at gaps above 30 minutes (sensitivity of the
+    /// replay to the split rule).
+    pub fn weka_split_30min() -> Self {
+        Self::from_csv(include_str!("../data/weka-sessions-1800.csv"))
     }
 
     pub fn turns(&self) -> usize {

@@ -2157,6 +2157,8 @@ pub struct TraceRow {
     pub prefill_number: Estimate,
     pub availability: Estimate,
     pub truncated: Estimate,
+    /// Turns completed per second.
+    pub throughput: Estimate,
 }
 
 pub fn trace_row(
@@ -2180,6 +2182,7 @@ pub fn trace_row(
         lp: f64,
         avail: f64,
         trunc: f64,
+        x: f64,
     }
     let ones: Vec<One> = (1..=TRACE_SEEDS)
         .map(|seed| {
@@ -2244,6 +2247,7 @@ pub fn trace_row(
                 lp: r.mean_prefill_number,
                 avail: r.mean_availability,
                 trunc: r.truncated as f64,
+                x: r.throughput,
             }
         })
         .collect();
@@ -2266,6 +2270,7 @@ pub fn trace_row(
         prefill_number: est(|o| o.lp),
         availability: est(|o| o.avail),
         truncated: est(|o| o.trunc),
+        throughput: est(|o| o.x),
     }
 }
 
@@ -2737,4 +2742,31 @@ pub fn finite_source_wait_below_open() -> Check {
         observed: obs.join("; "),
         pass,
     }
+}
+
+/// Sensitivity of the open-pool replay to the session split rule: the
+/// corpus split at 10 minutes (the paper's default) and at 30 minutes, at
+/// the lower rate with no pool limit.
+pub fn trace_split_scenario() -> Vec<(String, TraceRow, f64, f64)> {
+    let mut out = vec![];
+    for (name, corpus) in [
+        ("10 min", crate::workload::TraceCorpus::weka()),
+        ("30 min", crate::workload::TraceCorpus::weka_split_30min()),
+    ] {
+        let corpus = std::sync::Arc::new(corpus);
+        let row = trace_row(
+            &corpus,
+            TRACE_RATES[0],
+            f64::INFINITY,
+            TRACE_CAP_OPEN,
+            EvictionPolicy::PricedMemory,
+        );
+        out.push((
+            name.to_string(),
+            row,
+            corpus.mean_turns(),
+            corpus.mean_think(),
+        ));
+    }
+    out
 }

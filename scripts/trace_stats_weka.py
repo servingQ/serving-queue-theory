@@ -209,6 +209,14 @@ def main():
             f.write(f"\\newcommand{{\\wkCvHitLin}}{{{rows[0][1][0]['cv2_hit']:.1f}}}\n")
             f.write(f"\\newcommand{{\\wkMixShareLin}}{{{100 * rows[0][1][1]['share']:.0f}}}\n")
             f.write(f"\\newcommand{{\\wkCvMixLin}}{{{rows[0][1][1]['cv2']:.1f}}}\n")
+            lin = [100 * x['share'] for x in rows[0][1]]
+            att = [100 * x['share'] for kc, r in rows[1:] for x in r]
+            f.write(f"\\newcommand{{\\wkMixLinMin}}{{{min(lin):.0f}}}\n\\newcommand{{\\wkMixLinMax}}{{{max(lin):.0f}}}\n")
+            f.write(f"\\newcommand{{\\wkMixAttMin}}{{{min(att):.0f}}}\n\\newcommand{{\\wkMixAttMax}}{{{max(att):.0f}}}\n")
+            f.write(f"\\newcommand{{\\wkAppendShareMin}}{{{100 - max(lin + att):.0f}}}\n")
+            f.write(f"\\newcommand{{\\wkTurnsMedian}}{{{q(turns, .5)}}}\n")
+            f.write(f"\\newcommand{{\\wkContextMedian}}{{{q(K, .5) / 1000:.0f}}}\n")
+            f.write(f"\\newcommand{{\\wkThinkMedian}}{{{q(think, .5):.1f}}}\n\\newcommand{{\\wkThinkPninety}}{{{q(think, .9):.0f}}}\n")
         print('wrote tables to', a.tex)
     resume_stats(S, a.split_gap, a.tex, a.label)
 

@@ -149,6 +149,8 @@ Follow `docs/add-proposition.md`. Short version:
   hit/miss mixture); §2.4 = `sec:price`: the decision problem and
   `prop:price` (bracket only; term ratios, divergence, monotonicity in K
   and the load-flip example are prose with inline `\provedby`),
+  `prop:finite` (M/M/1//N via mean value analysis: Q_n monotone, open
+  wait ≥ finite-source wait, ΔL_P ≤ N − L_P; added round 3),
   `prop:decode`); §3 congestion-priced scheduling: Algorithm 1 up front
   (step 7 = admission cap from the resident-KV estimate), §3.1 eviction
   (threshold rule, block prefix, byte-second variant and guarded greedy
@@ -157,12 +159,12 @@ Follow `docs/add-proposition.md`. Short version:
   (`eq:rhostar` inversion load as prose), §3.3 admission and offloading
   (Campbell estimate lives here); §4 Evidence: §4.1 what the traces say,
   §4.2 uncalibrated simulation (`paper/simulation.tex`, summaries only;
-  tables in App. B `simulation-appendix.tex`), §4.3 evaluation on a real
-  system (one overview table + one paragraph of hypotheses, no `\tbd`
-  cells); §5 related work (one page, with the novelty sentence); §6
+  tables in App. B `simulation-appendix.tex`); the real-system
+  experimental design (E1–E6, one overview table, no `\tbd` cells) is
+  App. D `app:design` since round 2 (page budget); §5 related work (one page, with the novelty sentence); §6
   limitations incl. "what would falsify"; App. A proofs (price, decode,
-  blind), App. B simulation tables, App. C trace tables. Three
-  propositions total; do not re-promote the demoted knapsack facts or the
+  blind, finite), App. B simulation tables, App. C trace tables, App. D
+  experimental design. Four propositions total; do not re-promote the demoted knapsack facts or the
   inversion load to propositions (review M3). Prefill/decode (PD)
   disaggregation is out of this paper (follow-up); its text is in
   paper/pd-followup.tex, not \input. Do not reintroduce it into the main
