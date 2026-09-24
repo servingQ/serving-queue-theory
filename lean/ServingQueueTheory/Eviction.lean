@@ -1,7 +1,7 @@
 /-
-# Program-level KV eviction: shortest-context-first is not optimal
+# Program-level KV eviction: price-blind keys and shortest-first
 
-Proposition (paper `prop:evict`, §3.1).  Consider suspended programs with context
+Proposition (paper `prop:blind`, §3.1).  Consider suspended programs with context
 lengths `c_i`, recompute cost `R(c) = c²`, and a memory target `ΔC`:
 
   minimise  Σ_{i∈S} c_i²   subject to  Σ_{i∈S} c_i ≥ ΔC.
@@ -14,7 +14,8 @@ even for single evictions.
 
 What *is* true: on an ascending-sorted pool, shortest-first always frees
 enough memory and costs at most twice the optimum, and the factor 2 is
-tight.  Once resume probabilities enter, no constant factor survives.
+tight (`prop:blind` (ii)).  Once resume probabilities enter, no constant
+factor survives for *any* rule that does not see them (`prop:blind` (i)).
 
 Key theorems:
 * `shortestFirst_not_optimal`, `shortestFirst_optimality_claim_false`:
@@ -30,6 +31,8 @@ Key theorems:
 * `shortestFirst_wrong_with_resume_prob`,
   `shortestFirst_unbounded_with_resume_prob`: with expected cost `p·c²`
   the shortest-first choice can be worse by any factor `R`.
+* `price_blind_rule_unbounded`: the same for every rule that decides
+  from anything but the resume probabilities (`prop:blind` (i)).
 -/
 import Mathlib.Tactic
 import Mathlib.Data.List.Sort
@@ -251,5 +254,38 @@ theorem shortestFirst_unbounded_with_resume_prob (R : ℚ) :
   rw [heq]
   have : R / M < 1 := (div_lt_one hMpos).mpr hRM
   unfold expectedEvictCost; norm_num; linarith
+
+/-! ### No price-blind rule has a constant ratio (`prop:blind` (i)). -/
+
+/-- **Prop. blind (i).**  A *price-blind* eviction rule decides from any
+observation `obs : α` (sizes, recency, idle time, tool, …) except the
+resume probabilities.  Two programs of the same size `c` that share the
+observation look identical to it, so it evicts a fixed one, `rule obs`.
+For every ratio `R` there are resume probabilities in `(0, 1]` under which
+the evicted program costs more than `R` times the other, and either
+program alone frees the target `c`, so the rule has no constant
+approximation ratio.  Shortest-first, longest-first, LRU and time-to-live
+are all price-blind. -/
+theorem price_blind_rule_unbounded {α : Type*} (rule : α → Fin 2) (obs : α)
+    (c : ℕ) (hc : 0 < c) (R : ℚ) :
+    ∃ p : Fin 2 → ℚ, (∀ i, 0 < p i ∧ p i ≤ 1) ∧
+      R * expectedEvictCost (p (rule obs + 1)) c < expectedEvictCost (p (rule obs)) c := by
+  have hne : ∀ x : Fin 2, x + 1 ≠ x := by decide
+  refine ⟨fun i => if i = rule obs then 1 else 1 / (|R| + 2), ?_, ?_⟩
+  · intro i
+    dsimp only
+    split_ifs
+    · norm_num
+    · refine ⟨by positivity, ?_⟩
+      rw [div_le_one (by positivity)]
+      linarith [abs_nonneg R]
+  · dsimp only
+    rw [ite_eq_right (hne _), ite_eq_left rfl]
+    unfold expectedEvictCost
+    have hcpos : (0 : ℚ) < (c : ℚ) ^ 2 := by positivity
+    have hlt : R * (1 / (|R| + 2)) < 1 := by
+      rw [mul_one_div, div_lt_one (by positivity)]
+      linarith [le_abs_self R]
+    nlinarith [mul_lt_mul_of_pos_right hlt hcpos]
 
 end ServingQueueTheory

@@ -194,7 +194,7 @@ fn in_model() -> String {
         .map(|r| r.shortest_first)
         .fold(0.0, f64::max);
     rows.push(format!(
-        "max SF/OPT & Prop.~\\ref{{prop:evict}} & $\\le 2$ & {worst:.3}"
+        "max SF/OPT & Prop.~\\ref{{prop:blind}} & $\\le 2$ & {worst:.3}"
     ));
     table(
         "Simulation under each proposition's assumptions (in-model). \

@@ -1186,7 +1186,7 @@ pub fn shortest_first_counterexample() -> Check {
     let (opt, _) = eviction::optimal(&it, 6).expect("feasible");
     Check {
         id: "shortest_first_counterexample",
-        paper: "prop:evict (i)",
+        paper: "sec:evict (SF counterexample)",
         lean: &[
             "shortestFirst_not_optimal",
             "shortestFirst_optimality_claim_false",
@@ -1210,7 +1210,7 @@ pub fn shortest_first_two_approx() -> Check {
     }
     Check {
         id: "shortest_first_two_approx",
-        paper: "prop:evict (ii)",
+        paper: "prop:blind (ii)",
         lean: &["shortestFirst_feasible", "shortestFirst_two_approx"],
         kind: Kind::InModel,
         claim: "SF is a 2-approximation when all p_i are equal",
@@ -1238,7 +1238,7 @@ pub fn shortest_first_tightness() -> Check {
     }
     Check {
         id: "shortest_first_tightness",
-        paper: "prop:evict (ii)",
+        paper: "prop:blind (ii)",
         lean: &["shortestFirst_two_approx_tight"],
         kind: Kind::InModel,
         claim: "the factor 2 is tight",
@@ -1272,7 +1272,7 @@ pub fn shortest_first_unbounded_with_resume_prob() -> Check {
     pass &= max_sf > 2.0 && mean_d < mean_sf;
     Check {
         id: "shortest_first_unbounded_with_resume_prob",
-        paper: "prop:evict (iii), sec:evict (Dantzig)",
+        paper: "prop:blind (i), sec:evict (Dantzig)",
         lean: &[
             "shortestFirst_unbounded_with_resume_prob",
             "shortestFirst_wrong_with_resume_prob",
@@ -1936,7 +1936,7 @@ pub fn observations() -> Vec<Observation> {
     }
     out.push(Observation {
         id: "dynamic_eviction",
-        paper: "prop:evict, sec:exp-evict",
+        paper: "prop:blind, sec:exp-evict",
         question: "Offline, the density rule beats SF by a wide margin when p_i vary. Does that, or the congestion-priced order q_i Φ_i / c_i, carry over to a closed system where evictions repeat and freed memory is reused? (Two classes: agent p=0.95 short context; one-shot p=0.2 long context. Throughput turns/s, 5 seeds.)",
         result: lines.join("; "),
     });

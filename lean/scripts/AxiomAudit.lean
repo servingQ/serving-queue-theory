@@ -39,7 +39,7 @@ open ServingQueueTheory
 #print axioms pdCompute_eq_agg_of_no_gain
 #print axioms pd_wins_example
 #print axioms pd_loses_example
--- prop:evict (§3.1): eviction
+-- prop:blind (§3.1): eviction; price-blind keys and shortest-first
 #print axioms shortestFirst_not_optimal
 #print axioms shortestFirst_optimality_claim_false
 #print axioms shortestFirst_wrong_with_resume_prob
@@ -47,6 +47,7 @@ open ServingQueueTheory
 #print axioms shortestFirst_two_approx
 #print axioms shortestFirst_two_approx_tight
 #print axioms shortestFirst_unbounded_with_resume_prob
+#print axioms price_blind_rule_unbounded
 -- prop:routing, prop:append (§3.3, App. B): routing
 #print axioms lookahead_prefers_iff
 #print axioms affinity_example

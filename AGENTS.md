@@ -135,15 +135,20 @@ Follow `docs/add-proposition.md`. Short version:
   prefill only; the CV² numbers are prefill times); §2.4 the KV-state
   problem with the memory shadow price θ; §2.5 `prop:price` (prefill
   queue, central) and `prop:decode` (PS, prices only work)); §3 congestion-priced
-  scheduling (eviction, routing, admission with the keep/offload/drop rule), where each published claim
-  is read as a special case of the formulation; §4 experiments (§4.1
+  scheduling: Algorithm 1 up front, then §3.1 eviction (`prop:memory`,
+  `prop:guarded`, `prop:blind`: price-blind keys have no constant ratio;
+  SF is the `w=c²` special case), §3.2 placement (`prop:routing`),
+  §3.3 admission and offloading (keep/offload/drop rule), closing with
+  one "Fixed rules as special cases" paragraph; §4 experiments (§4.1
   uncalibrated simulation, §4.2 evaluation on a real system); App. A
   proofs. Prefill/decode (PD) disaggregation is out of this paper
   (follow-up); its text is in paper/pd-followup.tex, not \input. Do not
   reintroduce it into the main text or an appendix. Do not reintroduce a "layered" framing, a section that collects
   all propositions, a separate section for other papers' claims, or a
-  "special cases" section; claims are refuted where the formulation
-  meets them.
+  "special cases" section, and no "The claim" / "Reading the claim"
+  paragraphs (removed 2026-09-23): §3 proposes our scheduler, and a
+  published rule appears only as the special case of a step, in the
+  sentence where the formulation meets it.
 - Standard results from the literature are stated in prose with a
   citation, keeping their assumptions in a clause. Display a formula
   only when a proposition or proof refers to it (e.g. `eq:pk`); do not
@@ -158,10 +163,11 @@ Follow `docs/add-proposition.md`. Short version:
   not name Lean theorems, tactics or CI in the prose.
 - Appendix A proofs are ordinary mathematical proofs written for a human
   reader, not transcripts of the Lean proofs.
-- Other papers' claims are discussed where they bear on a result, in "The
-  claim" / "Reading the claim" paragraphs. Quote or paraphrase exactly what
-  they say, cite the section/figure, and do not imply we re-ran their
-  experiments (the intro states once that we did not).
+- Other papers' rules are mentioned where they bear on a result, in one
+  or two sentences as the special case of a step of the scheduler, with a
+  citation naming the section/figure. Paraphrase exactly what they say
+  and do not imply we re-ran their experiments (the intro states once
+  that we did not). No dedicated claim paragraphs.
 - §4.2 (real-system evaluation) uses `\tbd` placeholders. Fill cells only
   with measured values; keep `docs/research-plan.md` in sync with what
   each table measures. §4.1 (`sec:sim`, `paper/simulation.tex`) reports
@@ -194,8 +200,8 @@ Follow `docs/add-proposition.md`. Short version:
   withdrawn). §3 builds the
   scheduler on it; do not re-centre the paper on critiques of other work.
 - Claims re-examined in §3 come from ThunderAgent (arXiv:2602.13692 v3):
-  Lemma 4.1 / Def. 4.1 / App. F.3 (shortest-first eviction theorem, refuted
-  by our Prop. on eviction), App. A.2 + Fig. 7 (offloading and PD numbers),
+  Lemma 4.1 / Def. 4.1 / App. F.3 (shortest-first eviction theorem,
+  contradicted in one sentence after `prop:blind`), App. A.2 + Fig. 7 (offloading and PD numbers),
   App. A.4 (v3 only: offloading is "orthogonal"). PPD is arXiv:2603.13358
   (ICML 2026). Agentic trace statistics are from the vLLM AgentX (2026-09-08)
   and vLLM×Mooncake (2026-05-06) blog posts.

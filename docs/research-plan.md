@@ -48,9 +48,13 @@ of s (TP1); decode of 444 tokens ≈ several s (KV reads ≈ 14 ms/step at
 - Withdrawn v0.5 claim: "chunked prefill makes the eviction key
   load-independent". Chunking protects decode; the prefill queue keeps
   the square term. The
-scheduler (paper §3) ranks states by `v_i = p_i Φ_i / c_i`; SF,
-always-offload and strict affinity are the special cases where the price
-is replaced by `c_i²`, zero and infinity.
+scheduler (paper §3, Algorithm 1) compares `u_i = p_i Φ_i /(c_i τ_i)`
+with the shadow price θ; SF, recency/TTL keys, always-offload, strict
+affinity and admit-all are the special cases where a price is replaced
+by `c_i²`, a constant `p_i`, zero, infinity and `θ=0`.
+- `prop:blind` (added 2026-09-23): any eviction rule that does not see
+  `p_i` has no constant approximation ratio (generalises the SF result);
+  SF is the `w=c²` price-per-byte order, a tight 2-approximation.
 
 A queueing model of agentic LLM serving is useful if it is **decision
 faithful**: it ranks policies (eviction, offloading, PD split, routing) the
@@ -62,7 +66,7 @@ The model is one causal chain (paper §2):
 KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L → policy
 ```
 
-## 2. Paper structure (v0.6: sessions + two-resource replica + memory price)
+## 2. Paper structure (v0.7: sessions + two-resource replica + memory price; §3 proposes the scheduler)
 
 | § | Content | Our results | Cited results (prose) |
 |---|---------|-------------|----------------|
@@ -73,9 +77,10 @@ KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L �
 | 2.4 | The KV-state problem (`eq:mdp`, `eq:numsys` = L_P + L_D, shadow price θ) | none | Little |
 | 2.5 | **The price of a miss** (`eq:price`, `eq:utility` = `w_i, v_i, u_i`) | `prop:price` (prefill queue: bracket; term ratios; unbounded), `prop:decode` (PS: monotone ⇒ ranking by work; closed form; unbounded) | none |
 | 3 | Congestion-priced scheduling (`sec:sched`) | | |
-| 3.1 | Eviction (+ ThunderAgent Def. 4.1, App. F.3, G.3) | `prop:guarded` (program-level 2-approx), `prop:memory` (θ threshold; blocks: optimal up to one block), `prop:evict` (SF as the special case `w=c²`) | covering knapsack, Dantzig greedy |
-| 3.2 | Routing | `prop:routing`, `eq:lookahead` | none |
-| 3.3 | Admission (thrashing; θ as the admission unit), scheduler summary incl. keep/offload/drop and the option-value sentence (ThunderAgent A.2 read there) | none (design) | none |
+| 3 (intro) | Algorithm 1: observe, price, set θ, evict, keep/offload/drop, place, admit; inputs and how θ is set | none (design) | none |
+| 3.1 | Eviction; "Fixed keys" paragraph (SF, LRU, idle, TTL as price-blind keys; ThunderAgent Def. 4.1 / App. F.3 contradicted in one sentence) | `prop:memory` (θ threshold; blocks: optimal up to one block), `prop:guarded` (program-level 2-approx), `prop:blind` ((i) price-blind keys unbounded, (ii) SF as the `w=c²` price-per-byte order, tight 2-approx) | covering knapsack, Dantzig greedy |
+| 3.2 | Placement | `prop:routing`, `eq:lookahead` | none |
+| 3.3 | Admission and offloading (thrashing; θ as the admission unit; keep/offload/drop; option-value sentence with ThunderAgent A.2 as a clause); closing paragraph "Fixed rules as special cases" | none (design) | none |
 | 4.1 | Uncalibrated simulation (`paper/simulation.tex`, tables generated into `paper/sim/`) | none (checks of the props above) | none |
 | 4.2 | Evaluation on a real system: overview table + hypotheses E1–E6; table layouts in §4.2a below | none | none |
 | App. A | Human-readable proofs | | |
@@ -85,9 +90,10 @@ Conventions that follow from the user's review of v0.1:
 - Do not call the model "layered" and do not use a "Layer 1..4" structure.
 - Propositions live in the section whose decision they inform. Do not
   collect them in one section.
-- Published claims are discussed in the section they bear on, under
-  "The claim", "The claim as a special case" and "Reading the claim"
-  paragraphs. There is no separate claims or special-cases section.
+- Published rules are mentioned in one or two sentences as special cases
+  of a step of the scheduler (v0.7, 2026-09-23: the "The claim" /
+  "Reading the claim" paragraphs were removed; §3 proposes the method).
+  There is no separate claims or special-cases section.
 - Lean is not visible in the paper. `\provedby{\leanref{...}}` typesets
   nothing. The only mention is one sentence at the top of Appendix A.
 - Appendix proofs are ordinary mathematical proofs, not transcripts of
@@ -113,10 +119,10 @@ only standard axioms (`make lean` reports `OK: 57 theorems audited`).
 | `prop:guarded` (i) plain density unbounded, (ii) guarded 2-approx | proved | (ii) is proved as a certificate lemma (`guardedGreedy_two_approx`): hypotheses encode the greedy's sorted-prefix property; the algorithm itself is not formalised |
 | `prop:pk`, `prop:cache` | proved | trivial parts dropped from the statements; M/M/1 unboundedness now lives in the `prop:routing` proof |
 | `eq:cv2` numbers | proved | the core argument that variance comes from the miss penalty |
-| option value (prose in §3.2) | proved | trivial math, so demoted from a proposition to a prose sentence; its value is in reading ThunderAgent A.2 correctly |
-| `prop:evict` (i) | proved | refutes ThunderAgent App. F.3 |
-| `prop:evict` (ii) 2-approx + tightness | proved | added in v0.2. v0.1 wrongly said the ratio is unbounded |
-| `prop:evict` (iii) unbounded with resume probs | proved | |
+| option value (prose in §3.3) | proved | trivial math, so demoted from a proposition to a prose sentence; its value is in reading ThunderAgent A.2 correctly |
+| `prop:blind` (i) any price-blind rule unbounded | proved | `price_blind_rule_unbounded`; the rule is an arbitrary function of any observation type except `p` |
+| `prop:blind` (ii) SF = `w=c²` price-per-byte order, feasible, 2-approx + tightness | proved | formerly `prop:evict` (ii); v0.1 wrongly said the ratio is unbounded |
+| SF not optimal on `{4,5,6}`, ΔC=6 | proved | prose sentence after `prop:blind` with inline `\provedby`; contradicts ThunderAgent App. F.3 |
 | `prop:pd` | proved | capacity model only, no batching |
 | `prop:routing`, `eq:lookahead`, `eq:append` | proved | the two rules are prose with inline proofs (trivial rearrangements) |
 
@@ -164,13 +170,13 @@ each part established, and what it changes for phase 2:
 
 | Question | Result under the synthetic model | Consequence for phase 2 |
 |----------|----------------------------------|-------------------------|
-| Do the closed forms hold in their own model? (M/M/1, `prop:pk`, `prop:cache`, `eq:cv2`, `prop:pd`, `prop:evict`(ii)) | yes, within CI or 2 % | the simulator is usable for the questions below |
+| Do the closed forms hold in their own model? (M/M/1, `prop:pk`, `prop:cache`, `eq:cv2`, `prop:pd`, `prop:blind`(ii)) | yes, within CI or 2 % | the simulator is usable for the questions below |
 | Does PK survive bursty arrivals? | no: it underestimates; Kingman's bound holds | E2 records interarrival CV² next to the PK ratio |
 | Does throughput fall with N only through the hit rate? | yes: with finite KV it falls; with ample KV it follows `min(N/(D+Z),1/D)` | E3 records hit rate and resident KV per concurrency level |
 | Is always-offload harmful? (option value, now one sentence in §3.3 scheduler paragraph; tab-offload generated but not shown) | only with blocking fetches; with async fetches the tier queue acts as admission control and always-offload is best | E3 records whether the stack fetches synchronously; the policy ranking depends on it |
 | Does the PK bracket of `prop:price`(i) hold in simulation? | yes: ΔL inside the bracket, near its upper end (δ=0.01, 0.05) | E2 forces misses on a controlled fraction and compares ΔL with the bracket |
 | Is the guard of `prop:guarded` needed, and does it help? | offline guarded ≤ 1.87×OPT everywhere and best mean in every row; plain density reaches 6.7× on random arbitrary-weight instances (unbounded only on the witness family) | E4 reports guarded next to plain density |
-| Does the offline density advantage carry over? (`prop:evict`(iii)) | offline density ≫ SF when `p_i` vary; in the closed system the two are within seed noise, LRU is worse | E4 reports end-to-end TTFT and throughput next to cost/OPT, and measures the spread of `p_i` |
+| Does the offline density advantage carry over? (`prop:blind`(i)) | offline density ≫ SF when `p_i` vary; in the closed system the two are within seed noise, LRU is worse | E4 reports end-to-end TTFT and throughput next to cost/OPT, and measures the spread of `p_i` |
 | Does PS insensitivity hold, and does the product form survive session feedback? | yes: deterministic vs hit/miss work give the same L under PS (FIFO separates them as PK says); Poisson sessions + closed loop + H2 tools match the isolated PS formula at λ=Λ/(1−p) for constant and saturating φ | E2 tests insensitivity by comparing chunked vs blocking prefill at equal load |
 | Does the PS price bracket (`prop:price`(ii)) hold? | yes; the simulated ΔL sits at the upper end, which the proposition says is exact | E2 forced-miss test uses both brackets |
 | Is "φ flattened at B" a good model of a real batch cap (LPS)? | at half load yes (≤1 %); at u=0.8–0.9 the error follows the service CV²: −10/−22 % for deterministic work, +29/+51 % for CV²=4. A capped batch is not insensitive, and hit/miss work (CV²>1) makes the model underestimate congestion near saturation | E1/E2 must report the batch-cap regime; theory needs an LPS correction or an explicit statement of this error |
@@ -200,7 +206,7 @@ rule 5).
 | E1 | Fit `S_prefill(L,K,B)`, `S_decode(B,KV)`, `T_transfer(bytes)` | calibration | T | profiling harness | not started |
 | E2 | Is per-turn CV² dominated by the hit/miss mixture? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces, interarrival CV², miss injection | not started |
 | E3 | Is priced offloading never below never-offload? When is always-offload below it? | option value (§3.3) | T, S | E1, tier bandwidth, fetch mode (sync/async) | not started |
-| E4 | SF vs price per byte vs guarded vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs price | `prop:guarded`, `prop:evict` | O, S | traces with resume events, spread of `p_i`, a regime with mean wait comparable to a miss | not started |
+| E4 | SF vs price per byte vs guarded vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs price | `prop:guarded`, `prop:blind` | O, S | traces with resume events, spread of `p_i`, a regime with mean wait comparable to a miss | not started |
 | (PD) | Does the PD inequality predict the winner? What is the latency cost at equal capacity? (follow-up paper, see §4.2b) | `prop:pd` | T | E1, measured `I, g_P, g_D` | not started |
 | E5 | At what load does affinity lose? Does lookahead predict it? | `prop:routing`, `eq:lookahead`, `eq:append` | T, S | E1, migration cost | not started |
 | E6 | Decision-faithfulness scorecard (Kendall τ, argmin agreement, MAPE) | whole model | T, S | E1 to E5, phase 3 | not started |

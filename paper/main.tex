@@ -67,7 +67,7 @@
   \vskip 0.3in
 ]
 
-\printAffiliationsAndNotice{Working draft v0.6. Experimental results
+\printAffiliationsAndNotice{Working draft v0.7. Experimental results
 (Section~\ref{sec:exp}) are pending and marked \tbd.}
 
 \begin{abstract}
@@ -148,12 +148,11 @@ offloading and admission; routing uses the same price. The threshold
 rule is optimal for the relaxed problem and optimal up to one block
 when state is evicted in blocks (Proposition~\ref{prop:memory}), and
 the program-level eviction rule is a 2-approximation for any prices
-(Proposition~\ref{prop:guarded}). Two
-claims of ThunderAgent \citep{thunderagent} are special cases of the
-formulation: that shortest-context-first eviction is optimal, which is
-false (Proposition~\ref{prop:evict}), and that KV offloading is
-ineffective, which can hold for always-offloading but never for
-offloading chosen per program.
+(Proposition~\ref{prop:guarded}). The keys in use, shortest-first,
+recency and time-to-live among them, are the special cases in which the
+price is replaced by a constant, and none of them has a bounded
+approximation ratio once resume probabilities vary
+(Proposition~\ref{prop:blind}).
 \item \textbf{Experiments} (\S\ref{sec:exp}). An uncalibrated simulation
 checks each proposition inside and beyond its model and shows that
 memory thrashing, not the eviction order, decides throughput. An
@@ -488,22 +487,58 @@ its price per byte and its price per byte-second held as
   w_i = p_i\,\Phi_i, \qquad v_i=\frac{w_i}{c_i}, \qquad
   u_i=\frac{w_i}{c_i\,\tau_i}.
 \end{equation}
-The next section builds a scheduler on these and reads two published
-claims as special cases of it.
+The next section builds a scheduler on these three numbers.
 
 % ===========================================================================
 \section{Congestion-Priced Scheduling}\label{sec:sched}
 % ===========================================================================
 
-The scheduler keeps one number per suspended program, its price per
-byte-second~$u_i$ from~\eqref{eq:utility}, and one number per replica,
-the shadow price~$\theta$ of a byte-second of memory. It needs the miss
-penalty $\Delta S_i$, from a calibrated cost model
-(\S\ref{sec:exp-calib}); the resume probability $p_i$ and the expected
-remaining suspension $\tau_i$, from the program's phase and tool
-(\S\ref{sec:sessions}); and the prefill load and mean wait, which a
-replica observes. A state is worth keeping when $u_i>\theta$, and
-$\theta$ is set by the memory the replica must free.
+The formulation leaves the scheduler two numbers. Each suspended program
+has a price per byte-second $u_i$ from~\eqref{eq:utility}, and each
+replica has a shadow price $\theta$ for a byte-second of its memory.
+Every KV decision compares the two. Algorithm~\ref{alg:cps} states the
+scheduler; this section derives its steps and says what each one
+guarantees.
+
+\begin{algorithm}[t]
+\caption{Congestion-priced scheduling at one replica}
+\label{alg:cps}
+\begin{algorithmic}[1]
+\STATE \textbf{Observe} the prefill arrival rate $\lambda$, load $\rho$
+  and mean wait $W$, and the memory $\Delta C$ that must be freed.
+\STATE \textbf{Price} each suspended program: $\Phi_i$
+  from~\eqref{eq:price} with $\Delta S_i$ from~\eqref{eq:prefill},
+  $w_i=p_i\Phi_i$, $u_i=w_i/(c_i\tau_i)$.
+\STATE \textbf{Set} $\theta$ to the smallest value at which the blocks
+  with $u_i\le\theta$ free $\Delta C$; $\theta=0$ if nothing must be
+  freed.
+\STATE \textbf{Evict} the blocks with $u_i\le\theta$
+  (Prop.~\ref{prop:memory}), or whole programs by the guarded rule
+  (Prop.~\ref{prop:guarded}).
+\STATE \textbf{Keep, offload or drop} each remaining state by the least
+  of $\theta c_i\tau_i$, the priced fetch and $w_i$
+  (\S\ref{sec:admission}).
+\STATE \textbf{Place} a resuming turn at
+  $\arg\min_j\,W_j+S_j+M_j+F_j$ with $M_j=\Phi_i$ at node~$j$'s load
+  (\S\ref{sec:routing}).
+\STATE \textbf{Admit} a waiting session while the memory it will hold,
+  at $\theta$ per byte-second, costs less than its wait.
+\end{algorithmic}
+\end{algorithm}
+
+The inputs are observable. The miss penalty $\Delta S_i$ comes from the
+cost model~\eqref{eq:prefill} at the program's context length,
+calibrated once per replica (\S\ref{sec:exp-calib}). The resume
+probability $p_i$ and the expected remaining suspension $\tau_i$ come
+from the program's phase and the tool it called (\S\ref{sec:sessions}).
+The arrival rate, load and wait of the prefill queue are running
+averages at the replica. The shadow price is the price of the cheapest
+byte-second the replica would have to give up: zero while the pool has
+room and the expected resident KV of \S\ref{sec:sessions} is below $M$,
+and otherwise the $u_i$ of the marginal resident block. Prices change
+with load, so a program's rank can change while it waits. A decision
+made at one load should not be frozen into a key, which is the point
+of pricing at decision time.
 
 \subsection{Eviction}\label{sec:evict}
 
@@ -536,9 +571,8 @@ At the $\theta$ that frees exactly $\Delta C$ the threshold rule is
 optimal, and the same $\theta$ prices offloading and admission below.
 Held for $\tau_i$ seconds, a byte of state costs $\theta\tau_i$, so
 among states of equal price and size the one with the longer expected
-tool call goes first. Where programs must be evicted whole, as in
-ThunderAgent, price-per-byte order can fail by any factor, and a guard
-repairs it.
+tool call goes first. Where programs must be evicted whole,
+price-per-byte order can fail by any factor, and a guard repairs it.
 
 \begin{proposition}[Guarded program-level eviction]\label{prop:guarded}
 Let $w_i\ge0$ and $c_i>0$.
@@ -554,72 +588,62 @@ Let $w_i\ge0$ and $c_i>0$.
 \provedby{\leanref{densityFirst\_unbounded}, \leanref{threshold\_prefix\_le}, \leanref{guardedGreedy\_two\_approx}}
 \end{proposition}
 
-\paragraph{The claim.} ThunderAgent's Lemma~4.1 models recompute cost as
-quadratic in context length. Its Definition~4.1 poses the eviction problem
-\begin{equation}\label{eq:evict}
-  \min_{S}\ \sum_{i\in S}c_i^2 \quad\text{s.t.}\quad \sum_{i\in S}c_i\ge\Delta C
-\end{equation}
-over subsets $S$ of suspended programs with context lengths $c_i$ and a
-memory target $\Delta C$. Its Appendix~F.3 states a theorem that selecting
-the programs with the smallest~$c_i$ is optimal.
+\paragraph{Fixed keys.} Deployed systems evict by a key fixed in
+advance: the shortest context first \citep{thunderagent}, the least
+recently used, the longest idle, or the expired time-to-live
+\citep{li2025continuum,xia2026mori}. Each is Algorithm~\ref{alg:cps}
+with $u_i$ replaced by a quantity that does not depend on whether the
+program will resume, and that omission is what they pay for.
 
-\paragraph{The claim as a special case.} Problem~\eqref{eq:evict} is
-\eqref{eq:evict-priced} with $w_i=c_i^2$: every program resumes
-($p_i=1$) and the price is the recompute work alone, which by
-Proposition~\ref{prop:price}(ii) holds only at light prefill load; the
-work is then quadratic in the context by~\eqref{eq:prefill}. Under
-these assumptions the price per byte is $c_i$, and shortest-first (SF)
-is the plain price-per-byte order.
-
-\begin{proposition}[Shortest-context-first eviction]\label{prop:evict}
-Let shortest-first (SF) scan the programs in increasing order of $c_i$ and
-evict until $\Delta C$ is freed.
+\begin{proposition}[Price-blind keys]\label{prop:blind}
+Consider~\eqref{eq:evict-priced} with $w_i=p_i\Phi_i$.
 \begin{enumerate}[nosep,leftmargin=1.6em,label=(\roman*)]
-\item SF is not optimal for~\eqref{eq:evict}: for $c=\{4,5,6\}$ and
-      $\Delta C=6$, SF evicts $\{4,5\}$ at cost~41 while $\{6\}$ is
-      feasible at cost~36.
-\item SF is a 2-approximation for~\eqref{eq:evict}: for every instance
-      with $\Delta C>0$ and every feasible $S$, the SF cost is at most
-      twice the cost of~$S$. The factor~2 is tight: for $c=\{K,K+1\}$ and
-      $\Delta C=K+1$ the ratio is $(K^2+(K+1)^2)/(K+1)^2\to2$.
-\item If program~$i$ resumes with probability $p_i$, the expected cost of
-      evicting it is $p_ic_i^2$, and SF has no constant approximation
-      ratio: for every $R$ there is a two-program instance in which SF
-      costs more than $R$ times a feasible alternative.
+\item Let a rule choose which of two programs to evict from any
+  information except their resume probabilities. For every $R$ there
+  are resume probabilities in $(0,1]$ under which the program it evicts
+  costs more than $R$ times the other, while either program alone frees
+  the target. No such rule has a constant approximation ratio
+  for~\eqref{eq:evict-priced}.
+\item If every program resumes and its price is its recompute work
+  alone, so that $w_i=c_i^2$ by~\eqref{eq:prefill}, then shortest-first
+  is the price-per-byte order: it frees $\Delta C$ whenever the pool
+  holds it, costs at most twice any feasible set, and the factor~2 is
+  tight.
 \end{enumerate}
-\provedby{\leanref{shortestFirst\_not\_optimal}, \leanref{shortestFirst\_optimality\_claim\_false}, \leanref{shortestFirst\_feasible}, \leanref{shortestFirst\_two\_approx}, \leanref{shortestFirst\_two\_approx\_tight}, \leanref{shortestFirst\_unbounded\_with\_resume\_prob}}
+\provedby{\leanref{price\_blind\_rule\_unbounded}, \leanref{shortestFirst\_feasible}, \leanref{shortestFirst\_two\_approx}, \leanref{shortestFirst\_two\_approx\_tight}}
 \end{proposition}
 
-\paragraph{Reading the claim.} Part~(i) refutes the Appendix~F.3 theorem
-as stated. Its exchange argument replaces a long program by a short one
-``and theoretically the residue $r$'', but the residue is not a program
-that can be selected; the argument is valid for the fractional
-relaxation, not for Definition~4.1. With $w_i=c_i^2$ the dearest program
-of any feasible set costs at least as much as the last one SF takes, so
-SF needs no guard, which is why (ii) holds; once the $p_i$ differ the
-price per byte is $p_ic_i$ and (iii) follows. ThunderAgent's objective
-is therefore sound at light load for programs that all resume, and its
-error lies in the algorithm and in the uniform resume assumption. Its
-ablation (App.~G.3, v3) shows SF beating longest-first and random
-eviction by about $2\times$ in throughput, which (ii) predicts, but it
-does not compare against the optimum or a priced rule. How much resume
-probabilities and tool times vary in real traces decides which regime
-applies, and is measured in \S\ref{sec:exp-evict}.
+Part~(ii) is the regime in which shortest-first is defensible: light
+prefill load, where by Proposition~\ref{prop:price}(ii) the price is
+close to $\Delta S_i$, and programs that all resume. It needs no guard
+there, because the last program it takes is never dearer than the
+dearest program of any feasible set. Even there it is not optimal: with
+contexts $4,5,6$ and a target of $6$ it evicts $\{4,5\}$ at cost~41
+while $\{6\}$ is feasible at cost~36,\provedby{\leanref{shortestFirst\_not\_optimal}, \leanref{shortestFirst\_optimality\_claim\_false}}
+contrary to the optimality theorem stated for this problem by
+\citet[Def.~4.1, App.~F.3]{thunderagent}. Outside that regime
+part~(i) applies, to shortest-first and to every other key that ignores
+$p_i$. How far real traces are from uniform resume probabilities is
+measured in \S\ref{sec:exp-evict}.
 
-\subsection{Routing}\label{sec:routing}
+\subsection{Placement}\label{sec:routing}
 
-A program-aware router charges a resuming turn the wait and service at
-each node, the migration cost $M_j$ of moving its state and the expected
-future cost $F_j$ of its remaining turns. With node~1 holding the state
-($M_1=0$), the rule $\min_j W_j+S_j+M_j+F_j$ keeps the turn at node~1 iff
+A resuming turn can be served where its state is or elsewhere. The
+router charges each node~$j$ the wait and service there, the migration
+cost $M_j$ of moving or recomputing the state, and the expected future
+cost $F_j$ of the program's remaining turns. With node~1 holding the
+state ($M_1=0$), the rule $\min_j W_j+S_j+M_j+F_j$ keeps the turn at
+node~1 iff
 \begin{equation}\label{eq:lookahead}
   (W_1+S_1)-(W_2+S_2) < M_2+(F_2-F_1).
 \end{equation}
 \provedby{\leanref{lookahead\_prefers\_iff}}
 The price of a miss supplies $M_j$: a move turns the next turn into a
-miss served at node~$j$, so $M_j$ is $\Phi_i$ at node~$j$'s prefill
-load, small at an idle node even for a long context. Session affinity
-sets $M_j=\infty$ for every other node.
+miss served at node~$j$, so $M_j$ is $\Phi_i$ evaluated at node~$j$'s
+prefill load, small at an idle node even for a long context and large
+at a loaded one. Session affinity, the rule that never moves a program,
+sets $M_j=\infty$ for every other node, and no finite migration cost
+justifies that at every load.
 
 \begin{proposition}[The limit of affinity]\label{prop:routing}
 For \emph{any} finite $M,F\ge0$ there is a stable load $\lambda<\mu$ at
@@ -629,7 +653,7 @@ session affinity is not an optimal policy.
 \provedby{\leanref{affinity\_not\_always\_optimal}, \leanref{mm1Wait\_unbounded}}
 \end{proposition}
 
-\subsection{Admission}\label{sec:admission}
+\subsection{Admission and Offloading}\label{sec:admission}
 
 The memory pool couples the two roles of KV, and the coupling is
 unstable. A miss holds its turn in the prefill queue and then in the
@@ -637,33 +661,36 @@ batch for longer, which holds more bytes, which evicts more suspended
 state, which causes more misses. The simulation of \S\ref{sec:sim}
 shows a replica switching between a hit rate near one and one near zero
 under the same load. The shadow price gives the admission rule its
-unit: a new session is admitted when the price it pays for memory,
-$\theta$ times the byte-seconds it will hold, is below the delay it
-avoids by not waiting, and $\theta$ rises steeply as the pool fills. In
-practice this is a cap on live sessions set where the expected resident
-KV of \S\ref{sec:sessions} stays below the pool, and it is the decision
-that keeps the eviction rules in the regime where they matter.
+unit: a new session is admitted when the memory it will hold, at
+$\theta$ per byte-second, costs less than the delay it avoids by not
+waiting, and $\theta$ rises steeply as the pool fills. In practice this
+is a cap on live sessions set where the expected resident KV of
+\S\ref{sec:sessions} stays below the pool, and it is the decision that
+keeps the eviction rules in the regime where they matter.
 
-\paragraph{The scheduler.} Congestion-priced scheduling maintains running
-estimates of the prefill load and wait at each node, one shadow price
-$\theta$ per replica, and, for each suspended program, $p_i$, $c_i$,
-$\tau_i$ and $\Delta S_i$. (1)~When memory must be freed it evicts
-blocks in increasing price per byte-second, or whole programs by the
-guarded rule of Proposition~\ref{prop:guarded}, with $w_i=p_i\Phi_i$.
-(2)~A suspended state is kept, offloaded to a slower tier or dropped by
-comparing $\theta c_i\tau_i$, the priced transfer (the transfer time in
-place of $\Delta S_i$ in~\eqref{eq:price} when the fetch holds the
-prefill stage, plus the tier's wait once it saturates) and $w_i$. Since
-offloading only enlarges the choice set, enabling it never raises the
-optimal cost, while always offloading can be worse than never
-offloading, which is what ThunderAgent's collapse of vLLM$+$LMCache at
-high concurrency \citep[App.~A.2]{thunderagent} shows about a policy,
-not about the mechanism.\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{enabling\_offload\_never\_hurts}, \leanref{always\_offload\_can\_be\_worse}} (3)~A resuming turn
-goes to the node that minimises~\eqref{eq:lookahead} with $M_j$ priced
-at that node's prefill load. (4)~Sessions are admitted while $\theta$
-stays below the delay a waiting session would incur. SF, always-offload
-and strict affinity are the special cases in which the price is
-replaced by $c_i^2$, by zero, and by infinity.
+Between keeping and dropping lies offloading to a slower tier. A state
+is kept, offloaded or dropped by the least of $\theta c_i\tau_i$, the
+priced fetch and $w_i$, where the priced fetch is $\Phi_i$ with the
+transfer time in place of $\Delta S_i$ when the fetch holds the prefill
+stage, plus the tier's wait once it saturates. Since offloading only
+enlarges the choice set, enabling it never raises the optimal cost,
+while always offloading can be worse than never
+offloading.\provedby{\leanref{optimal\_cost\_antitone\_in\_actions}, \leanref{enabling\_offload\_never\_hurts}, \leanref{always\_offload\_can\_be\_worse}}
+The collapse of an always-offloading stack at high concurrency reported
+by \citet[App.~A.2]{thunderagent} is therefore a property of that
+policy, not of the mechanism, and the per-program choice above is what
+avoids it.
+
+\paragraph{Fixed rules as special cases.} Every rule in use replaces
+one price by a constant. Shortest-first sets $w_i=c_i^2$
+(Proposition~\ref{prop:blind}(ii)); recency, idleness and time-to-live
+keys set $p_i$ to a constant (Proposition~\ref{prop:blind}(i)); always
+offloading sets the priced fetch to zero and never offloading to
+infinity; strict affinity sets $M_j=\infty$
+(Proposition~\ref{prop:routing}); admitting every session sets
+$\theta=0$. Each is right in the load regime where its constant happens
+to match the price, and \S\ref{sec:exp} asks how often that regime
+occurs.
 
 % ===========================================================================
 \section{Experiments}\label{sec:exp}
@@ -701,7 +728,7 @@ Exp. & Tests & Where & Primary metric \\
 E1 & fits of~\eqref{eq:prefill}, \eqref{eq:decode}, $\varphi$ & T & held-out MAPE \\
 E2 & \S\ref{sec:congestion}, Props.~\ref{prop:price}, \ref{prop:decode} & T, S & $\mathrm{CV}^2$, $\Delta L_P$ \\
 E3 & keep/offload/drop rule (\S\ref{sec:admission}) & T, S & turns/s \\
-E4 & Props.~\ref{prop:memory}, \ref{prop:guarded}, \ref{prop:evict} & O, S, T & cost/OPT, TTFT \\
+E4 & Props.~\ref{prop:memory}, \ref{prop:guarded}, \ref{prop:blind} & O, S, T & cost/OPT, TTFT \\
 E5 & Prop.~\ref{prop:routing} & T, S & inversion load \\
 E6 & decision faithfulness & T, S & Kendall $\tau$ \\
 \bottomrule
@@ -804,7 +831,7 @@ give the first constant-competitive non-clairvoyant policy;
 \citet{wang2025variable} show that first-come-first-served,
 shortest-output-first and size-based priorities have unbounded
 approximation ratios for batch scheduling under a KV budget, a result
-in the spirit of our Proposition~\ref{prop:evict}(iii) for eviction.
+in the spirit of our Proposition~\ref{prop:blind}(i) for eviction.
 \citet{dexter2025prefix} prove NP-hardness of scheduling with prefix
 reuse under TTFT constraints and study the trade-off between reuse and
 fairness.
@@ -1006,12 +1033,23 @@ $w_e+w(P)+w_x\le w_e+w(O')+w_e=w(O)+w_e\le2w(O)$, using $w_x\le w_e$ and
 $w_e\le w(O)$.
 \end{proof}
 
-\begin{proof}[Proof of Proposition~\ref{prop:evict}]
-(i) On $4,5,6$ with $\Delta C=6$, SF takes $4$ (so $2$ remains), then $5$,
-and stops. Its cost is $16+25=41$, while $\{6\}$ frees $6$ at cost $36$.
+\begin{proof}[Proof of Proposition~\ref{prop:blind}]
+(i) Take two programs of the same size $c>0$ that agree in everything
+the rule observes, and a target $\Delta C=c$, so that either program
+alone is feasible. The rule sees the same input whatever the resume
+probabilities are, so it evicts a fixed one of the two, say $e$, and let
+$o$ be the other. Set $p_e=1$ and $p_o=1/(|R|+2)$, both in $(0,1]$. The
+evicted program costs $p_ec^2=c^2$, while $o$ costs
+$c^2/(|R|+2)$, and $R\cdot c^2/(|R|+2)<c^2$ since $R<|R|+2$. The
+optimum is at most the cost of $o$, so the rule's ratio exceeds~$R$.
 
-(ii) Let SF take $t_1\le\dots\le t_m$, the first $m$ programs in sorted
-order. Write $L=t_m$ and $P=t_1+\dots+t_{m-1}$, so $P<\Delta C$ (SF did
+(ii) By~\eqref{eq:prefill} the recompute work of a context of $c$
+tokens is $ac+bc^2/2$; the proposition takes the quadratic term as the
+price, $w_i=c_i^2$, so $w_i/c_i=c_i$ and price-per-byte order is
+shortest-first (SF). SF frees $\Delta C$ whenever the pool holds it: it
+stops only at a program at least as long as the remaining target or
+when the pool is exhausted. For the ratio, let SF take
+$t_1\le\dots\le t_m$, the first $m$ programs in sorted order. Write $L=t_m$ and $P=t_1+\dots+t_{m-1}$, so $P<\Delta C$ (SF did
 not stop earlier). Let $S$ be any feasible set.
 
 \emph{Step 1: $L^2\le\mathrm{cost}(S)$.} Every program with $c_i<L$ is
@@ -1042,11 +1080,6 @@ and Step~1 bounds the last term by $\mathrm{cost}(S)$.
 
 Tightness: on $K,K+1$ with $\Delta C=K+1$, SF takes $K$ (leaving $1$), then
 $K+1$, at cost $K^2+(K+1)^2$, while $\{K+1\}$ costs $(K+1)^2$.
-
-(iii) Take $\Delta C=2$, program~A with $c=2$, $p=1$, and program~B with
-$c=M\ge2$, $p=1/M^3$. SF evicts~A at expected cost $4$; evicting~B frees
-enough memory at expected cost $M^2/M^3=1/M$. Choosing $M>R/4$ and
-$M\ge2$ makes $4>R/M$.
 \end{proof}
 
 \begin{proof}[Proof of Proposition~\ref{prop:routing}]
