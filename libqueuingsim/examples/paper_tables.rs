@@ -1029,6 +1029,62 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
     )
 }
 
+/// §2.2 / §6: the prefill queue with `N` live sessions as a finite-source
+/// system (M/M/1//N) against the open M/M/1 wait at the same utilisation.
+fn finite_source_table(data: &mut Data) -> String {
+    let rows_all = validation::finite_source_scenario();
+    let mut rows = vec![];
+    let mut csv = vec![];
+    for r in &rows_all {
+        rows.push(format!(
+            "{} & {:.1} & {:.3} & {} & {:.3} & {:.2}",
+            r.n,
+            r.think,
+            r.wait_exact,
+            pm(
+                Estimate {
+                    mean: r.wait_sim.mean - 1.0,
+                    half_width: r.wait_sim.half_width
+                },
+                3
+            ),
+            r.wait_open,
+            r.wait_open / r.wait_exact
+        ));
+        csv.push(format!(
+            "{},{},{},{},{},{},{}",
+            r.n,
+            r.think,
+            r.rho,
+            r.wait_exact,
+            r.wait_sim.mean - 1.0,
+            r.wait_sim.half_width,
+            r.wait_open
+        ));
+    }
+    data.push(
+        "finite-source.csv",
+        "n,think,rho,wait_exact,wait_sim,wait_sim_hw,wait_open",
+        &csv,
+    );
+    table(
+        &format!(
+            "A FIFO prefill queue fed by $N$ live sessions, each thinking for an \
+             exponential time of mean $Z$ (s) and then submitting a turn of exponential \
+             work with mean $1$\\,s, with $Z$ chosen so that the server utilisation is \
+             $\\rho={}$ for every $N$. Mean wait in queue (s): exact finite-source value \
+             (M/M/1//$N$), simulated (95\\,\\% batch-means half-width), and the open \
+             M/M/1 wait $\\rho/(\\mu(1-\\rho))$ that the PK formula gives from the \
+             measured rate and moments; last column their ratio.",
+            validation::FINITE_SOURCE_RHO
+        ),
+        "tab:sim-finite",
+        "cccccc",
+        "$N$ & $Z$ & Exact & Simulated & Open & Open/Exact",
+        &rows,
+    )
+}
+
 fn main() {
     let dir = std::env::args()
         .nth(1)
@@ -1066,6 +1122,7 @@ fn main() {
     write("tab-footprint.tex", &footprint_table());
     write("tab-lps.tex", &lps_table(&mut data));
     write("tab-inversion.tex", &inversion_table(&mut data));
+    write("tab-finite.tex", &finite_source_table(&mut data));
     write("tab-pd.tex", &pd_latency());
     let trace_rows = validation::trace_replay_scenario();
     write("tab-trace.tex", &trace_table(&trace_rows, &mut data));

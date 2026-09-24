@@ -61,4 +61,5 @@ checks!(
     trace_replay_variance_sources,
     inversion_load_closed_form,
     inversion_load_rises_with_move_cost,
+    finite_source_wait_below_open,
 );

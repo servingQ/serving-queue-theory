@@ -176,3 +176,41 @@ pub fn exp_fit(d: &[(f64, f64)], m: f64) -> f64 {
         .map(|x| x.1 * (1.0 + exp_fit(d, m - x.0)))
         .sum()
 }
+
+/// Finite-source (machine-repair) M/M/1//N queue: `n` sources, each
+/// thinking for an exponential time of rate `nu` and then submitting a job
+/// of exponential service rate `mu` to one FIFO server. Returns
+/// `(L, X, W_q)`: mean number at the server (queue and service),
+/// throughput, and mean wait in queue (Little: `W_q = L/X - 1/mu`).
+/// `π_k ∝ N!/(N-k)! (ν/μ)^k` for `k = 0..N` (Kleinrock 1975, §3.8).
+pub fn finite_source_mm1(n: usize, nu: f64, mu: f64) -> (f64, f64, f64) {
+    let r = nu / mu;
+    let mut w = 1.0;
+    let mut z = 1.0;
+    let mut l = 0.0;
+    for k in 1..=n {
+        w *= (n - k + 1) as f64 * r;
+        z += w;
+        l += k as f64 * w;
+    }
+    let l = l / z;
+    let p0 = 1.0 / z;
+    let x = mu * (1.0 - p0);
+    (l, x, l / x - 1.0 / mu)
+}
+
+/// Think rate `nu` at which the M/M/1//N server has utilisation `rho`
+/// (bisection on `1 - π_0`).
+pub fn finite_source_nu_for_utilization(n: usize, mu: f64, rho: f64) -> f64 {
+    let (mut lo, mut hi): (f64, f64) = (1e-9, 1e6);
+    for _ in 0..200 {
+        let mid = (lo * hi).sqrt();
+        let (_, x, _) = finite_source_mm1(n, mid, mu);
+        if x / mu < rho {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    (lo * hi).sqrt()
+}

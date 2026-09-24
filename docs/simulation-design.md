@@ -103,6 +103,9 @@ The simulator is trusted for a use only after the steps below it pass.
 | 2. M/G/1: PK for D, E4, H2, two-point service; ratio `(1+CV²)/2` (`eq:pk`, `eq:cv2`) | `pk_formula`, `variance_orders_delay`, `cache_reuse_lowers_delay`, `cv2_ratio` | pass |
 | 3. Closed network: `R = N/X − Z`; throughput non-decreasing in N with fixed demand, below `min(N/(D+Z), 1/D)` | `interactive_response_time_law`, `closed_throughput_nondecreasing_fixed_demand` | pass |
 | 4. PD capacity: saturated tandem matches `min(N_P g_P/s_P, N_D g_D/s_D, B/E[K])` (`prop:pd`) | `pd_capacity_matches`, `pd_no_gain` | pass |
+| 4b. Finite-source prefill queue: M/M/1//N exact wait vs simulation at ρ = 0.6, N ∈ {2,…,64}; open M/M/1 wait is above it, ratio 4.5 → 1.09 | `finite_source_wait_below_open` (`paper/sim/tab-finite.tex`) | pass |
+| 4c. Inversion load: M/M/1 node crosses the move cost at ρ* (in model); always-move vs affinity over 4 replicas and a shared link (beyond) | `inversion_load_closed_form`, `inversion_load_rises_with_move_cost` | pass |
+| 4d. Replayed production sessions: variance sources and PK overstatement | `trace_replay_variance_sources`; observation `trace_replay_miss_price` | pass |
 | 5. Calibrated vs testbed: with E1 fits, TTFT and throughput at the E6 held-out points; report MAPE (`tab:scorecard`) | none yet | needs E1 and M5 |
 
 Also covered, outside the ladder: Little's law, Lindley vs DES (bit-level),

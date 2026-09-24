@@ -130,6 +130,13 @@ only standard axioms (`make lean` reports `OK: 57 theorems audited`).
 
 Candidate results, not yet in the paper. Each needs a Lean proof, or a
 citation to an established theorem, before it becomes a proposition:
+- **Finite-source price (review round 1, item 6).** With N live sessions the
+  prefill queue is M/G/1//N, not M/G/1. Simulation (`tab:sim-finite`,
+  M/M/1//N at ρ = 0.6): the open wait is 4.5× the exact wait at N = 2, 1.09×
+  at N = 64. Candidate statement: the open price is an upper bound, and
+  the closed-network cap ΔL_P ≤ N − L_P. The M/M/1//N closed form is a
+  cited standard result (Kleinrock §3.8); a Lean proof of "open ≥ finite
+  source at equal utilisation" for general N is open.
 - **Price with priorities.** Serving hits before misses (Cobham's
   formula) changes the externality in `Φ_i`; a priced rule for queue
   order would complete the scheduler.

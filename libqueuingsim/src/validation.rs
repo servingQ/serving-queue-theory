@@ -87,6 +87,7 @@ pub fn all() -> Vec<Check> {
         trace_replay_variance_sources(),
         inversion_load_closed_form(),
         inversion_load_rises_with_move_cost(),
+        finite_source_wait_below_open(),
     ]
 }
 
@@ -2640,5 +2641,100 @@ pub fn trace_price_row(
         lo: lo_sum / k,
         hi: hi_sum / k,
         hit_rate: hit_sum / k,
+    }
+}
+
+// --------------------------------------------- finite-source prefill queue ----
+
+/// Live-session counts of the finite-source scenario.
+pub const FINITE_SOURCE_NS: [usize; 5] = [2, 4, 8, 16, 64];
+/// Server utilisation held fixed across `N` by choosing the think time.
+pub const FINITE_SOURCE_RHO: f64 = 0.6;
+
+/// One `N` of the finite-source scenario: `N` sessions, exponential think
+/// time chosen so that the server utilisation is [`FINITE_SOURCE_RHO`],
+/// exponential service of mean 1 s at one FIFO server.
+#[derive(Clone, Debug)]
+pub struct FiniteSourceRow {
+    pub n: usize,
+    pub think: f64,
+    pub rho: f64,
+    /// Exact M/M/1//N mean wait in queue.
+    pub wait_exact: f64,
+    /// Simulated mean wait in queue with its batch-means CI.
+    pub wait_sim: Estimate,
+    /// Open M/M/1 wait at the same throughput, `ρ/(μ(1-ρ))`, i.e. the PK
+    /// formula fed the measured arrival rate and service moments.
+    pub wait_open: f64,
+}
+
+pub fn finite_source_scenario() -> Vec<FiniteSourceRow> {
+    let mu = 1.0;
+    FINITE_SOURCE_NS
+        .iter()
+        .map(|&n| {
+            let nu = finite_source_nu_for_utilization(n, mu, FINITE_SOURCE_RHO);
+            let (_, x, wq) = finite_source_mm1(n, nu, mu);
+            let mut cfg = BatchConfig::poisson_turns(
+                1.0,
+                Dist::exp(1.0 / mu),
+                Server::Fifo,
+                400_000.0,
+                300 + n as u64,
+            );
+            cfg.population = Population::Closed { programs: n };
+            cfg.classes[0].resume_prob = 1.0;
+            cfg.classes[0].tool_time = Dist::exp(1.0 / nu);
+            cfg.max_context = f64::INFINITY;
+            let r = batch::simulate(&cfg);
+            let rho = x / mu;
+            FiniteSourceRow {
+                n,
+                think: 1.0 / nu,
+                rho,
+                wait_exact: wq,
+                wait_sim: batch_means(
+                    &r.responses.iter().map(|(_, t)| t - 0.0).collect::<Vec<_>>(),
+                    20,
+                ),
+                wait_open: rho / (mu * (1.0 - rho)),
+            }
+        })
+        .collect()
+}
+
+/// The prefill queue of a replica with `N` live sessions is a finite-source
+/// system. In model (M/M/1//N, Kleinrock §3.8) the simulated wait matches
+/// the exact formula, and the open M/M/1 wait at the same utilisation is
+/// above it for every `N`, with the gap closing as `N` grows: the open
+/// price of Prop. price is an upper bound for a finite live population.
+pub fn finite_source_wait_below_open() -> Check {
+    let rows = finite_source_scenario();
+    let mut pass = true;
+    let mut obs = vec![];
+    let mut prev_ratio = f64::INFINITY;
+    for r in &rows {
+        // simulated response = wait + service; compare response to exact
+        let resp_exact = r.wait_exact + 1.0;
+        pass &= r.wait_sim.agrees_with(resp_exact, 0.02);
+        let ratio = r.wait_open / r.wait_exact;
+        pass &= ratio >= 1.0 && ratio <= prev_ratio + 1e-9;
+        prev_ratio = ratio;
+        obs.push(format!(
+            "N={}: Z={:.1}s ρ={:.2} R sim {} exact {:.3}; W_q exact {:.3} open {:.3} (×{:.2})",
+            r.n, r.think, r.rho, r.wait_sim, resp_exact, r.wait_exact, r.wait_open, ratio
+        ));
+    }
+    Check {
+        id: "finite_source_wait_below_open",
+        paper: "sec:batch, prop:price, sec:limits",
+        lean: &["missPrice_upper"],
+        kind: Kind::InModel,
+        claim: "with N live sessions the prefill queue is a finite-source system; the open M/G/1 wait at the same utilisation is an upper bound that tightens as N grows",
+        expected: format!(
+            "simulated response within CI (+2%) of the exact M/M/1//N value; open/exact wait ratio ≥ 1 and nonincreasing in N at ρ = {FINITE_SOURCE_RHO}"
+        ),
+        observed: obs.join("; "),
+        pass,
     }
 }
