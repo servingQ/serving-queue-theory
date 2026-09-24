@@ -61,6 +61,80 @@ theorem affinity_not_always_optimal {mu : ℝ} (hmu : 0 < mu) (M F : ℝ) :
   obtain ⟨lam, h0, hlt, hW⟩ := mm1Wait_unbounded hmu (mm1Wait mu 0 + M + F)
   exact ⟨lam, h0, hlt, hW⟩
 
+/-! ### The inversion load: where affinity starts to lose
+
+`prop:routing` (ii).  Moving to an idle node of the same speed costs
+`1/mu + M + F`.  The affinity node's M/M/1 response time `1/(mu - lam)`
+exceeds that exactly when `lam` is above the *inversion load*
+`lam* = mu - 1/(1/mu + M + F)`, i.e. when its utilisation exceeds
+`rho* = mu (M+F) / (1 + mu (M+F))`.  `lam*` is nondecreasing in `M` and
+`F`, so a shared KV store, which replaces a recompute by a cheaper fetch,
+lowers the load at which affinity loses. -/
+
+/-- The arrival rate above which the affinity node's M/M/1 response time
+exceeds the cost `1/mu + M + F` of moving to an idle node. -/
+noncomputable def inversionLoad (mu M F : ℝ) : ℝ := mu - 1 / (1 / mu + M + F)
+
+/-- Staying beats moving iff the load is below the inversion load. -/
+theorem affinity_loses_iff {mu lam M F : ℝ} (hmu : 0 < mu) (hM : 0 ≤ M) (hF : 0 ≤ F)
+    (hlam : lam < mu) :
+    mm1Wait mu 0 + M + F < mm1Wait mu lam ↔ inversionLoad mu M F < lam := by
+  unfold mm1Wait inversionLoad
+  have hB : 0 < 1 / mu + M + F := by positivity
+  have hd : 0 < mu - lam := by linarith
+  rw [sub_zero, lt_div_iff₀ hd]
+  constructor
+  · intro h
+    have h' : mu - lam < 1 / (1 / mu + M + F) := by
+      rw [lt_div_iff₀ hB]
+      linarith [mul_comm (mu - lam) (1 / mu + M + F)]
+    linarith
+  · intro h
+    have h' : mu - lam < 1 / (1 / mu + M + F) := by linarith
+    rw [lt_div_iff₀ hB] at h'
+    linarith [mul_comm (mu - lam) (1 / mu + M + F)]
+
+/-- The inversion load is a stable load: `0 ≤ lam* < mu`. -/
+theorem inversionLoad_stable {mu M F : ℝ} (hmu : 0 < mu) (hM : 0 ≤ M) (hF : 0 ≤ F) :
+    0 ≤ inversionLoad mu M F ∧ inversionLoad mu M F < mu := by
+  unfold inversionLoad
+  have hB : 0 < 1 / mu + M + F := by positivity
+  have hmu' : 0 < 1 / mu := by positivity
+  constructor
+  · have h1 : 1 / (1 / mu + M + F) ≤ 1 / (1 / mu) :=
+      one_div_le_one_div_of_le hmu' (by linarith)
+    rw [one_div_one_div] at h1
+    linarith
+  · have := one_div_pos.mpr hB
+    linarith
+
+/-- A cheaper move (smaller `M` or `F`) lowers the inversion load. -/
+theorem inversionLoad_mono {mu M M' F F' : ℝ} (hmu : 0 < mu) (hM : 0 ≤ M) (hF : 0 ≤ F)
+    (hMM : M ≤ M') (hFF : F ≤ F') :
+    inversionLoad mu M F ≤ inversionLoad mu M' F' := by
+  unfold inversionLoad
+  have hB : 0 < 1 / mu + M + F := by positivity
+  have := one_div_le_one_div_of_le hB (by linarith : 1 / mu + M + F ≤ 1 / mu + M' + F')
+  linarith
+
+/-- As a utilisation: `rho* = mu (M+F) / (1 + mu (M+F))`. -/
+theorem inversionLoad_utilization {mu M F : ℝ} (hmu : 0 < mu) (hM : 0 ≤ M) (hF : 0 ≤ F) :
+    utilization mu (inversionLoad mu M F) = mu * (M + F) / (1 + mu * (M + F)) := by
+  unfold utilization inversionLoad
+  have hmu' : mu ≠ 0 := ne_of_gt hmu
+  have hB : 1 / mu + M + F ≠ 0 := by positivity
+  have hC : 1 + mu * (M + F) ≠ 0 := by positivity
+  field_simp
+  ring
+
+/-- A move costing four service times loses to affinity below 80 % load;
+one costing a quarter of a service time already wins above 20 %. -/
+theorem inversionLoad_examples :
+    utilization 10 (inversionLoad 10 0.4 0) = 0.8 ∧
+    utilization 10 (inversionLoad 10 0.025 0) = 0.2 := by
+  unfold utilization inversionLoad
+  constructor <;> norm_num
+
 /-! ### Append-prefill (PPD-style) routing for turn `t ≥ 2`. -/
 
 /-- Cost of routing the new tokens to the prefill pool: prefill-pool wait,

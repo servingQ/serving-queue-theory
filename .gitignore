@@ -7,3 +7,6 @@ paper/*.aux paper/*.log paper/*.out paper/*.bbl paper/*.blg paper/*.fls paper/*.
 paper/main.pdf
 paper/_build/
 .claude/settings.local.json
+
+# trace_html example output
+libqueuingsim/*.html

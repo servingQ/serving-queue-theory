@@ -22,6 +22,12 @@ sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests, report,
 figs:             ## redraw paper/sim/fig-*.pdf from paper/sim/data/*.csv (written by paper_tables)
 	uv run --quiet --with matplotlib python scripts/plot_sim.py
 
+WEKA ?= data/cc-traces-weka/traces.jsonl
+HARBOR ?= /mnt/shared_data/groups/fsw_serv/harbor-trajectory/swebenchpro__claude-code
+traces:           ## regenerate paper/traces/ from the trace corpora (WEKA=..., HARBOR=...)
+	python3 scripts/trace_stats_weka.py $(WEKA) --tex paper/traces --label weka
+	python3 scripts/trace_stats_harbor.py $(HARBOR) --tex paper/traces --label harbor
+
 report:           ## print the simulator validation report
 	cd libqueuingsim && cargo run --release --quiet --example validate
 

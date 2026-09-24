@@ -94,7 +94,9 @@ use crate::dist::Dist;
 use crate::engine::{Model, Scheduler, run};
 use crate::stats::{Estimate, TimeAverage, Welford, batch_means, quantile};
 
-pub use super::agentic::{CostModel, EvictionPolicy, Population, PriceEstimator, ProgramClass};
+pub use super::agentic::{
+    CostModel, EvictionPolicy, Population, PriceEstimator, ProgramClass, TurnKind, TurnSpan,
+};
 
 /// Service capacity `φ(n)` of a batch of `n` turns, in work-seconds per
 /// second.
@@ -359,6 +361,11 @@ struct Session {
     /// Decode work after the prefill: seconds under blocking prefill,
     /// tokens under `TwoStage`.
     decode_work: f64,
+    /// Arrival serial number and turn index, for [`simulate_traced`].
+    serial: u64,
+    turn_no: u32,
+    /// The current turn's trace record, while it is at the replica.
+    span: Option<TurnSpan>,
 }
 
 /// A job in the PS pool, keyed by its virtual finish time.
@@ -425,6 +432,8 @@ struct Batch {
     p_start: f64,
     avail_all: TimeAverage,
     next_seq: u64,
+    next_serial: u64,
+    trace: Option<Vec<TurnSpan>>,
     price: PriceEstimator,
     warm: bool,
     // statistics
@@ -490,6 +499,8 @@ impl Batch {
             p_start: 0.0,
             avail_all: TimeAverage::new(0.0, 1.0),
             next_seq: 0,
+            next_serial: 0,
+            trace: None,
             price: PriceEstimator::default(),
             warm: false,
             turns: 0,
@@ -644,7 +655,11 @@ impl Batch {
             sampled: (0.0, 0.0),
             prefill_work: 0.0,
             decode_work: 0.0,
+            serial: self.next_serial,
+            turn_no: 0,
+            span: None,
         };
+        self.next_serial += 1;
         let id = match self.free_slots.pop() {
             Some(id) => {
                 self.sessions[id] = sess;
@@ -684,6 +699,7 @@ impl Batch {
         p.out = out;
         p.sampled = sampled;
         p.phase = Phase::Queued;
+        p.turn_no += 1;
         self.waiting.push_back(id);
     }
 
@@ -943,8 +959,29 @@ impl Batch {
                 }
             }
         }
+        let span = self.trace.as_ref().map(|_| TurnSpan {
+            session: p.serial,
+            turn: p.turn_no,
+            kind: if p.cold {
+                TurnKind::Cold
+            } else if hit {
+                TurnKind::Hit
+            } else {
+                TurnKind::Miss
+            },
+            enqueued: p.ready_at,
+            admitted: now,
+            start: f64::NAN,
+            prefill_end: f64::NAN,
+            end: f64::NAN,
+            context: target,
+            prefill_tokens: missing + p.new,
+            cached_tokens: p.kv,
+            decode_tokens: p.out,
+        });
         self.used_kv += target - p.kv;
         let p = &mut self.sessions[id];
+        p.span = span;
         p.kv = target;
         p.context = target;
         p.cold = false;
@@ -955,6 +992,7 @@ impl Batch {
             self.price.observe(now, wait, prefill / r);
             self.sessions[id].phase = Phase::Prefill;
             self.prefilling = Some(id);
+            self.prefill_started(id, now);
             s.after(prefill / r, Ev::PrefillDone(id));
         } else if self.two_stage() {
             self.sessions[id].phase = Phase::Prefill;
@@ -962,6 +1000,7 @@ impl Batch {
             if self.pq.len() == 1 {
                 self.p_left = prefill;
                 self.p_start = now;
+                self.prefill_started(id, now);
             }
         } else {
             let c = self.phi.limit();
@@ -983,9 +1022,18 @@ impl Batch {
         self.dirty = true;
     }
 
+    fn prefill_started(&mut self, id: usize, now: f64) {
+        if let Some(span) = &mut self.sessions[id].span {
+            span.start = now;
+        }
+    }
+
     /// Prefill of `id` finished: record TTFT and hand the turn to decode.
     fn first_token(&mut self, id: usize, s: &mut Scheduler<Ev>) {
         let now = s.now();
+        if let Some(span) = &mut self.sessions[id].span {
+            span.prefill_end = now;
+        }
         let p = &self.sessions[id];
         if self.warm && p.ready_at >= self.cfg.warmup {
             self.ttfts.push((p.seq, now - p.ready_at));
@@ -1004,6 +1052,10 @@ impl Batch {
         let p = &mut self.sessions[id];
         p.last_used = now;
         let (seq, ready) = (p.seq, p.ready_at);
+        if let (Some(trace), Some(mut span)) = (&mut self.trace, p.span.take()) {
+            span.end = now;
+            trace.push(span);
+        }
         if self.warm {
             self.turns += 1;
             if ready >= self.cfg.warmup {
@@ -1099,6 +1151,7 @@ impl Model for Batch {
                 if let Some(&next) = self.pq.front() {
                     self.p_left = self.sessions[next].prefill_work;
                     self.p_start = now;
+                    self.prefill_started(next, now);
                 } else {
                     self.p_left = 0.0;
                 }
@@ -1141,7 +1194,30 @@ fn ci_and_p99(xs: &[f64]) -> (Estimate, f64) {
 
 /// Run the configured system and report measurement-window statistics.
 pub fn simulate(cfg: &BatchConfig) -> BatchReport {
+    simulate_inner(cfg, false).0
+}
+
+/// As [`simulate`], also returning every turn completed before the horizon
+/// (warm-up included), in completion order. Only for the servers with a
+/// separate prefill phase, [`Server::TwoStage`] and
+/// [`Server::BlockingPrefill`]; under `TwoStage` a turn's `start` is when it
+/// reaches the head of the prefill FIFO.
+pub fn simulate_traced(cfg: &BatchConfig) -> (BatchReport, Vec<TurnSpan>) {
+    assert!(
+        matches!(
+            cfg.server,
+            Server::TwoStage | Server::BlockingPrefill { .. }
+        ),
+        "tracing needs a server with a separate prefill phase"
+    );
+    simulate_inner(cfg, true)
+}
+
+fn simulate_inner(cfg: &BatchConfig, traced: bool) -> (BatchReport, Vec<TurnSpan>) {
     let mut m = Batch::new(cfg.clone());
+    if traced {
+        m.trace = Some(Vec::new());
+    }
     let mut s = Scheduler::new();
     s.at(cfg.warmup, Ev::EndWarmup);
     match cfg.population {
@@ -1168,7 +1244,8 @@ pub fn simulate(cfg: &BatchConfig) -> BatchReport {
     ttfts.iter().for_each(|r| ttft.push(r.1));
     let ys: Vec<f64> = ttfts.iter().map(|r| r.1).collect();
     let (ttft_ci, ttft_p99) = ci_and_p99(&ys);
-    BatchReport {
+    let trace = m.trace.take().unwrap_or_default();
+    let report = BatchReport {
         turns: m.turns,
         throughput: m.turns as f64 / span,
         sessions_done: m.sessions_done,
@@ -1201,7 +1278,8 @@ pub fn simulate(cfg: &BatchConfig) -> BatchReport {
         recomputes: m.recomputes,
         recomputed_tokens: m.recomputed_tokens,
         truncated: m.truncated,
-    }
+    };
+    (report, trace)
 }
 
 /// Per-turn differences `b - a` of two per-turn series (e.g.
@@ -1481,6 +1559,50 @@ mod tests {
         let slow = simulate(&c);
         assert!(slow.response.mean() > fast.response.mean());
         assert!(slow.mean_availability > fast.mean_availability);
+    }
+
+    #[test]
+    fn trace_is_consistent_and_does_not_perturb() {
+        let mut cfg =
+            crate::validation::open_session_cfg(0.28, 24, EvictionPolicy::ShortestFirst, 3);
+        cfg.warmup = 0.0;
+        cfg.horizon = 2_000.0;
+        let (report, trace) = simulate_traced(&cfg);
+        let plain = simulate(&cfg);
+        assert_eq!(report.turns, plain.turns);
+        assert_eq!(report.responses, plain.responses);
+        assert_eq!(trace.len() as u64, report.turns);
+        assert!(trace.iter().any(|t| t.kind == TurnKind::Miss));
+        let mut last = std::collections::HashMap::new();
+        for t in &trace {
+            assert!(
+                t.enqueued <= t.admitted
+                    && t.admitted <= t.start
+                    && t.start < t.prefill_end
+                    && t.prefill_end <= t.end,
+                "{t:?}"
+            );
+            assert_eq!(t.turn == 1, t.kind == TurnKind::Cold);
+            let tokens = t.prefill_tokens + t.cached_tokens + t.decode_tokens;
+            assert!((tokens - t.context).abs() < 1e-6 * t.context);
+            let prev = last.insert(t.session, (t.turn, t.end));
+            if let Some((turn, end)) = prev {
+                assert_eq!(t.turn, turn + 1);
+                assert!(end <= t.enqueued);
+            } else {
+                assert_eq!(t.turn, 1);
+            }
+        }
+        // Prefills are served one at a time, in order; decodes overlap.
+        let mut by_start: Vec<&TurnSpan> = trace.iter().collect();
+        by_start.sort_by(|a, b| a.start.total_cmp(&b.start));
+        for w in by_start.windows(2) {
+            assert!(w[0].prefill_end <= w[1].start + 1e-9);
+        }
+        assert!(
+            by_start.windows(2).any(|w| w[1].prefill_end < w[0].end),
+            "some decode should overlap the next turn's prefill"
+        );
     }
 
     #[test]

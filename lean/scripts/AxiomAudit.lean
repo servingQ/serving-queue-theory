@@ -52,6 +52,11 @@ open ServingQueueTheory
 #print axioms lookahead_prefers_iff
 #print axioms affinity_example
 #print axioms affinity_not_always_optimal
+#print axioms affinity_loses_iff
+#print axioms inversionLoad_stable
+#print axioms inversionLoad_mono
+#print axioms inversionLoad_utilization
+#print axioms inversionLoad_examples
 #print axioms append_prefill_rule
 #print axioms append_prefill_example
 -- prop:price (§2.5): the price of a miss at the prefill queue

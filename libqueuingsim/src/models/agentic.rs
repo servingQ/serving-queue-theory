@@ -367,6 +367,52 @@ impl AgenticReport {
     }
 }
 
+/// How a traced turn's prefix was obtained.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TurnKind {
+    /// First turn of a session: the whole initial context is prefilled.
+    Cold,
+    /// Follow-up whose prefix was resident (or fetched from the tier).
+    Hit,
+    /// Follow-up whose prefix was evicted, wholly or (block eviction in
+    /// [`super::batch`]) in part: the missing context is re-prefilled.
+    Miss,
+}
+
+/// One served turn, for visualisation ([`simulate_traced`],
+/// [`super::batch::simulate_traced`]). Times are simulation seconds from 0,
+/// warm-up included.
+/// `enqueued ≤ admitted ≤ start ≤ prefill_end ≤ end`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TurnSpan {
+    /// Session serial number, in order of arrival (slots are reused, serials
+    /// are not).
+    pub session: u64,
+    /// Turn index within the session, from 1.
+    pub turn: u32,
+    pub kind: TurnKind,
+    /// Joined the replica queue.
+    pub enqueued: f64,
+    /// Admitted to the batch (KV reserved). Equal to `start` here; in
+    /// [`super::batch`] a turn may then wait in the prefill FIFO.
+    pub admitted: f64,
+    /// Prefill start. The prefill phase `[start, prefill_end)` includes the
+    /// per-turn overhead and any blocking fetch stall.
+    pub start: f64,
+    pub prefill_end: f64,
+    /// Decode phase `[prefill_end, end)`.
+    pub end: f64,
+    /// Context tokens after the turn.
+    pub context: f64,
+    /// Tokens prefilled: the new tokens on a hit or a cold turn, the
+    /// missing context plus the new tokens on a miss.
+    pub prefill_tokens: f64,
+    /// Resident prefix reused (0 on a cold turn or a whole miss).
+    pub cached_tokens: f64,
+    /// Tokens decoded.
+    pub decode_tokens: f64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Residency {
     /// First turn, never prefilled.
@@ -398,6 +444,7 @@ struct Program {
     ready_at: f64,
     enqueued_at: f64,
     last_used: f64,
+    serial: u64,
 }
 
 enum Ev {
@@ -419,6 +466,8 @@ struct Agentic {
     tier_free_at: f64,
     warm: bool,
     price: PriceEstimator,
+    next_serial: u64,
+    trace: Option<Vec<TurnSpan>>,
     // statistics
     turns: u64,
     follow_ups: u64,
@@ -457,6 +506,8 @@ impl Agentic {
             tier_free_at: 0.0,
             warm: false,
             price: PriceEstimator::default(),
+            next_serial: 0,
+            trace: None,
             turns: 0,
             follow_ups: 0,
             hits: 0,
@@ -503,7 +554,9 @@ impl Agentic {
             ready_at: now,
             enqueued_at: now,
             last_used: now,
+            serial: self.next_serial,
         };
+        self.next_serial += 1;
         let id = match self.free_slots.pop() {
             Some(id) => {
                 self.programs[id] = p;
@@ -759,6 +812,29 @@ impl Agentic {
                     }
                 }
             }
+            if let Some(trace) = &mut self.trace {
+                let decode = self.cfg.cost.decode(out, context + new);
+                trace.push(TurnSpan {
+                    session: p.serial,
+                    turn: p.turns + 1,
+                    kind: if first {
+                        TurnKind::Cold
+                    } else if hit {
+                        TurnKind::Hit
+                    } else {
+                        TurnKind::Miss
+                    },
+                    enqueued: p.enqueued_at,
+                    admitted: now,
+                    start: now,
+                    prefill_end: now + service - decode,
+                    end: now + service,
+                    context: target,
+                    prefill_tokens: if hit { new } else { context + new },
+                    cached_tokens: if hit { context } else { 0.0 },
+                    decode_tokens: out,
+                });
+            }
             p.context = target;
             p.residency = Residency::Resident;
             self.in_service = Some((id, first, service));
@@ -876,7 +952,20 @@ impl Model for Agentic {
 
 /// Run the configured system and report measurement-window statistics.
 pub fn simulate(cfg: &AgenticConfig) -> AgenticReport {
+    simulate_inner(cfg, false).0
+}
+
+/// As [`simulate`], also returning every turn served before the horizon
+/// (warm-up included), in service-start order.
+pub fn simulate_traced(cfg: &AgenticConfig) -> (AgenticReport, Vec<TurnSpan>) {
+    simulate_inner(cfg, true)
+}
+
+fn simulate_inner(cfg: &AgenticConfig, traced: bool) -> (AgenticReport, Vec<TurnSpan>) {
     let mut m = Agentic::new(cfg.clone());
+    if traced {
+        m.trace = Some(Vec::new());
+    }
     let mut s = Scheduler::new();
     s.at(cfg.warmup, Ev::EndWarmup);
     match cfg.population {
@@ -898,7 +987,8 @@ pub fn simulate(cfg: &AgenticConfig) -> AgenticReport {
             half_width: f64::INFINITY,
         }
     };
-    AgenticReport {
+    let trace = m.trace.take().unwrap_or_default();
+    let report = AgenticReport {
         turns: m.turns,
         throughput: m.turns as f64 / span,
         hit_rate: if m.follow_ups > 0 {
@@ -922,7 +1012,8 @@ pub fn simulate(cfg: &AgenticConfig) -> AgenticReport {
         tier_utilization: m.tier_busy / span,
         recompute_load: m.recompute_time / span,
         stall_load: m.stall_time / span,
-    }
+    };
+    (report, trace)
 }
 
 #[cfg(test)]
@@ -991,6 +1082,32 @@ mod tests {
         cfg.tier_bandwidth = 2.0e4;
         let r = simulate(&cfg);
         assert!(r.evictions > 0 && r.offload_writes > 0 && r.turns > 100);
+    }
+
+    #[test]
+    fn trace_is_consistent_and_does_not_perturb() {
+        let cfg = AgenticConfig {
+            horizon: 600.0,
+            ..AgenticConfig::example(16, 150_000.0)
+        };
+        let (report, trace) = simulate_traced(&cfg);
+        assert_eq!(report.turns, simulate(&cfg).turns);
+        assert!(trace.iter().any(|t| t.kind == TurnKind::Miss));
+        for t in &trace {
+            assert!(t.enqueued <= t.start && t.start < t.prefill_end && t.prefill_end <= t.end);
+            assert_eq!(t.turn == 1, t.kind == TurnKind::Cold);
+            let tokens = t.prefill_tokens + t.cached_tokens + t.decode_tokens;
+            assert!((tokens - t.context).abs() < 1e-6 * t.context.max(1.0));
+        }
+        // One turn at a time, and turns of a session are numbered 1, 2, ….
+        for w in trace.windows(2) {
+            assert!(w[0].end <= w[1].start + 1e-9);
+        }
+        let mut last = std::collections::HashMap::new();
+        for t in &trace {
+            let prev = last.insert(t.session, t.turn).unwrap_or(0);
+            assert_eq!(t.turn, prev + 1);
+        }
     }
 
     #[test]

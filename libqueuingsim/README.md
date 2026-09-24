@@ -35,6 +35,20 @@ cargo run --release --example paper_tables      # regenerate ../paper/sim/*.tex 
 make figs                                       # from the repo root: redraw ../paper/sim/fig-*.pdf
 ```
 
+`examples/trace_html.rs` draws one run as an interactive HTML timeline: x is
+the session, y is time, a rectangle is a prefill (cold / hit / miss), a
+capsule is a decode, and the number inside is the turn within the session;
+token counts (prefilled, reused, decoded) are in the tooltip and the header.
+The default model is the two-resource replica of `models::batch` on the
+open-session scenario of §4.1 (`validation::open_session_cfg`), shown after
+its warm-up; `--model agentic` draws the single-turn replica instead. For
+looking at runs, not for the paper.
+
+```bash
+cargo run --release --example trace_html -- --rate 0.28 --cap 24 \
+    --eviction shortest --from 1000 --window 300 --out trace.html   # --help for all flags
+```
+
 `paper/simulation.tex` (the paper's simulation section) takes every number
 from `paper/sim/*.tex`, which `examples/paper_tables.rs` generates. The
 same run writes `paper/sim/data/*.csv` (one file per figure: the

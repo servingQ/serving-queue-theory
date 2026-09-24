@@ -42,7 +42,7 @@ of s (TP1); decode of 444 tokens ≈ several s (KV reads ≈ 14 ms/step at
   stages.
 - `prop:memory`: θ-threshold rule is optimal for the relaxed problem;
   block-level density order is optimal up to one block.
-- `prop:footprint`: KV footprint variance can shrink or grow the batch
+- footprint examples (prose in §2.2, was `prop:footprint` until v0.7): KV footprint variance can shrink or grow the batch
   that fits in memory (no fixed sign), so φ's saturation must be
   measured.
 - Withdrawn v0.5 claim: "chunked prefill makes the eviction key
@@ -72,14 +72,14 @@ KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L �
 |---|---------|-------------|----------------|
 | 1 | Intro: thesis, three contributions | 10× example (inline) | none |
 | 2.1 | Sessions, turns and tools (`sec:sessions` = `sec:closed`): Poisson sessions, closed loop inside, memory pressure | none | BCMP, closed-network monotonicity, Campbell (M/G/∞) |
-| 2.2 | A replica: two resources and a memory pool (`sec:batch` = `sec:queue`): `eq:prefill`, `eq:decode`; prefill FIFO, decode PS | `prop:footprint` | Sarathi-Serve (chunked prefill), BCMP/Kelly insensitivity, PK (`eq:pk`), Kingman |
+| 2.2 | A replica: two resources and a memory pool (`sec:batch` = `sec:queue`): `eq:prefill`, `eq:decode`; prefill FIFO, decode PS; Table 1 (the model at a glance) | footprint examples (prose, `footprint_variance_*`) | Sarathi-Serve (chunked prefill), BCMP/Kelly insensitivity, PK (`eq:pk`), Kingman |
 | 2.3 | Prefill work under KV reuse (`sec:congestion`) | `prop:pk`, `prop:cache`, `eq:cv2` (prefill times) | SRPT |
 | 2.4 | The KV-state problem (`eq:mdp`, `eq:numsys` = L_P + L_D, shadow price θ) | none | Little |
 | 2.5 | **The price of a miss** (`eq:price`, `eq:utility` = `w_i, v_i, u_i`) | `prop:price` (prefill queue: bracket; term ratios; unbounded), `prop:decode` (PS: monotone ⇒ ranking by work; closed form; unbounded) | none |
 | 3 | Congestion-priced scheduling (`sec:sched`) | | |
 | 3 (intro) | Algorithm 1: observe, price, set θ, evict, keep/offload/drop, place, admit; inputs and how θ is set | none (design) | none |
 | 3.1 | Eviction; "Fixed keys" paragraph (SF, LRU, idle, TTL as price-blind keys; ThunderAgent Def. 4.1 / App. F.3 contradicted in one sentence) | `prop:memory` (θ threshold; blocks: optimal up to one block), `prop:guarded` (program-level 2-approx), `prop:blind` ((i) price-blind keys unbounded, (ii) SF as the `w=c²` price-per-byte order, tight 2-approx) | covering knapsack, Dantzig greedy |
-| 3.2 | Placement | `prop:routing`, `eq:lookahead` | none |
+| 3.2 | Placement (with or without a shared KV store: `M_j` = `Φ_i` or the priced fetch) | `prop:routing` (i) inversion load `λ* = μ − 1/(1/μ+M+F)`, `ρ* = μ(M+F)/(1+μ(M+F))`, (ii) monotone in `M`, `F`; `eq:lookahead` | none |
 | 3.3 | Admission and offloading (thrashing; θ as the admission unit; keep/offload/drop; option-value sentence with ThunderAgent A.2 as a clause); closing paragraph "Fixed rules as special cases" | none (design) | none |
 | 4.1 | Uncalibrated simulation (`paper/simulation.tex`, tables generated into `paper/sim/`) | none (checks of the props above) | none |
 | 4.2 | Evaluation on a real system: overview table + hypotheses E1–E6; table layouts in §4.2a below | none | none |
@@ -115,7 +115,7 @@ only standard axioms (`make lean` reports `OK: 57 theorems audited`).
 | `prop:price` (prefill queue, FIFO) (i) bracket, (ii) term ratios, (iii) unbounded | proved | central result. M/G/1 with PK used as an approximation (session feedback, fluctuating budget) |
 | `prop:decode` (PS) (i) monotone ⇒ ranking by work, (ii) closed-form exact change for constant capacity, (iii) unbounded | proved | (i) is proved in Lean for finite truncations; the untruncated case is the limit (App. A proof). Insensitivity itself is cited (BCMP/Kelly) |
 | `prop:memory` (i) θ-threshold optimal, (ii) blocks: density optimal up to one block | proved | both are the exchange lemma `threshold_prefix_le` read two ways |
-| `prop:footprint` (i) variance hurts, (ii) variance helps | proved | the review's two examples; `decide +kernel` on ℚ |
+| footprint examples (§2.2 prose; was `prop:footprint`) | proved | the review's two examples; `decide +kernel` on ℚ; demoted to one sentence in v0.7 |
 | `prop:guarded` (i) plain density unbounded, (ii) guarded 2-approx | proved | (ii) is proved as a certificate lemma (`guardedGreedy_two_approx`): hypotheses encode the greedy's sorted-prefix property; the algorithm itself is not formalised |
 | `prop:pk`, `prop:cache` | proved | trivial parts dropped from the statements; M/M/1 unboundedness now lives in the `prop:routing` proof |
 | `eq:cv2` numbers | proved | the core argument that variance comes from the miss penalty |
@@ -124,7 +124,7 @@ only standard axioms (`make lean` reports `OK: 57 theorems audited`).
 | `prop:blind` (ii) SF = `w=c²` price-per-byte order, feasible, 2-approx + tightness | proved | formerly `prop:evict` (ii); v0.1 wrongly said the ratio is unbounded |
 | SF not optimal on `{4,5,6}`, ΔC=6 | proved | prose sentence after `prop:blind` with inline `\provedby`; contradicts ThunderAgent App. F.3 |
 | `prop:pd` | proved | capacity model only, no batching |
-| `prop:routing`, `eq:lookahead`, `eq:append` | proved | the two rules are prose with inline proofs (trivial rearrangements) |
+| `prop:routing` (i) inversion load closed form, (ii) monotone in move cost; `eq:lookahead`, `eq:append` | proved | v0.7: the existence statement became the closed form `λ*`; a shared KV store (Mooncake, LMCache) enters as a smaller `M_j` (priced fetch instead of `Φ_i`) |
 
 Candidate results, not yet in the paper. Each needs a Lean proof, or a
 citation to an established theorem, before it becomes a proposition:
@@ -141,9 +141,6 @@ citation to an established theorem, before it becomes a proposition:
   sweep. Cite Lazowska et al.; the bound itself is standard. The simulator
   already checks it with ample KV
   (`closed_throughput_nondecreasing_fixed_demand`).
-- **Heavy-traffic routing.** Load threshold at which affinity loses, as a
-  function of `M`, `F`, `μ`. It currently exists only as an existence
-  statement in `prop:routing`.
 
 ## 4. Validation plan: simulation first, then empirical
 
@@ -180,7 +177,7 @@ each part established, and what it changes for phase 2:
 | Does PS insensitivity hold, and does the product form survive session feedback? | yes: deterministic vs hit/miss work give the same L under PS (FIFO separates them as PK says); Poisson sessions + closed loop + H2 tools match the isolated PS formula at λ=Λ/(1−p) for constant and saturating φ | E2 tests insensitivity by comparing chunked vs blocking prefill at equal load |
 | Does the PS price bracket (`prop:price`(ii)) hold? | yes; the simulated ΔL sits at the upper end, which the proposition says is exact | E2 forced-miss test uses both brackets |
 | Is "φ flattened at B" a good model of a real batch cap (LPS)? | at half load yes (≤1 %); at u=0.8–0.9 the error follows the service CV²: −10/−22 % for deterministic work, +29/+51 % for CV²=4. A capped batch is not insensitive, and hit/miss work (CV²>1) makes the model underestimate congestion near saturation | E1/E2 must report the batch-cap regime; theory needs an LPS correction or an explicit statement of this error |
-| Do the footprint examples (`prop:footprint`) hold in Monte Carlo? | yes (2 / 1.75 / 1 / 1.4844) | E1 measures batch size under the measured footprint law |
+| Do the footprint examples (§2.2) hold in Monte Carlo? | yes (2 / 1.75 / 1 / 1.4844) | E1 measures batch size under the measured footprint law |
 | Two-resource replica (v0.6): is the price paid in the prefill queue and is decode insensitive? | yes: forced misses raise L_P inside the `prop:price` bracket (availability 0.96) and leave L_D unchanged to 4 decimals; in the open scenario p99 TTFT is 10–17× its mean (HoL behind document misses) while R − TTFT is a constant decode time | E2 measures TTFT and decode occupancy separately |
 | Does the byte-second key (`prop:memory`, τ-aware) beat density/SF end-to-end? | best or tied in most cells (cap 24, Λ=0.28: TTFT 2.64±0.41 vs Density 3.58±0.65; X 2.67 vs 2.48) but never separated beyond seed noise; block-level ≈ τ-key; LRU worst by ≥2× throughput | E4 needs many seeds or a paired design; the effect is second-order next to admission |
 | Does the admission cap move the thrash window? | strongly: cap 16 → hit 0.99, TTFT < 0.4 s at both loads, no thrash; cap 24 → hit degrades to 0.77 at Λ=0.28; cap 32 → 15–20/20 seeds thrash, X −40 %, TTFT 15 s. Cost of a tight cap = entry-queue wait. At Λ=0.28 offered load exceeds capacity (~2.6 turns/s) under any cap | E4 sweeps the cap; admission is a first-class policy dimension |
@@ -204,11 +201,11 @@ rule 5).
 | ID | Question | Tests | Where | Needs (incl. from phase 1) | Status |
 |----|----------|-------|-------|----------------------------|--------|
 | E1 | Fit `S_prefill(L,K,B)`, `S_decode(B,KV)`, `T_transfer(bytes)` | calibration | T | profiling harness | not started |
-| E2 | Is per-turn CV² dominated by the hit/miss mixture? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces, interarrival CV², miss injection | not started |
+| E2 | How does per-turn Var[S] split between the append and the hit/miss mixture, and does the mixture's share grow under eviction from the trace baseline (Weka: 57 % at p = 0.96, linear cost; `docs/trace-analysis.md`)? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces (Weka sequences), interarrival CV², miss injection | trace baseline done (2026-09-23); testbed not started |
 | E3 | Is priced offloading never below never-offload? When is always-offload below it? | option value (§3.3) | T, S | E1, tier bandwidth, fetch mode (sync/async) | not started |
 | E4 | SF vs price per byte vs guarded vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs price | `prop:guarded`, `prop:blind` | O, S | traces with resume events, spread of `p_i`, a regime with mean wait comparable to a miss | not started |
 | (PD) | Does the PD inequality predict the winner? What is the latency cost at equal capacity? (follow-up paper, see §4.2b) | `prop:pd` | T | E1, measured `I, g_P, g_D` | not started |
-| E5 | At what load does affinity lose? Does lookahead predict it? | `prop:routing`, `eq:lookahead`, `eq:append` | T, S | E1, migration cost | not started |
+| E5 | At what load does affinity lose? Is it `ρ*` of `prop:routing`(i)? Does a shared KV store (fetch instead of recompute) move it as (ii) says? | `prop:routing`, `eq:lookahead`, `eq:append` | T, S | E1, migration/fetch cost | not started |
 | E6 | Decision-faithfulness scorecard (Kendall τ, argmin agreement, MAPE) | whole model | T, S | E1 to E5, phase 3 | not started |
 
 Details per experiment are in paper §4.2. The table layouts there are the
@@ -252,7 +249,7 @@ is now E1–E6 (PD experiment removed with App. B; see §4.2b).
 | Quantity | Value |
 |---|---|
 | Per-turn prefill CV² | TBD |
-| Share of Var[S]: hit/miss mixture | TBD |
+| Share of Var[S]: hit/miss mixture (trace baseline, no eviction: 57 % at p = 0.96 linear, 35 % at K_c = 100K; `docs/trace-analysis.md`) | TBD |
 | Share: output-length spread | TBD |
 | Share: context-length spread | TBD |
 | Prefill wait measured / PK, ρ_P = 0.5 / 0.7 / 0.9 (blocking) | TBD |
@@ -360,7 +357,7 @@ simulation of the model. Any simulator number in §4.2 or in
 - That PD does or does not help agentic serving in general. Say which
   regime of `prop:pd`(iii) applies.
 - That footprint variance helps or hurts batch size in general
-  (`prop:footprint` shows both signs).
+  (the §2.2 footprint examples show both signs).
 - That hit/miss variance raises mean delay regardless of the prefill
   scheduler; under chunked prefill (PS) it does not.
 - That shortest-first is a bad heuristic in practice. It is within 2× of
