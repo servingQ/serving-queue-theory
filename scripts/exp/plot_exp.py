@@ -136,7 +136,7 @@ def fig_e2(summary: Path, out: Path) -> None:
     lo = min(min(r["pk"] for r in runs), min(r["w_fin"] for r in runs)) / 8
     ax.set_ylim(bottom=lo)
     ax.set_title("(c) the wait and two predictions", loc="left", color=INK2)
-    ax.legend(loc="lower left", fontsize=6)
+    ax.legend(loc="upper right", fontsize=6)
     for ax in axes:
         ax.set_xticks(x)
         ax.set_xticklabels(labels)

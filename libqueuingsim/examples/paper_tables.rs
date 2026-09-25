@@ -1026,7 +1026,7 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
              sessions ({} turns, mean final context {:.0}k tokens, mean think time \
              {:.0}\\,s; a gap above 10\\,min starts a new session) from the corpus of \
              \\S\\ref{{sec:exp-traces}}, each played turn by turn; cost model with \
-             $K_c=a/b=50$k tokens, batch cap 8, eviction by price per byte-second \
+             $K_c=a/b\\approx{:.0}$k tokens (calibrated on the testbed), batch cap 8, eviction by price per byte-second \
              where the pool is finite. \
              With no pool limit the replica is open (Poisson sessions at rate \
              $\\Lambda$ per s, at most 24 live). With a finite pool the cap on live \
@@ -1044,6 +1044,7 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             corpus.turns(),
             corpus.mean_final_context() / 1e3,
             corpus.mean_think(),
+            validation::CAL_PREFILL_LINEAR / validation::CAL_PREFILL_QUADRATIC / 1e3,
             validation::TRACE_SEEDS
         ),
         "tab:sim-trace",

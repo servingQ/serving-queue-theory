@@ -171,10 +171,11 @@ Follow `docs/add-proposition.md`. Short version:
   model is the one uncalibrated element; synthetic in-model/beyond-model
   checks are one summary paragraph, their tables and Figure 1 in App. B
   `simulation-appendix.tex`); the real-system experimental design (E1–E6,
-  one overview table, no `\tbd` cells) is App. D `app:design` since
+  one overview table, no `\tbd` cells) is App. E `app:design` since
   round 2 (page budget); §5 related work (one page, with the novelty sentence); §6
   limitations incl. "what would falsify"; App. A proofs (price, decode,
   blind, finite), App. B simulation tables, App. C trace tables, App. D
+  testbed tables (`app:exp`, E1/E2), App. E
   experimental design. Four propositions total; do not re-promote the demoted knapsack facts or the
   inversion load to propositions (review M3). Prefill/decode (PD)
   disaggregation is out of this paper (follow-up); its text is in

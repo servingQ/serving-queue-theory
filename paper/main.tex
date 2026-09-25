@@ -91,14 +91,13 @@ sessions looping through turns and tools on replicas with a prefill
 queue, a decode batch and one memory pool, and derive the \emph{price
 of a miss}: the TTFT one miss adds over all turns. Beyond its
 recompute, a miss holds up every prefill queued behind it, a quadratic
-term chunked prefill does not remove; the decode stage prices only
-work. One shadow price of memory then decides eviction, offloading,
+term chunked prefill does not remove; decode prices only work. One shadow price of memory then decides eviction, offloading,
 placement and admission; deployed keys are special cases. With few
 sessions live the queue is finite-source; the open wait bounds its
-Markovian form. On an NPU testbed replaying production
-coding-agent sessions a follow-up miss costs \eTwoMissOverHitLo{} to
-\eTwoMissOverHitHi{} times a hit; the wait is for memory, not compute,
-and the cap on live sessions decides it.
+Markovian form. On an NPU testbed replaying coding-agent sessions, a
+turn that misses its prefix waits \eTwoMissOverHitLo{} to
+\eTwoMissOverHitHi{} times longer for its first token than a hit,
+almost all for KV blocks; the live-session cap decides.
 \end{abstract}
 
 % ===========================================================================
@@ -176,16 +175,16 @@ workload side: the append alone has a prefill-work $\mathrm{CV}^2$ of
 \wkCvN, resume probabilities vary little and suspension times vary
 widely. In simulation the admission cap, not the eviction order,
 decides whether a replica thrashes (the priced order beats
-shortest-first only within seed noise), and on replayed production
-sessions the open price overstates the rise that forced misses cause
-by \simPriceOverMin{} to \simPriceOverMax{} times while the Markovian
-finite-source price understates it. On an NPU testbed
+shortest-first only within seed noise), and on replayed sessions the
+open price overstates the rise from forced misses by \simPriceOverMin{}
+to \simPriceOverMax{} times. On an NPU testbed
 (\S\ref{sec:exp-testbed}) the fitted prefill cost is quadratic past
-\eOneKc k tokens, and a replay of a coding-agent trace shows the
-follow-up miss costing \eTwoMissOverHitLo{} to \eTwoMissOverHitHi{}
-times the hit, with a wait for KV space rather than prefill compute
-that the cap on live sessions controls; the remaining experiments
-(Appendix~\ref{app:design}) are pending.
+\eOneKc k tokens, and a replay of a coding-agent trace shows a
+follow-up miss waiting \eTwoMissOverHitLo{} to \eTwoMissOverHitHi{}
+times longer than a hit for its first token, a wait for KV blocks
+rather than prefill compute that the cap on live sessions controls;
+the price $\Phi_i$ itself and the remaining experiments
+(Appendix~\ref{app:design}) are not yet measured.
 \end{enumerate}
 
 \paragraph{Conventions.} Propositions are our results; their proofs are
@@ -451,8 +450,9 @@ $\Delta S_i=aK_i+bK_i^2/2$ and every term of \eqref{eq:price} grows
 with it,\provedby{\leanref{prefillWork\_miss\_delta}, \leanref{missPrice\_mono\_context}}
 so the load alone never reorders programs by their price; it reorders
 them by their price per byte-second once resume probabilities or
-suspension times differ. Under the cost model of the replay in
-\S\ref{sec:sim}, a $200$k-token program resuming with probability
+suspension times differ. Under the cost model of the synthetic checks
+(Appendix~\ref{app:sim}, $K_c=50$k tokens), a $200$k-token program
+resuming with probability
 $0.3$ and a $20$k-token program resuming with probability $0.9$, both
 appending $1000$ tokens, have the opposite order at an idle queue and
 at $\rho=0.5$ with a two-second
@@ -747,11 +747,10 @@ $90\,\%$ of their prompt; the $\wkResetShare\,\%$ that reuse less than
 half are context compactions, the workload's own misses. The append is
 the variable part: its $\mathrm{CV}^2$ is \wkCvN{} here and $6.8$ in the
 SWE-bench Pro runs, before any eviction, and Table~\ref{tab:cv2} gives
-the split. The gap before a request, which is tool time plus the user's
-pauses in these interactive sessions, has a median of
-\wkThinkMedian\,s and a p90 of \wkThinkPninety\,s;
-$\wkThinkLong\,\%$ of gaps exceed a minute, which
-is the memory pressure of \S\ref{sec:admission}. The production cache
+the split. The gap before a request (tool time plus the user's pauses) has a
+median of \wkThinkMedian\,s and a p90 of \wkThinkPninety\,s;
+$\wkThinkLong\,\%$ of gaps exceed a minute, the memory pressure of
+\S\ref{sec:admission}. The production cache
 and load are unobserved; TTFT at the proxy is not explained by the
 append ($R^2=\wkRtwoN$ in log--log) or the context ($\wkRtwoK$) and has
 $\mathrm{CV}^2=\wkCvTtft$ (Table~\ref{tab:ttft}), which the model
@@ -780,8 +779,7 @@ RBLN-CR13 NPUs, data parallel with expert parallelism, one rank per
 NPU, served by vLLM with 4096-token KV blocks, the vendor's sub-block
 prefix cache, chunked prefill with a 512-token budget and at most eight
 sequences per rank; there is no offloading tier, so a miss is a
-recompute. Sessions are pinned to a rank, and the server's cached
-prefix length classifies each turn as a hit or a miss.
+recompute; sessions are pinned to a rank.
 
 \paragraph{E1: the cost model.} Single requests on the idle group give
 $P(n,K)$ of~\eqref{eq:prefill} directly: cold prompts of $n$ tokens and
@@ -793,42 +791,47 @@ mean absolute error of $\eOneMape\,\%$ ($\eOneMapeHeldout\,\%$ when
 the cold probes alone predict the appends). The crossover context is
 $K_c=a/b\approx\eOneKc$k tokens, below the traces' median context of
 \wkContextMedian k: a cold 64k prompt takes \eOneRatioSixtyFour{} times
-a cold 32k prompt, the dense term alone would put a \eOneColdMaxTokens k
-prompt at \eOneColdMaxLinear\,s where it takes \eOneColdMaxTtft\,s,
-and the linear column of Table~\ref{tab:cv2} is the wrong one for
-this hardware.
+a cold 32k prompt, and the dense term alone would put a
+\eOneColdMaxTokens k prompt at \eOneColdMaxLinear\,s where it takes
+\eOneColdMaxTtft\,s.
 
 \paragraph{E2: replaying sessions.} Figure~\ref{fig:e2} and
-Table~\ref{tab:e2} replay a
-coding-agent trace of $37$ sessions with ten turns each (median context
-$50$k tokens, output $350$ tokens, think time capped at $30$\,s),
-one session every $20$\,s, with the admission cap of
+Table~\ref{tab:e2} replay a coding-agent trace of $37$ sessions with
+ten turns each (median context $50$k tokens, mean output $1.1$k tokens,
+the gap before a turn capped at $30$\,s, mean \eTwoThink\,s), one
+session every $20$\,s, with the admission cap of
 Algorithm~\ref{alg:cps} at $\infty$, $16$ and $8$ live sessions over
-the four ranks, and once more at $8$ with a session every $10$\,s; a
-rank's KV pool holds two to four such contexts.
-First, the price of a miss: a follow-up turn that hits its prefix has
-a TTFT of
-\eTwoHitTtftLo--\eTwoHitTtftHi\,s, one that misses
-\eTwoMissTtftLo--\eTwoMissTtftHi\,s, and the hit rate falls from
+the four ranks, and once more at $8$ with a session every $10$\,s.
+A rank's pool holds $52$ blocks of $4096$ tokens, two to four such
+contexts, and the batch cap never binds. First, a follow-up turn whose prefix is resident does
+not queue: its TTFT is \eTwoHitTtftLo--\eTwoHitTtftHi\,s at every
+cap, while a turn that misses waits
+\eTwoMissTtftLo--\eTwoMissTtftHi\,s, \eTwoMissOverHitLo{} to
+\eTwoMissOverHitHi{} times longer; the hit rate falls from
 \eTwoHitHi\,\% under the tight cap to \eTwoHitLo\,\% with none,
 when the pool evicts suspended prefixes and every resume re-prefills
-its context. Second, the wait is not for prefill compute: the per-rank
-utilisation stays at \eTwoRhoRankLo--\eTwoRhoRankHi{} and the PK wait
-it implies is a few seconds, while the server's mean queueing time is
-\eTwoWqLo--\eTwoWqHi\,s, spent waiting for KV space, the memory pool
-of \S\ref{sec:admission}. The finite-source wait of
-Proposition~\ref{prop:finite} with the rank's live count is closer
-than the open formula but below the observation, as in
-\S\ref{sec:sim}, since it prices work and not memory. Third, the cap
-decides: at $8$ live sessions the pool holds almost every resident
-prefix and p99 TTFT falls from \eTwoTailHi\,s to \eTwoTailLo\,s
-(the admission sweep of Appendix~\ref{app:sim}, measured); doubling
-the arrival rate at that cap changes nothing (the capped replica is
-closed), so at these context lengths the pool binds before the prefill
-compute does and the open regime of~\eqref{eq:pk} is not reached. With
-the fitted cost model the hit/miss mixture supplies
-\eTwoShareLo--\eTwoShareHi\,\% of the variance of follow-up prefill
-work once eviction is active (Table~\ref{tab:cv2}: the baseline).
+its context. Second, the wait is for KV blocks, not prefill compute:
+the per-rank utilisation stays at
+\eTwoRhoRankLo--\eTwoRhoRankHi, the server's prefill time is
+\eTwoPfOverEsLo--\eTwoPfOverEsHi{} times the $\E[S]$ of the E1 cost
+model, and the PK wait it implies is \eTwoPkLo--\eTwoPkHi\,s, while
+the server's mean queueing time is
+\eTwoWqLo--\eTwoWqHi\,s, spent while the pool was
+\eTwoKvWaitLo--\eTwoKvWaitHi\,\% full, fewer than the $13$ blocks a
+$50$k miss needs. The finite-source wait of
+Proposition~\ref{prop:finite}, with the rank's live count and the
+measured decode plus think time as $Z$, is
+\eTwoFinLo--\eTwoFinHi\,s: both compute-only predictions sit one to
+two orders below the observation, because neither prices memory.
+Third, the cap decides, and it moves the wait rather than removing it:
+at $8$ live sessions p99 TTFT falls from \eTwoTailHi\,s to
+\eTwoTailLo\,s while sessions wait \eTwoDoorHi\,s at the door; even
+so, the sojourn including that wait falls from \eTwoSojournHi\,s to
+\eTwoSojournLo\,s and throughput rises from \eTwoLamLo{} to
+\eTwoLamHi{} turns per second.
+Doubling the arrival rate at that cap changes only the door wait, so
+at these context lengths the pool binds before the prefill compute
+does and the open regime of~\eqref{eq:pk} is not reached.
 
 % ===========================================================================
 \section{Related Work}\label{sec:related}
@@ -841,12 +844,10 @@ term of~\eqref{eq:price} is the PK second moment of that externality.
 We claim the application (a job whose size changes with a cache
 decision), the two-stage separation, the finite-population bound and
 the one price across four decisions, not the formula.
-Existing LLM queueing analyses \citep{mitzenmacher2025queueing} take
-the variability from output length: \citet{yang2024mg1} cap the output
-of a few requests, \citet{ozbas2026reasoning} let a class mixture of
-reasoning budgets set the second moment, and \citet{shahout2024trail}
-give a memory-aware SRPT variant; reordering prefills would change the
-head-of-line term, not remove the miss. Closest to our memory results,
+Existing LLM queueing analyses take the variability from output
+length \citep{mitzenmacher2025queueing,yang2024mg1,ozbas2026reasoning,shahout2024trail};
+reordering prefills would change the head-of-line term, not remove the
+miss. Closest to our memory results,
 \citet{ao2026congestion} show the eviction-free equilibrium of a
 memory-constrained replica unstable, converging to a limit cycle: the
 thrashing of \S\ref{sec:sim} without reuse. None of these models KV reuse across
@@ -858,8 +859,7 @@ and \citet{dexter2025prefix} prove scheduling with prefix reuse
 NP-hard.
 
 Among systems, ThunderAgent \citep{thunderagent} and InferCept
-\citep{infercept} manage the KV of programs paused on external calls
-(InferCept, to our understanding, by the memory each option wastes).
+\citep{infercept} manage the KV of programs paused on external calls.
 Continuum \citep{li2025continuum} keeps a program's KV for a
 time-to-live set from the reload cost and the queueing delay an
 eviction would induce, the price of a miss without its head-of-line
@@ -883,7 +883,9 @@ the term our price keeps.
 
 The propositions are about the model, not the world, and of the
 measurements of Appendix~\ref{app:design} only E1 and one E2 sweep
-have been run (one stack and workload, single seeds). The prefill
+have been run (one stack and workload, single seeds; the price
+$\Phi_i$ itself is not yet measured, only the wait a miss incurs). The
+prefill
 stage is a FIFO server with a fixed available fraction, although the
 budget the decode batch leaves fluctuates and session feedback makes
 arrivals non-Poisson; \eqref{eq:pk} is an approximation there, and
@@ -891,19 +893,17 @@ Proposition~\ref{prop:finite} and the replay of \S\ref{sec:sim} show
 the open queue overstating the wait when few sessions are live, a
 regime the memory model implies whenever contexts are long. The
 finite-source bound is proved for exponential work; for a real
-workload the open price and the Markovian finite-source price bracket
-the observed rise from above and below, so a policy change raises
-$L_P$ by at most $\min(\mathrm{hi},N-L_P)$; the price inside that
-range is open. The propositions concern means, not tails, and price an eviction as a
-stationary fraction of misses, not as the transient event it is. The trace statistics describe
-two Claude Code workloads (other harnesses append with
-$\mathrm{CV}^2$ of $2$ to $7$), and the simulator shares the model's
+workload the two prices bracket the observed rise, so a policy change
+raises $L_P$ by at most $\min(\mathrm{hi},N-L_P)$, and the price
+inside that range is open. The propositions concern means, not tails, and price an eviction as a
+stationary fraction of misses, not as the transient event it is. The traces are two Claude Code workloads, and the simulator shares
+the model's
 abstractions (no block-level allocation beyond tail blocks, no
 cross-session hits, one capacity function for prefill and decode).
 What would falsify the model: a prefill wait that does not follow
 $\lambda\E[S^2]/(2(1-\rho))$ once the pool is not binding (it bound
 in \S\ref{sec:exp-testbed}); an eviction order beating the
-price blind to $p_i$, $\tau_i$ (E4); an inversion load off $\rho^*$ (E5).
+price blind to $p_i$, $\tau_i$ (E4); $\rho^*$ missed (E5).
 
 \section*{Impact Statement}
 This work provides analytical tools for capacity planning and scheduling
@@ -1127,7 +1127,10 @@ Table~\ref{tab:e1} and Figure~\ref{fig:e1} give the E1 probes behind
 the cost-model fit of \S\ref{sec:exp-testbed}; every request was sent
 alone on an idle replica group, and append probes count only when the
 server's cached prefix length equals $K$. Table~\ref{tab:e2} holds the
-numbers behind Figure~\ref{fig:e2}.
+numbers behind Figure~\ref{fig:e2}; with the fitted cost model the
+hit/miss mixture supplies \eTwoShareLo--\eTwoShareHi\,\% of the
+variance of follow-up prefill work in those runs, the measured
+counterpart of the split of Table~\ref{tab:cv2}.
 
 \input{exp/tab-e1}
 

@@ -76,16 +76,28 @@ def metrics_summary(path, t0, t1, ok):
                     continue
                 name, rest = k.split("{", 1)
                 eng = rest.split('engine="', 1)[1].split('"', 1)[0] if 'engine="' in rest else "0"
-                d = per.setdefault(eng, {"waiting": 0.0, "kv": 0.0, "running": 0.0})
+                d = per.setdefault(eng, {"waiting": 0.0, "kv": 0.0, "running": 0.0, "running_max": 0.0, "kv_wait": 0.0, "n_wait": 0, "_w": 0.0, "_k": 0.0})
                 if name == "vllm:num_requests_waiting":
                     d["waiting"] += v
+                    d["_w"] = v
                 elif name == "vllm:kv_cache_usage_perc":
                     d["kv"] += v
+                    d["_k"] = v
                 elif name == "vllm:num_requests_running":
                     d["running"] += v
+                    d["running_max"] = max(d["running_max"], v)
+            # after the sample: occupancy in the samples where a request waited
+            for d in per.values():
+                if d["_w"] > 0:
+                    d["kv_wait"] += d["_k"]
+                    d["n_wait"] += 1
     if n == 0:
         return {}
-    out = {"samples": n, "per_engine": {e: {"waiting_avg": d["waiting"] / n, "kv_usage_avg": d["kv"] / n, "running_avg": d["running"] / n} for e, d in per.items()}}
+    tot_w = sum(d["kv_wait"] for d in per.values())
+    tot_n = sum(d["n_wait"] for d in per.values())
+    out = {"pooled_kv_when_waiting": (tot_w / tot_n) if tot_n else float("nan"), "samples": n, "per_engine": {e: {"waiting_avg": d["waiting"] / n, "kv_usage_avg": d["kv"] / n, "running_avg": d["running"] / n,
+                                             "running_max": d["running_max"], "kv_when_waiting": (d["kv_wait"] / d["n_wait"]) if d["n_wait"] else float("nan"),
+                                             "wait_share": d["n_wait"] / n} for e, d in per.items()}}
     for e, d in out["per_engine"].items():
         def delta(name):
             return last.get((e, name), 0.0) - first.get((e, name), 0.0)
@@ -124,12 +136,40 @@ def analyze(path, fit):
         s[2].append(r)
     live_time = sum(s[1] - s[0] for s in by_sess.values())
     n_bar = live_time / window
-    # think gaps between a session's requests
-    gaps = []
+    # Time a session spends away from the prefill queue between two of its
+    # turns: from the end of a turn's prefill (its first token) to the next
+    # arrival, i.e. decode plus tool/think time. This is the Z of the
+    # finite-source model (the source station is decode + think).
+    def away_gaps(rs):
+        rs = sorted(rs, key=lambda r: r["sent_monotonic_s"])
+        return [b["sent_monotonic_s"] - (a.get("first_token_monotonic_s") or a["done_monotonic_s"]) for a, b in zip(rs, rs[1:])]
+
+    def think_gaps(rs):
+        rs = sorted(rs, key=lambda r: r["sent_monotonic_s"])
+        return [b["sent_monotonic_s"] - a["done_monotonic_s"] for a, b in zip(rs, rs[1:])]
+
+    gaps, thinks = [], []
     for s in by_sess.values():
-        rs = sorted(s[2], key=lambda r: r["sent_monotonic_s"])
-        gaps += [b["sent_monotonic_s"] - a["done_monotonic_s"] for a, b in zip(rs, rs[1:])]
+        gaps += away_gaps(s[2])
+        thinks += think_gaps(s[2])
     z = st.fmean(gaps) if gaps else float("nan")
+    think = st.fmean(thinks) if thinks else float("nan")
+    # door (admission) wait recorded by the replayer, session sojourn including it
+    door = [r.get("admission_wait_s") or 0.0 for r in ok]
+    door_mean = st.fmean(door)
+    sojourn = []
+    for sx, sv in by_sess.items():
+        first = min(sv[2], key=lambda r: r["sent_monotonic_s"])
+        sojourn.append(sv[1] - (first["sent_monotonic_s"] - (first.get("admission_wait_s") or 0.0)))
+    sojourn_mean = st.fmean(sojourn)
+    # previous round of each request (for the hit classification)
+    prev_of = {}
+    for sv in by_sess.values():
+        rs = sorted(sv[2], key=lambda r: r["sent_monotonic_s"])
+        for a_, b_ in zip(rs, rs[1:]):
+            prev_of[id(b_)] = a_
+    itls = [r["itl_mean_s"] for r in ok if r.get("itl_mean_s") and (r.get("completion_tokens") or 0) >= 32]
+    itl_mean = st.fmean(itls) if itls else float("nan")
     c0, a, b = fit["c0"], fit["a"], fit["b"]
     S, hits, misses, waits, ttfts = [], [], [], [], []
     ttft_hit, ttft_miss, ttft_first = [], [], []
@@ -142,9 +182,14 @@ def analyze(path, fit):
         S.append(work)
         ttfts.append(r["ttft_s"])
         waits.append(max(r["ttft_s"] - work, 0.0))
-        first = r.get("round_index", 0) == 0 or r is min(by_sess[r["session_index"]][2], key=lambda x: x["sent_monotonic_s"])
+        prev = prev_of.get(id(r))
+        first = prev is None
         if not first:
-            is_hit = cached >= 0.9 * (pt - n) and cached > 0
+            # A follow-up turn's resident prefix is the previous prompt plus the
+            # previous completion; a hit is a cached length covering ≥ 90 % of
+            # it (cached_tokens is rounded down to the sub-block).
+            prefix = (prev.get("prompt_tokens") or 0) + (prev.get("completion_tokens") or 0)
+            is_hit = prefix > 0 and cached >= 0.9 * prefix
             (hits if is_hit else misses).append(work)
             (ttft_hit if is_hit else ttft_miss).append(r["ttft_s"])
         else:
@@ -169,8 +214,7 @@ def analyze(path, fit):
         live_r = sum(by_sess[sx][1] - by_sess[sx][0] for sx in sess_r) / window
         gaps_r = []
         for sx in sess_r:
-            rs = sorted(by_sess[sx][2], key=lambda r: r["sent_monotonic_s"])
-            gaps_r += [b["sent_monotonic_s"] - a["done_monotonic_s"] for a, b in zip(rs, rs[1:])]
+            gaps_r += away_gaps(by_sess[sx][2])
         z_r = st.fmean(gaps_r) if gaps_r else z
         n_r = max(1, round(live_r))
         w_fin_r = mva_q(z_r / es_r, n_r - 1) * es_r if z_r == z_r else float("nan")
@@ -190,6 +234,9 @@ def analyze(path, fit):
             pr["prefill_time_mean"] = mrk["prefill_time_mean"]
             pr["preemptions"] = mrk["preemptions"]
             pr["prefix_hit_ratio"] = mrk["prefix_hit_ratio"]
+            pr["running_max"] = mrk["running_max"]
+            pr["kv_when_waiting"] = mrk["kv_when_waiting"]
+            pr["wait_share"] = mrk["wait_share"]
     wsum = sum(pr["requests"] for pr in per_rank)
     rho = sum(pr["rho"] * pr["requests"] for pr in per_rank) / wsum
     pk = sum(pr["pk"] * pr["requests"] for pr in per_rank) / wsum
@@ -202,6 +249,11 @@ def analyze(path, fit):
     pf_srv = (sum(pr.get("prefill_time_mean", 0.0) * pr["requests"] for pr in per_rank) / wsum) if metrics else float("nan")
     preempt = sum(pr.get("preemptions", 0.0) for pr in per_rank) if metrics else float("nan")
     token_hit = (sum(pr.get("prefix_hit_ratio", 0.0) * pr["requests"] for pr in per_rank) / wsum) if metrics else float("nan")
+    running_max = max((pr.get("running_max", 0.0) for pr in per_rank), default=float("nan")) if metrics else float("nan")
+    # pooled over ranks: mean occupancy of the (rank, sample) pairs with a request waiting
+    kvp = metrics.get("pooled_kv_when_waiting", float("nan")) if metrics else float("nan")
+    kv_when_waiting = (kvp, kvp)
+    pf_over_es = pf_srv / es if es > 0 else float("nan")
     # variance split among follow-up turns
     if hits and misses:
         p = len(hits) / (len(hits) + len(misses))
@@ -219,7 +271,8 @@ def analyze(path, fit):
         params = json.load(open(ppath))
     n_err = len(rows) - len(ok)
     print(f"{path}  {params}")
-    print(f"  requests {len(ok)}  window {window:.0f}s  λ {lam:.3f}/s  N̄ {n_bar:.1f}  Z {z:.1f}s  hit rate (follow-ups) {p:.3f}")
+    print(f"  requests {len(ok)}  window {window:.0f}s  λ {lam:.3f}/s  N̄ {n_bar:.1f}  Z (decode+think) {z:.1f}s  think {think:.1f}s  full-hit rate (follow-ups) {p:.3f}")
+    print(f"  door wait mean {door_mean:.1f}s  session sojourn incl. door {sojourn_mean:.0f}s  ITL mean {itl_mean:.3f}s")
     print(f"  E[S] {es:.3f}s  CV² {es2 / es**2 - 1:.2f}  mixture share of Var[S] {share:.2f}")
     mh = st.fmean(ttft_hit) if ttft_hit else float("nan")
     mm = st.fmean(ttft_miss) if ttft_miss else float("nan")
@@ -228,13 +281,16 @@ def analyze(path, fit):
     print(f"  TTFT mean {st.fmean(ttfts):.3f}s p50 {st.median(ttfts):.3f}s p99 {sorted(ttfts)[int(0.99 * (len(ttfts) - 1))]:.3f}s")
     print(f"  per-rank ρ {rho_lo:.2f}–{rho_hi:.2f} (request-weighted mean {rho:.2f}); ranks {len(per_rank)}")
     print(f"  server view: mean admission wait (Little, per rank) {w_admit:.1f}s   KV usage {100 * kv_usage:.0f}%   "
-          f"queue time {q_srv:.1f}s   prefill time {pf_srv:.1f}s   preemptions {preempt:.0f}   token hit ratio {token_hit:.2f}")
+          f"queue time {q_srv:.1f}s   prefill time {pf_srv:.1f}s (= {pf_over_es:.2f} E[S])   preemptions {preempt:.0f}   token hit ratio {token_hit:.2f}")
+    print(f"  running max per rank {running_max:.0f}   KV usage while a request waited (pooled) {100 * kv_when_waiting[0]:.0f}%")
     print(f"  W_obs (TTFT − P) mean {st.fmean(waits):.3f}s   PK open (per rank, mean) {pk:.3f}s   finite-source M/M/1//N per rank (N̄≈{n_round:.1f}) {w_fin:.3f}s")
     return dict(path=path, params=params, n_err=n_err, requests=len(ok), window=window, lam=lam, n_bar=n_bar, z=z, hit=p, es=es, cv2=es2 / es**2 - 1,
                 rho=rho, share=share, ttft=st.fmean(ttfts), ttft_p50=st.median(ttfts),
                 ttft_p99=sorted(ttfts)[int(0.99 * (len(ttfts) - 1))], w_obs=st.fmean(waits), pk=pk, w_fin=w_fin, n_round=n_round,
                 rho_lo=rho_lo, rho_hi=rho_hi, per_rank=per_rank, w_admit=w_admit, kv_usage=kv_usage, q_srv=q_srv, pf_srv=pf_srv, preempt=preempt, token_hit=token_hit,
-                hits=len(hits), misses=len(misses), ttft_hit=mh, ttft_miss=mm, ttft_first=mf, n_first=len(ttft_first))
+                hits=len(hits), misses=len(misses), ttft_hit=mh, ttft_miss=mm, ttft_first=mf, n_first=len(ttft_first),
+                think=think, door=door_mean, sojourn=sojourn_mean, itl=itl_mean, running_max=running_max,
+                kv_when_waiting=kv_when_waiting[0], pf_over_es=pf_over_es)
 
 
 def main():

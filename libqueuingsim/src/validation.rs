@@ -2075,12 +2075,13 @@ pub const TRACE_POOLS: [f64; 4] = [f64::INFINITY, 4.0e6, 2.0e6, 1.0e6];
 /// (paper §4.3): the prefill terms are the E1 least-squares fit
 /// (`data/exp/e1/fit.json`, `scripts/exp/fit_e1.py`; `scripts/check_sim.sh`
 /// checks these constants against that file) and the decode iteration time
-/// is the mean inter-token latency of the E2 replays, which did not vary with
-/// the context over 30k–90k tokens, so `β = 0`.
+/// is the mean inter-token latency of the lightest E2 replay (cap 8; it rose
+/// to 0.12 s with the batch under the loose caps) and did not vary with the
+/// context over 30k–90k tokens, so `β = 0`.
 pub const CAL_PREFILL_LINEAR: f64 = 1.94e-4; // a, s per new token
 pub const CAL_PREFILL_QUADRATIC: f64 = 6.51e-9; // b, s per token², K_c = a/b ≈ 30k
 pub const CAL_PREFILL_OVERHEAD: f64 = 0.044; // c0, s per request
-pub const CAL_DECODE_STEP: f64 = 0.125; // ω, s per decode iteration (E2 ITL)
+pub const CAL_DECODE_STEP: f64 = 0.057; // ω, s per decode iteration (E2 ITL at cap 8)
 pub fn trace_cost() -> CostModel {
     CostModel {
         overhead: CAL_PREFILL_OVERHEAD,
