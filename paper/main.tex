@@ -804,7 +804,7 @@ coding-agent trace of $37$ sessions with ten turns each (median context
 $50$k tokens, output $350$ tokens, think time capped at $30$\,s),
 one session every $20$\,s, with the admission cap of
 Algorithm~\ref{alg:cps} at $\infty$, $16$ and $8$ live sessions over
-the four ranks; a rank's KV pool holds about four such contexts.
+the four ranks; a rank's KV pool holds two to four such contexts.
 First, the price of a miss is paid where the model says: a follow-up
 turn that hits its prefix has a TTFT of
 \eTwoHitTtftLo--\eTwoHitTtftHi\,s, one that misses
@@ -819,8 +819,8 @@ of \S\ref{sec:admission}. The finite-source wait of
 Proposition~\ref{prop:finite} with the rank's live count is closer
 than the open formula but below the observation, as in
 \S\ref{sec:sim}, since it prices work and not memory. Third, the cap
-decides: at $8$ live sessions the pool holds every resident prefix and
-p99 TTFT falls from \eTwoTailHi\,s to \eTwoTailLo\,s
+decides: at $8$ live sessions the pool holds almost every resident
+prefix and p99 TTFT falls from \eTwoTailHi\,s to \eTwoTailLo\,s
 (the admission sweep of Appendix~\ref{app:sim}, measured). With
 the fitted cost model the hit/miss mixture supplies
 \eTwoShareLo--\eTwoShareHi\,\% of the variance of follow-up prefill
