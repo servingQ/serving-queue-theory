@@ -38,12 +38,17 @@ current at the end of every work block.
   | 16 | 63 | 52 | 0.03–0.39 | 3.5 / 184 | 369 | 58 | 2.8 | 28 |
   | 8 | 95 | 37 | 0.03–0.20 | 5.3 / 117 | 176 | 7.3 | 0.7 | 2.6 |
 
+  | 8 (10 s spacing) | 96 | 38 | 0.03–0.20 | 5.0 / 142 | 175 | 6.8 | 0.7 | 2.9 |
+
   Reading: the wait is for KV space (prefill ρ ≤ 0.4, PK a few seconds,
   server queue time 7–123 s); the finite-source wait is closer than PK
-  but below the observation in every row; the cap decides. The PK regime
-  (pool not binding, ρ ≥ 0.5) is untested: the extra run `s10c8` (cap 8,
-  one session per 10 s) started 23:05 on 2026-09-25 to probe it. The
-  first cap-16 attempt died of a full home disk
+  but below the observation in every row; the cap decides. The fourth
+  run (cap 8, one session per 10 s, done 2026-09-26 00:12) is identical
+  to the third: with the cap binding the replica is closed and the
+  arrival rate is irrelevant, so the PK regime (pool not binding, ρ ≥
+  0.5) cannot be reached on this hardware at 50k contexts; it would need
+  shorter contexts (≤ 15k, so a rank holds > 12 sessions) or a bigger
+  pool. The first cap-16 attempt died of a full home disk
   (`data/exp/e2_partial/`).
 - Simulator recalibrated (2026-09-25): the trace-replay scenarios use
   the E1/E2 cost model (`CAL_*` in `libqueuingsim/src/validation.rs`,
@@ -60,9 +65,10 @@ current at the end of every work block.
    (focus: does §4.3 support exactly what is claimed; PK regime untested
    while the pool binds; single runs). Write `docs/reviews/2026-09-24-round4.md`
    and respond as in rounds 1–3.
-3. If the extra run (cap 8, 10 s spacing) shows the pool not binding and
-   prefill ρ ≥ 0.5, report the PK comparison from it in §4.3; otherwise
-   say the PK regime is still untested.
+3. PK regime (E2 as designed): rerun with a short-context trace
+   (≤ 15k tokens, e.g. a filtered/truncated `cc_traj`) and cap 32 so the
+   prefill queue, not the pool, binds; record interarrival CV² next to
+   the PK ratio. Server time ≈ 1 h.
 4. E6-lite: replay the same `cc_traj` trace in the calibrated simulator
    (needs a `TraceCorpus` loader for that JSONL: fields `requests[].in/out/think_time`)
    and compare with `tab:e2` per rank (Kendall τ over the three caps,

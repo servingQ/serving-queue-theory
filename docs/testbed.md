@@ -74,3 +74,15 @@ were validated end to end against the tiny model on one NPU (port 8020).
 
 Results go into the paper only through generated tables (never typed by
 hand); see `docs/research-plan.md` §4.2a for the table layouts.
+
+## Runs so far (2026-09-24/26)
+
+| Run | What | Result |
+|-----|------|--------|
+| E1 `data/exp/e1/probes.jsonl` | 18 cold + 27 pinned append probes | `fit.json`: a = 0.194 ms/token, b = 6.51 ns/token², c0 = 44 ms, K_c ≈ 30k, MAPE 3.4 % |
+| E2 `s20c0`, `s20c16`, `s20c8`, `s10c8` | 37 sessions × 10 turns, pinned, caps ∞/16/8/8 | `paper/exp/tab-e2.tex`; summary in `docs/research-plan.md` §0 |
+| `data/exp/e2_partial/s20c16_diskfull_partial` | first cap-16 attempt | killed by ENOSPC at 279/369; not used |
+| `data/exp/e1/probes_unpinned.jsonl` | first append sweep without DP pinning | 2 of 27 hits; not used |
+
+Runs are single-seed. Two replays must never run at once on the server.
+

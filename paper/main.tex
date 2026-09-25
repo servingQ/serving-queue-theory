@@ -728,9 +728,9 @@ sets $\theta=0$.
 Production traces fix the workload side of the model
 (\S\ref{sec:exp-traces}), a simulated replica serving those sessions
 tests the propositions where an assumption fails (\S\ref{sec:sim}),
-and an NPU testbed replaying a coding-agent trace gives the first
-measurements (\S\ref{sec:exp-testbed}); the remaining experiments are
-designed in Appendix~\ref{app:design}.
+and an NPU testbed gives the first measurements
+(\S\ref{sec:exp-testbed}; the rest are designed in
+Appendix~\ref{app:design}).
 
 \subsection{What the Traces Say}\label{sec:exp-traces}
 
@@ -804,9 +804,10 @@ coding-agent trace of $37$ sessions with ten turns each (median context
 $50$k tokens, output $350$ tokens, think time capped at $30$\,s),
 one session every $20$\,s, with the admission cap of
 Algorithm~\ref{alg:cps} at $\infty$, $16$ and $8$ live sessions over
-the four ranks; a rank's KV pool holds two to four such contexts.
-First, the price of a miss is paid where the model says: a follow-up
-turn that hits its prefix has a TTFT of
+the four ranks, and once more at $8$ with a session every $10$\,s; a
+rank's KV pool holds two to four such contexts.
+First, the price of a miss: a follow-up turn that hits its prefix has
+a TTFT of
 \eTwoHitTtftLo--\eTwoHitTtftHi\,s, one that misses
 \eTwoMissTtftLo--\eTwoMissTtftHi\,s, and the hit rate falls from
 \eTwoHitHi\,\% under the tight cap to \eTwoHitLo\,\% with none,
@@ -821,10 +822,13 @@ than the open formula but below the observation, as in
 \S\ref{sec:sim}, since it prices work and not memory. Third, the cap
 decides: at $8$ live sessions the pool holds almost every resident
 prefix and p99 TTFT falls from \eTwoTailHi\,s to \eTwoTailLo\,s
-(the admission sweep of Appendix~\ref{app:sim}, measured). With
+(the admission sweep of Appendix~\ref{app:sim}, measured); doubling
+the arrival rate at that cap changes nothing (the capped replica is
+closed), so at these context lengths the pool binds before the prefill
+compute does and the open regime of~\eqref{eq:pk} is not reached. With
 the fitted cost model the hit/miss mixture supplies
 \eTwoShareLo--\eTwoShareHi\,\% of the variance of follow-up prefill
-work once eviction is active (Table~\ref{tab:cv2} at the baseline).
+work once eviction is active (Table~\ref{tab:cv2}: the baseline).
 
 % ===========================================================================
 \section{Related Work}\label{sec:related}
@@ -859,7 +863,7 @@ Among systems, ThunderAgent \citep{thunderagent} and InferCept
 Continuum \citep{li2025continuum} keeps a program's KV for a
 time-to-live set from the reload cost and the queueing delay an
 eviction would induce, the price of a miss without its head-of-line
-term and load factor (a reading of the abstract). MORI
+term and load factor. MORI
 \citep{xia2026mori} offloads by the idleness of tool calls, which
 gives $\tau_i$ its role; TokenCake, KVFlow, CacheScout and TOPAS
 \citep{bian2025tokencake,pan2025kvflow,zhang2026cachescout,ni2026topas}
@@ -879,7 +883,7 @@ the term our price keeps.
 
 The propositions are about the model, not the world, and of the
 measurements of Appendix~\ref{app:design} only E1 and one E2 sweep
-have been run (one stack, one workload, single seeds). The prefill
+have been run (one stack and workload, single seeds). The prefill
 stage is a FIFO server with a fixed available fraction, although the
 budget the decode batch leaves fluctuates and session feedback makes
 arrivals non-Poisson; \eqref{eq:pk} is an approximation there, and
@@ -889,8 +893,8 @@ regime the memory model implies whenever contexts are long. The
 finite-source bound is proved for exponential work; for a real
 workload the open price and the Markovian finite-source price bracket
 the observed rise from above and below, so a policy change raises
-$L_P$ by at most $\min(\mathrm{hi},N-L_P)$ and the price to use inside
-that range is open. The propositions concern means, not tails, and price an eviction as a
+$L_P$ by at most $\min(\mathrm{hi},N-L_P)$; the price inside that
+range is open. The propositions concern means, not tails, and price an eviction as a
 stationary fraction of misses, not as the transient event it is. The trace statistics describe
 two Claude Code workloads (other harnesses append with
 $\mathrm{CV}^2$ of $2$ to $7$), and the simulator shares the model's
@@ -899,8 +903,7 @@ cross-session hits, one capacity function for prefill and decode).
 What would falsify the model: a prefill wait that does not follow
 $\lambda\E[S^2]/(2(1-\rho))$ once the pool is not binding (it bound
 in \S\ref{sec:exp-testbed}); an eviction order beating the
-price without $p_i$ and $\tau_i$ (E4); an inversion load off $\rho^*$
-(E5).
+price blind to $p_i$, $\tau_i$ (E4); an inversion load off $\rho^*$ (E5).
 
 \section*{Impact Statement}
 This work provides analytical tools for capacity planning and scheduling
