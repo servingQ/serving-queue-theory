@@ -115,16 +115,17 @@ def fig_e2(summary: Path, out: Path) -> None:
     ax.set_yscale("log")
     ax.set_ylabel("TTFT (s)")
     ax.set_title("(a) the price of a miss", loc="left", color=INK2)
-    ax.legend(loc="best", fontsize=6)
+    ax.legend(loc="center left", fontsize=6)
     # (b) hit rate and KV occupancy
     ax = axes[1]
     ax.plot(x, [100 * r["hit"] for r in runs], marker=MARKERS[0], color=SLOTS[0], label="follow-up hit rate")
     ax.plot(x, [100 * r["kv_usage"] for r in runs], marker=MARKERS[1], color=SLOTS[1], label="KV pool occupancy")
     ax.plot(x, [100 * r["rho_hi"] for r in runs], marker=MARKERS[2], color=SLOTS[2], label="prefill $\\rho$, busiest rank")
-    ax.set_ylim(0, 100)
+    ax.set_ylim(0, 170)
+    ax.set_yticks([0, 25, 50, 75, 100])
     ax.set_ylabel("%")
     ax.set_title("(b) cache and load", loc="left", color=INK2)
-    ax.legend(loc="best", fontsize=6)
+    ax.legend(loc="upper left", fontsize=6)
     # (c) waits: observed vs PK vs finite-source
     ax = axes[2]
     ax.plot(x, [r["q_srv"] for r in runs], marker=MARKERS[0], color=SLOTS[0], label="server queueing time")
@@ -132,8 +133,10 @@ def fig_e2(summary: Path, out: Path) -> None:
     ax.plot(x, [r["pk"] for r in runs], marker=MARKERS[2], color=SLOTS[2], label="open PK")
     ax.set_yscale("log")
     ax.set_ylabel("mean wait (s)")
+    lo = min(min(r["pk"] for r in runs), min(r["w_fin"] for r in runs)) / 8
+    ax.set_ylim(bottom=lo)
     ax.set_title("(c) the wait and two predictions", loc="left", color=INK2)
-    ax.legend(loc="best", fontsize=6)
+    ax.legend(loc="lower left", fontsize=6)
     for ax in axes:
         ax.set_xticks(x)
         ax.set_xticklabels(labels)

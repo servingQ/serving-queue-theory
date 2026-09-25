@@ -29,14 +29,22 @@ current at the end of every work block.
   inter-token latency: ω ≈ 0.125 s, no context dependence over 30–90k
   tokens (β = 0).
 - E2 (open-loop replay of `cc_traj_50k_think30s.jsonl`, 37 sessions × 10
-  turns, one session per 20 s, sessions pinned to ranks): cap ∞ done
-  (hit 51 %, miss TTFT 279 s vs hit 9 s, p99 503 s, server queue time
-  123 s, per-rank prefill ρ ≤ 0.38 → the wait is for KV space, not
-  compute; PK 3 s, finite-source 52 s). cap 16 and cap 8 reruns and one
-  extra run (cap 8, one session per 10 s, to load the prefill queue with
-  the pool not binding) were queued on 2026-09-25 evening
-  (`data/exp/e2/run_rest2.sh`, `run_extra.sh`); the first cap-16 attempt
-  died of a full home disk (`s20c16_diskfull_partial`).
+  turns, one session per 20 s, sessions pinned to ranks), three caps done
+  2026-09-25 (`paper/exp/tab-e2.tex`, `fig-e2.pdf`):
+
+  | cap | hit % | KV % | ρ/rank | TTFT hit / miss (s) | p99 (s) | W_q (s) | PK (s) | finite (s) |
+  |---|---|---|---|---|---|---|---|---|
+  | ∞ | 51 | 61 | 0.03–0.38 | 9.1 / 279 | 503 | 123 | 3.2 | 52 |
+  | 16 | 63 | 52 | 0.03–0.39 | 3.5 / 184 | 369 | 58 | 2.8 | 28 |
+  | 8 | 95 | 37 | 0.03–0.20 | 5.3 / 117 | 176 | 7.3 | 0.7 | 2.6 |
+
+  Reading: the wait is for KV space (prefill ρ ≤ 0.4, PK a few seconds,
+  server queue time 7–123 s); the finite-source wait is closer than PK
+  but below the observation in every row; the cap decides. The PK regime
+  (pool not binding, ρ ≥ 0.5) is untested: the extra run `s10c8` (cap 8,
+  one session per 10 s) started 23:05 on 2026-09-25 to probe it. The
+  first cap-16 attempt died of a full home disk
+  (`data/exp/e2_partial/`).
 - Simulator recalibrated (2026-09-25): the trace-replay scenarios use
   the E1/E2 cost model (`CAL_*` in `libqueuingsim/src/validation.rs`,
   checked against `data/exp/e1/fit.json` by `scripts/check_sim.sh`);
