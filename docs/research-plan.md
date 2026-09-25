@@ -10,7 +10,7 @@ Last updated: 2026-09-25.
 
 ## 0. Where we are / next steps (read this first in a new session)
 
-State on 2026-09-25 (paper v0.11). What is done, running and next, so a
+State on 2026-09-26 (paper v0.12). What is done, running and next, so a
 fresh session can continue without the chat history. Keep this section
 current at the end of every work block.
 
@@ -29,27 +29,32 @@ current at the end of every work block.
   inter-token latency: ω ≈ 0.125 s, no context dependence over 30–90k
   tokens (β = 0).
 - E2 (open-loop replay of `cc_traj_50k_think30s.jsonl`, 37 sessions × 10
-  turns, one session per 20 s, sessions pinned to ranks), three caps done
-  2026-09-25 (`paper/exp/tab-e2.tex`, `fig-e2.pdf`):
+  turns, sessions pinned to ranks), four runs done 2026-09-26
+  (`paper/exp/tab-e2.tex`, `fig-e2.pdf`; analysis corrected after review
+  round 4: hits classified against the previous prompt + completion,
+  finite-source Z = decode + think):
 
-  | cap | hit % | KV % | ρ/rank | TTFT hit / miss (s) | p99 (s) | W_q (s) | PK (s) | finite (s) |
-  |---|---|---|---|---|---|---|---|---|
-  | ∞ | 51 | 61 | 0.03–0.38 | 9.1 / 279 | 503 | 123 | 3.2 | 52 |
-  | 16 | 63 | 52 | 0.03–0.39 | 3.5 / 184 | 369 | 58 | 2.8 | 28 |
-  | 8 | 95 | 37 | 0.03–0.20 | 5.3 / 117 | 176 | 7.3 | 0.7 | 2.6 |
+  | s / cap | hit % | door (s) | sojourn (s) | λ (1/s) | KV % | ρ/rank | TTFT hit / miss (s) | p99 (s) | W_q (s) | PK (s) | finite (s) |
+  |---|---|---|---|---|---|---|---|---|---|---|---|
+  | 20 / ∞ | 46 | 0 | 2583 | 0.070 | 61 | 0.03–0.38 | 2.6 / 263 | 503 | 123 | 3.2 | 14.5 |
+  | 20 / 16 | 59 | 499 | 2139 | 0.075 | 52 | 0.03–0.39 | 2.6 / 168 | 369 | 58 | 2.8 | 6.8 |
+  | 20 / 8 | 83 | 638 | 1344 | 0.092 | 37 | 0.03–0.20 | 2.6 / 52 | 176 | 7.3 | 0.7 | 0.5 |
+  | 10 / 8 | 84 | 772 | 1481 | 0.092 | 38 | 0.03–0.20 | 2.0 / 54 | 175 | 6.8 | 0.7 | 0.5 |
 
-  | 8 (10 s spacing) | 96 | 38 | 0.03–0.20 | 5.0 / 142 | 175 | 6.8 | 0.7 | 2.9 |
-
-  Reading: the wait is for KV space (prefill ρ ≤ 0.4, PK a few seconds,
-  server queue time 7–123 s); the finite-source wait is closer than PK
-  but below the observation in every row; the cap decides. The fourth
-  run (cap 8, one session per 10 s, done 2026-09-26 00:12) is identical
-  to the third: with the cap binding the replica is closed and the
-  arrival rate is irrelevant, so the PK regime (pool not binding, ρ ≥
-  0.5) cannot be reached on this hardware at 50k contexts; it would need
-  shorter contexts (≤ 15k, so a rank holds > 12 sessions) or a bigger
-  pool. The first cap-16 attempt died of a full home disk
-  (`data/exp/e2_partial/`).
+  Reading: a resident prefix does not queue (2–2.6 s at every cap); a
+  miss waits 20–101× longer, for KV blocks (pool 52 × 4096 tokens per
+  rank, a 50k miss needs 13 blocks, occupancy 78–80 % while a request
+  waited, running ≤ 4 per rank, server prefill time = 1.07–1.10 E[S]);
+  both compute-only predictions (PK, finite-source) are 1–2 orders below
+  the observation; the cap moves the wait to the door (sojourn incl. door
+  still falls 2583 → 1344 s, throughput 0.070 → 0.092 turns/s). The
+  fourth run shows the capped replica is closed: the PK regime cannot be
+  reached at 50k contexts on this pool. First cap-16 attempt died of a
+  full home disk (`data/exp/e2_partial/`).
+- Review round 4 (2026-09-26, `docs/reviews/2026-09-26-round4.md`,
+  verdict "major revision, for the right reason") and the response
+  (`-round4-response.md`, v0.12): analysis errors fixed, claims
+  softened (Φ_i itself not yet measured), simulator ω = 0.057 s.
 - Simulator recalibrated (2026-09-25): the trace-replay scenarios use
   the E1/E2 cost model (`CAL_*` in `libqueuingsim/src/validation.rs`,
   checked against `data/exp/e1/fit.json` by `scripts/check_sim.sh`);
@@ -57,18 +62,17 @@ current at the end of every work block.
   Synthetic checks keep the old constants.
 
 **Next (in order).**
-1. When the E2 runs finish: `make exp` (regenerates `paper/exp/*`),
-   `make paper`, re-read §4.3, the abstract and contribution 3 against
-   `paper/exp/tab-e2.tex` (direction of every claim), fix the figure
-   legends if they overlap, `make check`, commit.
-2. Professor review round 4: prompt drafted in the 2026-09-24 session
-   (focus: does §4.3 support exactly what is claimed; PK regime untested
-   while the pool binds; single runs). Write `docs/reviews/2026-09-24-round4.md`
-   and respond as in rounds 1–3.
-3. PK regime (E2 as designed): rerun with a short-context trace
-   (≤ 15k tokens, e.g. a filtered/truncated `cc_traj`) and cap 32 so the
-   prefill queue, not the pool, binds; record interarrival CV² next to
-   the PK ratio. Server time ≈ 1 h.
+1. PK regime and the first measurement of Φ_i (review-4 action item 7):
+   a short-context variant of `cc_traj` (≤ 12k tokens), cap 32,
+   round-robin pinning, the trace's real gaps, ρ ≈ 0.5–0.7, and an arm
+   with 5 % forced misses (a nonce prepended to the prompt); record
+   interarrival CV² next to the PK ratio. Server time ≈ 1 h; the
+   replayer needs a `--force-miss` option.
+2. Round-4 minor leftovers: Figure 4 annotation overlap, App. B tables
+   overfull by 30/19 pt, empty pages 16–17 (float placement), unused
+   E2 macros, Table 11 prints ρ'=0.83 beside "ρ' ≥ 1".
+3. Professor review round 5 after item 1 (or after item 2 if no server
+   time): same prompt shape as round 4, focus on §4.3.
 4. E6-lite: replay the same `cc_traj` trace in the calibrated simulator
    (needs a `TraceCorpus` loader for that JSONL: fields `requests[].in/out/think_time`)
    and compare with `tab:e2` per rank (Kendall τ over the three caps,
