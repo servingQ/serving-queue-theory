@@ -13,3 +13,8 @@ libqueuingsim/*.html
 
 # trace corpora (large, downloaded; see docs/trace-analysis.md)
 /data/
+
+# RBLN runtime dumps written into the cwd by the serving stack
+rank_*/
+runtime_dump/
+runtime.log

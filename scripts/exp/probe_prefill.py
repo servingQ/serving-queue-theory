@@ -23,6 +23,10 @@ import time
 import urllib.request
 
 
+DP_RANK = None  # X-data-parallel-rank header; without it vLLM's balancer may send the
+# warm and the append request to different ranks and the prefix is never a hit.
+
+
 def stream_ttft(base, model, prompt_ids, max_tokens=1, timeout=1800):
     body = json.dumps({
         "model": model,
@@ -34,7 +38,7 @@ def stream_ttft(base, model, prompt_ids, max_tokens=1, timeout=1800):
         "stream_options": {"include_usage": True},
     }).encode()
     req = urllib.request.Request(base + "/completions", data=body,
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", **({"X-data-parallel-rank": str(DP_RANK)} if DP_RANK is not None else {})})
     t0 = time.perf_counter()
     ttft = None
     usage = None
@@ -74,7 +78,10 @@ def main():
     ap.add_argument("--appends", default="512,2048,8192")
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--dp-rank", type=int, default=None, help="pin every probe to this DP rank")
     a = ap.parse_args()
+    global DP_RANK
+    DP_RANK = a.dp_rank
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     rng = random.Random(a.seed)
     rows = []
@@ -89,12 +96,12 @@ def main():
 
     # warm-up request (compile paths), not recorded
     stream_ttft(a.base_url, a.model, rand_ids(rng, 512))
-    for n in [int(x) for x in a.cold.split(",")]:
+    for n in [int(x) for x in a.cold.split(",") if x]:
         for r in range(a.repeats):
             ids = rand_ids(rng, n)
             ttft, done, pt, cached = stream_ttft(a.base_url, a.model, ids)
             record(kind="cold", n=n, K=0, rep=r, ttft_s=ttft, total_s=done, prompt_tokens=pt, cached_tokens=cached)
-    for K in [int(x) for x in a.prefixes.split(",")]:
+    for K in [int(x) for x in a.prefixes.split(",") if x]:
         for n in [int(x) for x in a.appends.split(",")]:
             for r in range(a.repeats):
                 prefix = rand_ids(rng, K)

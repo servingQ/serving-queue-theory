@@ -28,3 +28,18 @@
 - Placeholder (`\tbd`) result tables live in `docs/research-plan.md`, not
   in the paper; the paper keeps one experiment-overview table and short
   hypotheses.
+
+# Continuing across sessions (user instruction, 2026-09-25)
+
+- Work is expected to continue in a fresh session: before doing anything,
+  read `docs/research-plan.md` (section "Where we are / next steps" at the
+  top) and `docs/testbed.md`; they are kept current at the end of every
+  work block and say what is running, what is done and what comes next.
+- Testbed measurements: launch the server with `scripts/exp/serve_m27.sh`
+  as documented in `docs/testbed.md`; results enter the paper only through
+  `make exp` (`paper/exp/*.tex`, `paper/exp/fig-*.pdf`).
+- All large caches (HF weights, vLLM/rbln compile cache, torch_rbln
+  offload files) live under `/mnt/shared_data/users/jinhwan.suk/.cache`
+  (`HF_HOME`, `VLLM_CACHE_ROOT`, `RBLN_OFFLOAD_DIR`); never let a tool write
+  hundreds of GB under `~/.cache` (the home disk is 1.7 TB and filled once).
+

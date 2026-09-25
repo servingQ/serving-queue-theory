@@ -2064,17 +2064,31 @@ pub fn observations() -> Vec<Observation> {
 // ------------------------------------------------ §4.1 trace replay ----
 
 /// Session arrival rates (per s) of the trace-replay scenario.
-pub const TRACE_RATES: [f64; 2] = [0.005, 0.01];
+/// With the calibrated cost model the open replica runs at ρ ≈ 0.3 and 0.55.
+pub const TRACE_RATES: [f64; 2] = [0.0005, 0.001];
 /// KV pools (tokens) of the trace-replay scenario; `INFINITY` = no eviction.
+/// Sized against the corpus (mean final context 3.9·10^5 tokens): the pools
+/// hold about ten, five and two or three finished sessions.
 pub const TRACE_POOLS: [f64; 4] = [f64::INFINITY, 4.0e6, 2.0e6, 1.0e6];
 
-/// Cost model of the trace-replay scenario: the open-session model with a
-/// lighter attention term, `b = 4·10⁻¹⁰` (`K_c = 5·10^4`), since the
-/// replayed contexts are 10× longer than the synthetic ones.
+/// Cost model of the trace-replay scenario, calibrated on the NPU testbed
+/// (paper §4.3): the prefill terms are the E1 least-squares fit
+/// (`data/exp/e1/fit.json`, `scripts/exp/fit_e1.py`; `scripts/check_sim.sh`
+/// checks these constants against that file) and the decode iteration time
+/// is the mean inter-token latency of the E2 replays, which did not vary with
+/// the context over 30k–90k tokens, so `β = 0`.
+pub const CAL_PREFILL_LINEAR: f64 = 1.94e-4; // a, s per new token
+pub const CAL_PREFILL_QUADRATIC: f64 = 6.51e-9; // b, s per token², K_c = a/b ≈ 30k
+pub const CAL_PREFILL_OVERHEAD: f64 = 0.044; // c0, s per request
+pub const CAL_DECODE_STEP: f64 = 0.125; // ω, s per decode iteration (E2 ITL)
 pub fn trace_cost() -> CostModel {
-    let mut cost = open_session_cost();
-    cost.prefill_quadratic = 4.0e-10;
-    cost
+    CostModel {
+        overhead: CAL_PREFILL_OVERHEAD,
+        prefill_linear: CAL_PREFILL_LINEAR,
+        prefill_quadratic: CAL_PREFILL_QUADRATIC,
+        decode_per_token: CAL_DECODE_STEP,
+        decode_kv: 0.0,
+    }
 }
 pub const TRACE_SEEDS: u64 = 5;
 /// Warm-up and horizon (s) of every replay run.
@@ -2084,9 +2098,9 @@ pub const TRACE_HORIZON: f64 = 66_000.0;
 /// The two-resource replica fed by replayed production sessions
 /// ([`crate::workload::TraceCorpus::weka`]): Poisson session arrivals at
 /// `rate`, each session a real one (its appends, outputs and think times),
-/// the cost model [`trace_cost`] (`a = 2·10⁻⁵`, `b = 4·10⁻¹⁰`, so the
-/// attention term overtakes the dense term at `K_c = a/b = 5·10^4` tokens,
-/// the order of a dense 70B model), KV pool `kv`, batch cap 8, at most 24
+/// the cost model [`trace_cost`] calibrated on the testbed (`a = 1.94·10⁻⁴`,
+/// `b = 6.51·10⁻⁹`, so the attention term overtakes the dense term at
+/// `K_c = a/b ≈ 3·10^4` tokens), KV pool `kv`, batch cap 8, at most 24
 /// live sessions, eviction by price per byte-second. The single
 /// class supplies the scheduler's estimates: `p_i` = the corpus resume
 /// fraction, `τ_i` = the corpus mean think time.
@@ -2336,7 +2350,9 @@ pub fn trace_replay_scenario() -> Vec<TraceRow> {
 /// self-limiting and the open M/G/1 queue overstates the wait).
 pub fn trace_replay_variance_sources() -> Check {
     let corpus = std::sync::Arc::new(crate::workload::TraceCorpus::weka());
-    let rate = TRACE_RATES[0];
+    // The higher rate, as in the table: at the lower one the cap of the
+    // largest pool never binds and there is no eviction to measure.
+    let rate = TRACE_RATES[TRACE_RATES.len() - 1];
     let rows: Vec<TraceRow> = TRACE_POOLS
         .iter()
         .map(|&kv| {

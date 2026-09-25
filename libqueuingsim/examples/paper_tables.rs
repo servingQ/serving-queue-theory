@@ -983,7 +983,7 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
         let regime = if r.kv.is_finite() {
             format!("closed $N{{=}}{}$", r.cap)
         } else {
-            format!("open $\\Lambda{{=}}{:.3}$", r.rate)
+            format!("open $\\Lambda{{=}}{}$", r.rate)
         };
         rows.push(format!(
             "{pool} & {regime} & {:.1} & {:.3} & {:.2} & {:.2} & {:.1} & {:.2} & {:.0} & {:.0} & {:.0}",
@@ -1125,7 +1125,7 @@ fn trace_price_table(rows_all: &[validation::TracePriceRow], data: &mut Data) ->
             "$\\rho'\\ge1$".to_string()
         };
         rows.push(format!(
-            "{:.3} & {:.2} & {:.1} & {:.1} & {:.2} & {:.2} & {:.1} & {} & {:.1} & {} & {:.1} & {:.1}",
+            "{} & {:.2} & {:.1} & {:.1} & {:.2} & {:.2} & {:.1} & {} & {:.1} & {} & {:.1} & {:.1}",
             r.rate,
             r.delta,
             r.live,
@@ -1288,6 +1288,25 @@ fn main() {
 
     let mut m = String::from(HEADER);
     writeln!(m, "\\newcommand{{\\simChecks}}{{{}}}", checks.len()).unwrap();
+    // Calibrated cost model of the replay scenarios (validation.rs, from E1/E2).
+    writeln!(
+        m,
+        "\\newcommand{{\\simCalA}}{{{:.3}}}",
+        validation::CAL_PREFILL_LINEAR * 1e3
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simCalB}}{{{:.2}}}",
+        validation::CAL_PREFILL_QUADRATIC * 1e9
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simCalOmega}}{{{:.3}}}",
+        validation::CAL_DECODE_STEP
+    )
+    .unwrap();
     writeln!(m, "\\newcommand{{\\simChecksPassed}}{{{passed}}}").unwrap();
     writeln!(m, "\\newcommand{{\\simPdAgree}}{{{agree}}}").unwrap();
     writeln!(m, "\\newcommand{{\\simPdCells}}{{{total}}}").unwrap();

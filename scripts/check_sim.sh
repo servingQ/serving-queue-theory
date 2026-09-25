@@ -28,6 +28,22 @@ cargo run --release --locked --example validate -- validation-report.md >/dev/nu
 # redrawn from the checked data below.
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp" "$tmp.diff"' EXIT
+# The replay scenario's cost model is calibrated on the testbed: the constants
+# in validation.rs must equal the E1 fit (3 significant figures).
+if [ -f data/exp/e1/fit.json ]; then
+  python3 - <<'PY' || exit 1
+import json, re
+fit = json.load(open("data/exp/e1/fit.json"))
+src = open("libqueuingsim/src/validation.rs").read()
+def const(name):
+    return float(re.search(rf"pub const {name}: f64 = ([0-9.e+-]+);", src).group(1))
+bad = [n for n, k in [("CAL_PREFILL_LINEAR", "a"), ("CAL_PREFILL_QUADRATIC", "b"), ("CAL_PREFILL_OVERHEAD", "c0")]
+       if f"{const(n):.3g}" != f"{fit[k]:.3g}"]
+if bad:
+    print("FAIL: calibrated constants differ from data/exp/e1/fit.json:", bad); raise SystemExit(1)
+print("calibrated cost constants match data/exp/e1/fit.json")
+PY
+fi
 cargo run --release --locked --quiet --example paper_tables -- "$tmp" 2>/dev/null
 if ! diff -ru -x 'fig-*.pdf' ../paper/sim "$tmp" >"$tmp.diff"; then
   cat "$tmp.diff"
