@@ -32,6 +32,7 @@ exp:              ## regenerate paper/exp/ from the testbed measurements (data/e
 	python3 scripts/exp/fit_e1.py data/exp/e1/probes.jsonl
 	python3 scripts/exp/analyze_e2.py --fit data/exp/e1/fit.json --out data/exp/e2/summary.json data/exp/e2/*/rounds.jsonl
 	python3 scripts/exp/paper_e2_tables.py data/exp/e2/summary.json
+	uv run --quiet --with matplotlib python scripts/exp/plot_exp.py
 
 report:           ## print the simulator validation report
 	cd libqueuingsim && cargo run --release --quiet --example validate

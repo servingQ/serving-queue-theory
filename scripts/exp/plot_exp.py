@@ -106,7 +106,7 @@ def fig_e2(summary: Path, out: Path) -> None:
         cap = int(r["params"].get("cap", 0) or 0)
         labels.append(f"$s$={float(r['params'].get('spacing_s', 0)):g} s\n$N_{{\\max}}$={'∞' if cap == 0 else cap}")
     x = list(range(len(runs)))
-    fig, axes = plt.subplots(1, 3, figsize=(6.8, 2.2))
+    fig, axes = plt.subplots(1, 3, figsize=(6.8, 1.7))
     # (a) TTFT of hits, misses, p99
     ax = axes[0]
     ax.plot(x, [r["ttft_hit"] for r in runs], marker=MARKERS[0], color=SLOTS[0], label="follow-up hit (mean)")
@@ -115,7 +115,7 @@ def fig_e2(summary: Path, out: Path) -> None:
     ax.set_yscale("log")
     ax.set_ylabel("TTFT (s)")
     ax.set_title("(a) the price of a miss", loc="left", color=INK2)
-    ax.legend(loc="lower left")
+    ax.legend(loc="best", fontsize=6)
     # (b) hit rate and KV occupancy
     ax = axes[1]
     ax.plot(x, [100 * r["hit"] for r in runs], marker=MARKERS[0], color=SLOTS[0], label="follow-up hit rate")
@@ -124,7 +124,7 @@ def fig_e2(summary: Path, out: Path) -> None:
     ax.set_ylim(0, 100)
     ax.set_ylabel("%")
     ax.set_title("(b) cache and load", loc="left", color=INK2)
-    ax.legend(loc="lower left")
+    ax.legend(loc="best", fontsize=6)
     # (c) waits: observed vs PK vs finite-source
     ax = axes[2]
     ax.plot(x, [r["q_srv"] for r in runs], marker=MARKERS[0], color=SLOTS[0], label="server queueing time")
@@ -133,7 +133,7 @@ def fig_e2(summary: Path, out: Path) -> None:
     ax.set_yscale("log")
     ax.set_ylabel("mean wait (s)")
     ax.set_title("(c) the wait and two predictions", loc="left", color=INK2)
-    ax.legend(loc="lower left")
+    ax.legend(loc="best", fontsize=6)
     for ax in axes:
         ax.set_xticks(x)
         ax.set_xticklabels(labels)

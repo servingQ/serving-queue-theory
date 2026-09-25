@@ -763,17 +763,25 @@ first prompts and rare misses, not by the appends, as the replay of
 
 \subsection{Measurements on an NPU Testbed}\label{sec:exp-testbed}
 
-\input{exp/tab-e2}
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{exp/fig-e2.pdf}
+\caption{E2 on the testbed (Table~\ref{tab:e2}, Appendix~\ref{app:exp}):
+one session every $s$ seconds, at most $N_{\max}$ live. (a) Mean TTFT
+of follow-up hits and misses, p99 over all turns. (b) Follow-up hit
+rate, KV-pool occupancy, prefill utilisation of the busiest rank.
+(c) The server's mean queueing time against the open PK wait and the
+finite-source wait of Proposition~\ref{prop:finite}, per rank.}
+\label{fig:e2}
+\end{figure*}
 
 The testbed is one replica group of MiniMax-M2.7 (fp8 weights) on four
 RBLN-CR13 NPUs, data parallel with expert parallelism, one rank per
-NPU, serving through vLLM with 4096-token KV blocks, the vendor's
-sub-block prefix cache, chunked prefill with a 512-token budget and at
-most eight sequences per rank; there is no KV offloading tier, so a
-miss is a recompute. Sessions are pinned to a rank, so a follow-up turn
-can hit its own prefix. The server reports the cached prefix length of
-every request, which classifies each turn as a hit or a miss without
-instrumenting the cache.
+NPU, served by vLLM with 4096-token KV blocks, the vendor's sub-block
+prefix cache, chunked prefill with a 512-token budget and at most eight
+sequences per rank; there is no offloading tier, so a miss is a
+recompute. Sessions are pinned to a rank, and the server's cached
+prefix length classifies each turn as a hit or a miss.
 
 \paragraph{E1: the cost model.} Single requests on the idle group give
 $P(n,K)$ of~\eqref{eq:prefill} directly: cold prompts of $n$ tokens and
@@ -790,7 +798,8 @@ prompt at \eOneColdMaxLinear\,s where it takes \eOneColdMaxTtft\,s,
 and the linear column of Table~\ref{tab:cv2} is the wrong one for
 this hardware.
 
-\paragraph{E2: replaying sessions.} Table~\ref{tab:e2} replays a
+\paragraph{E2: replaying sessions.} Figure~\ref{fig:e2} and
+Table~\ref{tab:e2} replay a
 coding-agent trace of $37$ sessions with ten turns each (median context
 $50$k tokens, output $350$ tokens, think time capped at $30$\,s),
 one session every $20$\,s, with the admission cap of
@@ -816,7 +825,6 @@ p99 TTFT falls from \eTwoTailHi\,s to \eTwoTailLo\,s
 the fitted cost model the hit/miss mixture supplies
 \eTwoShareLo--\eTwoShareHi\,\% of the variance of follow-up prefill
 work once eviction is active (Table~\ref{tab:cv2} at the baseline).
-These are single runs on one workload and stack.
 
 % ===========================================================================
 \section{Related Work}\label{sec:related}
@@ -833,19 +841,17 @@ Existing LLM queueing analyses \citep{mitzenmacher2025queueing} take
 the variability from output length: \citet{yang2024mg1} cap the output
 of a few requests, \citet{ozbas2026reasoning} let a class mixture of
 reasoning budgets set the second moment, and \citet{shahout2024trail}
-give a memory-aware SRPT variant; an in-order prefill queue is the FIFO
-case of that world, and reordering prefills would change the
+give a memory-aware SRPT variant; reordering prefills would change the
 head-of-line term, not remove the miss. Closest to our memory results,
 \citet{ao2026congestion} show the eviction-free equilibrium of a
 memory-constrained replica unstable, converging to a limit cycle: the
 thrashing of \S\ref{sec:sim} without reuse. None of these models KV reuse across
-the turns of a session, so none prices a miss. In scheduling theory with
-KV constraints, \citet{jaillet2025online} and
+the turns of a session, so none prices a miss. Under KV constraints, \citet{jaillet2025online} and
 \citet{feng2026nonclairvoyant} give competitive online policies,
-\citet{wang2025variable} show that size-based priorities have unbounded
-approximation ratios under a KV budget, in the spirit of
-Proposition~\ref{prop:blind}(i), and \citet{dexter2025prefix} prove
-scheduling with prefix reuse NP-hard.
+\citet{wang2025variable} show size-based priorities to have unbounded
+approximation ratios (the spirit of Proposition~\ref{prop:blind}(i)),
+and \citet{dexter2025prefix} prove scheduling with prefix reuse
+NP-hard.
 
 Among systems, ThunderAgent \citep{thunderagent} and InferCept
 \citep{infercept} manage the KV of programs paused on external calls
@@ -873,7 +879,7 @@ the term our price keeps.
 
 The propositions are about the model, not the world, and of the
 measurements of Appendix~\ref{app:design} only E1 and one E2 sweep
-have been run, on one stack, one workload and single seeds. The prefill
+have been run (one stack, one workload, single seeds). The prefill
 stage is a FIFO server with a fixed available fraction, although the
 budget the decode batch leaves fluctuates and session feedback makes
 arrivals non-Poisson; \eqref{eq:pk} is an approximation there, and
@@ -884,20 +890,17 @@ finite-source bound is proved for exponential work; for a real
 workload the open price and the Markovian finite-source price bracket
 the observed rise from above and below, so a policy change raises
 $L_P$ by at most $\min(\mathrm{hi},N-L_P)$ and the price to use inside
-that range is open. The propositions concern means, while service
-objectives are tails, and they price an eviction as a stationary
-fraction of misses, whereas a real eviction is one transient event that
-can be a thrash. The trace statistics describe
+that range is open. The propositions concern means, not tails, and price an eviction as a
+stationary fraction of misses, not as the transient event it is. The trace statistics describe
 two Claude Code workloads (other harnesses append with
-$\mathrm{CV}^2$ of $2$ to $7$), the proxy's TTFT comes from a stack and
-load we could not observe, and the simulator shares the model's
+$\mathrm{CV}^2$ of $2$ to $7$), and the simulator shares the model's
 abstractions (no block-level allocation beyond tail blocks, no
 cross-session hits, one capacity function for prefill and decode).
 What would falsify the model: a prefill wait that does not follow
-$\lambda\E[S^2]/(2(1-\rho))$ at a controlled load once the pool is
-not binding (it bound in every row of \S\ref{sec:exp-testbed}); an
-eviction order that beats the price on a replayed trace without seeing
-$p_i$ and $\tau_i$ (E4); an inversion load far from $\rho^*$ (E5).
+$\lambda\E[S^2]/(2(1-\rho))$ once the pool is not binding (it bound
+in \S\ref{sec:exp-testbed}); an eviction order beating the
+price without $p_i$ and $\tau_i$ (E4); an inversion load off $\rho^*$
+(E5).
 
 \section*{Impact Statement}
 This work provides analytical tools for capacity planning and scheduling
@@ -1117,12 +1120,24 @@ means as its estimate of the remaining suspension.}
 % ===========================================================================
 \section{Testbed Tables}\label{app:exp}
 
-Table~\ref{tab:e1} lists the E1 probes behind the cost-model fit of
-\S\ref{sec:exp-testbed}. Every request was sent alone on an idle
-replica group; append probes count only when the server's cached
-prefix length equals $K$.
+Table~\ref{tab:e1} and Figure~\ref{fig:e1} give the E1 probes behind
+the cost-model fit of \S\ref{sec:exp-testbed}; every request was sent
+alone on an idle replica group, and append probes count only when the
+server's cached prefix length equals $K$. Table~\ref{tab:e2} holds the
+numbers behind Figure~\ref{fig:e2}.
 
 \input{exp/tab-e1}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{exp/fig-e1.pdf}
+\caption{E1: measured TTFT of cold prompts and of appends onto a cached
+prefix of $K$ tokens (markers, mean over repeats) against the fitted
+$P(n,K)$ (lines); the dotted line is the dense term alone.}
+\label{fig:e1}
+\end{figure}
+
+\input{exp/tab-e2}
 
 \section{Experimental Design for a Real System}\label{app:design}\label{sec:exp-real}\label{sec:exp-setup}\label{sec:exp-protocol}\label{sec:exp-calib}\label{sec:exp-variance}\label{sec:exp-offload}\label{sec:exp-evict}\label{sec:exp-routing}\label{sec:exp-scorecard}
 
