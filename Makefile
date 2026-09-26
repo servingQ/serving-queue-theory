@@ -32,7 +32,10 @@ exp:              ## regenerate paper/exp/ from the testbed measurements (data/e
 	python3 scripts/exp/fit_e1.py data/exp/e1/probes.jsonl
 	python3 scripts/exp/analyze_e2.py --fit data/exp/e1/fit.json --out data/exp/e2/summary.json data/exp/e2/*/rounds.jsonl
 	python3 scripts/exp/paper_e2_tables.py data/exp/e2/summary.json
-	uv run --quiet --with matplotlib python scripts/exp/plot_exp.py
+	python3 scripts/exp/analyze_e2.py --fit data/exp/e1/fit.json --warmup 90 --out data/exp/e2b/summary.json data/exp/e2b/s*_base*/rounds.jsonl data/exp/e2b/s*_m10*/rounds.jsonl
+	for b in data/exp/e2b/s*_base data/exp/e2b/s*_base_s1; do f=$${b/_base/_m10}; t=data/exp/traces/short_m10$${b##*_base}.jsonl; [ -f $$f/rounds.jsonl ] && python3 scripts/exp/analyze_price.py --fit data/exp/e1/fit.json --base $$b/rounds.jsonl --forced $$f/rounds.jsonl --trace $$t --out data/exp/e2b/price_$$(basename $$f | sed 's/_m10//').json; done; true
+	python3 scripts/exp/paper_e2b_tables.py data/exp/e2b/summary.json data/exp/e2b/price_*.json
+	uv run --quiet --with matplotlib python scripts/exp/plot_exp.py --prices data/exp/e2b/price_*.json
 
 report:           ## print the simulator validation report
 	cd libqueuingsim && cargo run --release --quiet --example validate

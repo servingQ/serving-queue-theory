@@ -184,22 +184,27 @@ def fig_admission(data: Path, out: Path) -> None:
                     capthick=0.6,
                     zorder=3 + k,
                 )
-                if key == "hit":
-                    for c, y in zip(caps, ys):
-                        t = int(cells[c]["thrashed"])
-                        if t > 0:
-                            # Thrashed-seed count, spread left/centre/right
-                            # by policy so neighbouring counts do not collide.
-                            ax.annotate(
-                                f"{t}/{seeds}",
-                                (c, y),
-                                xytext=(22 * (k - 1), -8 - 7 * (k % 2)),
-                                textcoords="offset points",
-                                ha="center",
-                                va="top",
-                                fontsize=5.5,
-                                color=INK2,
-                            )
+            if key == "hit":
+                # Thrashed-seed counts: one stacked column per cap (one row
+                # per policy, in legend order, in the policy's colour), below
+                # the lowest point of that cap, so the three counts never
+                # overlap and nothing is clipped at the right edge.
+                for c in caps:
+                    counts = [int({int(r["cap"]): r for r in rows if r["rate"] == rate and r["policy"] == p}[c]["thrashed"]) for p in policies]
+                    if not any(counts):
+                        continue
+                    ylow = min(fnum({int(r["cap"]): r for r in rows if r["rate"] == rate and r["policy"] == p}[c], key) for p in policies)
+                    for k, t in enumerate(counts):
+                        ax.annotate(
+                            f"{t}/{seeds}",
+                            (c, ylow),
+                            xytext=(0, -9 - 6.5 * k),
+                            textcoords="offset points",
+                            ha="center",
+                            va="top",
+                            fontsize=5.5,
+                            color=SLOTS[k],
+                        )
             if logy:
                 ax.set_yscale("log")
             ax.set_xticks(caps)

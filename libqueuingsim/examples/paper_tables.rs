@@ -125,7 +125,7 @@ fn table_sized(
     size: &str,
 ) -> String {
     let mut s = String::from(HEADER);
-    writeln!(s, "\\begin{{table}}[t]").unwrap();
+    writeln!(s, "\\begin{{table}}[htbp]").unwrap();
     writeln!(s, "\\caption{{{caption}}}").unwrap();
     writeln!(s, "\\label{{{label}}}").unwrap();
     writeln!(
@@ -175,7 +175,7 @@ fn in_model() -> String {
     };
     let r = queue::simulate(&QueueConfig::mg1(1.8, d, 1_000_000, 54));
     rows.push(format!(
-        "$\\rho$ at $p=0.8$ & \\S\\ref{{sec:congestion}} & {:.3} & {:.3}",
+        "$\\rho$ at $h=0.8$ & \\S\\ref{{sec:congestion}} & {:.3} & {:.3}",
         mixture_utilization(1.8, 0.8, 0.05, 0.5),
         r.utilization
     ));
@@ -981,9 +981,9 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             "$\\infty$".to_string()
         };
         let regime = if r.kv.is_finite() {
-            format!("closed $N{{=}}{}$", r.cap)
+            format!("$N{{=}}{}$", r.cap)
         } else {
-            format!("open $\\Lambda{{=}}{}$", r.rate)
+            format!("$\\Lambda{{=}}{}$", r.rate)
         };
         rows.push(format!(
             "{pool} & {regime} & {:.1} & {:.3} & {:.2} & {:.2} & {:.1} & {:.2} & {:.0} & {:.0} & {:.0}",
@@ -1029,7 +1029,7 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
              $K_c=a/b\\approx{:.0}$k tokens (calibrated on the testbed), batch cap 8, eviction by price per byte-second \
              where the pool is finite. \
              With no pool limit the replica is open (Poisson sessions at rate \
-             $\\Lambda$ per s, at most 24 live). With a finite pool the cap on live \
+             $\\Lambda$ per s, at most 24 live; the regime column gives $\\Lambda$). With a finite pool the cap on live \
              sessions binds throughout the run, so the replica is a closed system of \
              $N$ sessions and the arrival rate is immaterial; the entry queue grows \
              for the whole horizon. Mean live sessions $\\bar N$ and throughput $X$ \
@@ -1051,7 +1051,7 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
         "clccccccccc",
         "Pool & Regime & $\\bar N$ & $X$ & Hit & Mix & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
         &rows,
-        "2pt",
+        "1.5pt",
         "scriptsize",
     )
 }
@@ -1222,9 +1222,9 @@ fn trace_split_table() -> String {
         ),
         "tab:sim-trace-split",
         "lcccccccccc",
-        "Split & Sessions & Turns & Think & $\\bar N$ & $X$ & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
+        "Split & Sess. & Turns & Think & $\\bar N$ & $X$ & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
         &rows,
-        "2pt",
+        "1pt",
         "scriptsize",
     )
 }

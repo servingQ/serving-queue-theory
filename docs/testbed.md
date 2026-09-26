@@ -1,6 +1,9 @@
-# NPU testbed for E1/E2 (MiniMax-M2.7, DP4 + EP)
+# NPU testbed (MiniMax-M2.7, DP4 + EP): cost fit, long- and short-context replays
 
-Status as of 2026-09-24. This file records how the measurement server is
+Status as of 2026-09-26. Experiment names: cost fit (was E1), long-context
+replay (E2), short-context replay and price test (E2b); the codes survive
+in directory and macro names only. A GPU (A100) testbed is next; see
+`docs/research-plan.md` §0 and `scripts/exp/serve_gpu.sh`. This file records how the measurement server is
 launched and every configuration that did not work, so nobody re-runs the
 bisection.
 
@@ -66,7 +69,10 @@ Two settings are required with this stack and are now in the launcher:
 |--------|---------|
 | `scripts/exp/probe_prefill.py` | E1: cold and append probes on an idle server; fits `P(n,K) = c0 + a n + b n (K + n/2)`; writes `data/exp/e1/probes.jsonl` and the fit |
 | `scripts/exp/run_e2.sh <tag> <spacing_s> <cap>` | E2: open-loop replay of the coding-agent trace (37 sessions) with a live-session cap; writes `data/exp/e2/<tag>/rounds.jsonl` and `/metrics` samples |
-| `scripts/exp/analyze_e2.py --fit fit.json runs...` | per run: λ, N̄, Z, E[S], CV², ρ, TTFT, observed wait vs open PK and finite-source predictions, variance split |
+| `scripts/exp/analyze_e2.py --fit fit.json [--warmup 90] runs...` | per run: λ, N̄, Z, E[S], CV², ρ, interarrival CV², TTFT, observed wait vs open PK and finite-source predictions, variance split; `--warmup` restricts the window to [first arrival + 90 s, last arrival] (E2b) |
+| `scripts/exp/make_short_trace.py` | E2b: derives the short-context trace from the 50k one (2k first prompt, appends scaled to mean ~1k, out ≤ 4 tokens, per-session nonce, `--miss-share` forced misses by a nonce at the head of the prompt, ids salted for round-robin rank pinning) |
+| `scripts/exp/analyze_price.py` | E2b: the forced-miss arm against its baseline, per rank: ΔL_P observed vs the bracket of `prop:price` and the finite-source price |
+| `scripts/exp/paper_e2b_tables.py`, `plot_exp.py` | `paper/exp/tab-e2b*.tex`, `macros-e2b.tex`, `fig-e2b.pdf` |
 
 The replayer is `~/icp-serving-workload-analysis/replayer/replay_text_trace.py`
 (open-loop `--arrival-spacing-s`, `--session-admission-cap`). Both scripts
@@ -85,4 +91,65 @@ hand); see `docs/research-plan.md` §4.2a for the table layouts.
 | `data/exp/e1/probes_unpinned.jsonl` | first append sweep without DP pinning | 2 of 27 hits; not used |
 
 Runs are single-seed. Two replays must never run at once on the server.
+
+## E2b: the PK regime on a short-context trace (2026-09-26)
+
+Why: at 50k contexts a rank holds two to four contexts, so E2 never leaves
+the memory-bound regime and never tests the PK wait or the price bracket.
+E2b replays a derived trace (`scripts/exp/make_short_trace.py`, files
+under `data/exp/traces/`, not committed, deterministic from the source):
+9 copies of the 37 sessions, first prompt 2k tokens, appends = the source
+appends × 0.44 (mean ~940, max 4000), contexts 2k → 8.6k (median),
+`out ≤ 4` so decode is negligible, the source think times (mean 5–6 s,
+capped at 30 s in the source), a 4-token nonce per session (no shared
+prefixes), ids salted so crc32 pinning is round-robin (84/83/83/83).
+Forced-miss arm: 10 % of follow-up turns get a 2-token nonce at the head
+of that and every later prompt of the session (one full recompute, hits
+again afterwards); the request carries `forced_miss: true`.
+Runs: `TRACES=... OUTBASE=data/exp/e2b MAXSESS=... bash scripts/exp/run_e2.sh <tag> <spacing> 96`
+(drivers `data/exp/e2b/batch2.sh`).
+
+What did not work:
+- `out ≤ 32` at 1.4 s spacing (`data/exp/e2b_v1_out32_overload/`): the
+  decode batch cap (8 per rank) bound on every rank, waiting "by
+  capacity" 5–17, ITL 0.25–0.32 s. Killed.
+- `out ≤ 4` at 1.5 s spacing (`s15_base`, ρ_E1 ≈ 0.5): saturates and
+  thrashes. Two mechanisms, both outside the E1 model: (i) the
+  vllm-rbln scheduler runs a prefill step exclusively and with priority
+  over decode (`vllm_rbln/v1/core/optimum_scheduler.py` "processed
+  exclusively (only one at a time)", WAITING scheduled before RUNNING;
+  the runner prefills the whole prompt in one step, `max-num-batched-tokens`
+  is the compiled chunk size, not a shared per-step budget), and the
+  DP+EP ranks step in lockstep (`v1/worker/dp_utils.py`), so ITL goes
+  from 0.017 s idle to 0.10 s when a *peer* rank prefills, 0.17–0.25 s
+  when the own rank has prefills pending, and 1.5 s at saturation; the
+  4-token decodes then hold the 8 running slots for seconds; (ii) the pool is 52 blocks of 4096 tokens
+  per rank, so a 5k-token session holds 2 blocks and ~20 live sessions
+  per rank fill it; LRU then evicts the prefixes with the longest gap
+  (every miss followed a 30 s gap), the misses re-prefill 4–6k tokens,
+  and TTFT rises over the run (0.6 s → 3.6 s). `kv_cache_usage_perc`
+  counts only running requests' blocks (20–35 %), not cached ones.
+- Sub-block granularity is 512 tokens: `cached_tokens` is rounded down
+  to a multiple of 512, so `analyze_e2.py` counts a hit as cached ≥
+  min(0.9·prefix, prefix − 512).
+
+Second batch (`batch2.sh`): 2.5 s (333 sessions), 3.5 s and 5 s (222
+sessions), baseline and forced-miss arms. Results (window 90 s after
+the first arrival to the last arrival; `make exp` regenerates them):
+
+| run | ρ/rank (E1) | hit % | CV²_arr | W_srv (s) | PK (s) | finite (s) | price test (4 ranks summed) |
+|-----|-------------|-------|---------|-----------|--------|------------|-----------------------------|
+| `s15_base` (saturated) | 0.67–0.74 | 75 | 1.3 | 5.8 | 1.7 | 2.4 | – |
+| `s25_base` / `s25_m10` | 0.35–0.36 | 98 | 1.0 | 0.11 | 0.16 | 0.13 | ΔL_P 2.05 vs [1.80, 2.27] (243 forced + 52 unforced misses; forced only [1.56, 1.88]), fin 0.82 |
+| `s35_base` / `s35_m10` | 0.24–0.25 | 99 | 1.3 | 0.05 | 0.09 | 0.08 | ΔL_P 0.75 vs [0.74, 0.83] (163 forced, no unforced), fin 0.39 |
+| `s25_base_s1` / `s25_m10_s1` (seed 1) | 0.35–0.36 | 98 | – | 0.11 | 0.16 | 0.13 | ΔL_P 2.15 vs [1.89, 2.44] (forced + 55 unforced), fin 0.86 |
+| `s50_base` | 0.17 | 99 | 1.5 | 0.04 | 0.05 | 0.05 | – |
+
+Reading: in the light arms the prefill queue is the only wait, the
+arrivals are Poisson-like and the PK wait is 1.3–1.6× the server's
+queueing time; the forced-miss rise sits inside the bracket
+of `prop:price` at 3.5 s and 9 % above its upper end at 2.5 s (the
+server's prefill time under concurrency is 1.10–1.23× the E1 model,
+which the bracket does not include); the Markovian finite-source
+price understates the rise 2–3×.
 

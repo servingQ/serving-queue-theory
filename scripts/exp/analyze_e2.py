@@ -76,7 +76,7 @@ def metrics_summary(path, t0, t1, ok):
                     continue
                 name, rest = k.split("{", 1)
                 eng = rest.split('engine="', 1)[1].split('"', 1)[0] if 'engine="' in rest else "0"
-                d = per.setdefault(eng, {"waiting": 0.0, "kv": 0.0, "running": 0.0, "running_max": 0.0, "kv_wait": 0.0, "n_wait": 0, "_w": 0.0, "_k": 0.0})
+                d = per.setdefault(eng, {"waiting": 0.0, "kv": 0.0, "running": 0.0, "running_max": 0.0, "kv_wait": 0.0, "n_wait": 0, "_w": 0.0, "_k": 0.0, "n_cap": 0})
                 if name == "vllm:num_requests_waiting":
                     d["waiting"] += v
                     d["_w"] = v
@@ -86,6 +86,8 @@ def metrics_summary(path, t0, t1, ok):
                 elif name == "vllm:num_requests_running":
                     d["running"] += v
                     d["running_max"] = max(d["running_max"], v)
+                    if v >= 8:
+                        d["n_cap"] += 1
             # after the sample: occupancy in the samples where a request waited
             for d in per.values():
                 if d["_w"] > 0:
@@ -96,7 +98,7 @@ def metrics_summary(path, t0, t1, ok):
     tot_w = sum(d["kv_wait"] for d in per.values())
     tot_n = sum(d["n_wait"] for d in per.values())
     out = {"pooled_kv_when_waiting": (tot_w / tot_n) if tot_n else float("nan"), "samples": n, "per_engine": {e: {"waiting_avg": d["waiting"] / n, "kv_usage_avg": d["kv"] / n, "running_avg": d["running"] / n,
-                                             "running_max": d["running_max"], "kv_when_waiting": (d["kv_wait"] / d["n_wait"]) if d["n_wait"] else float("nan"),
+                                             "running_max": d["running_max"], "cap_share": d["n_cap"] / n, "kv_when_waiting": (d["kv_wait"] / d["n_wait"]) if d["n_wait"] else float("nan"),
                                              "wait_share": d["n_wait"] / n} for e, d in per.items()}}
     for e, d in out["per_engine"].items():
         def delta(name):
@@ -111,7 +113,7 @@ def metrics_summary(path, t0, t1, ok):
     return out
 
 
-def analyze(path, fit):
+def analyze(path, fit, args):
     rows = []
     for l in open(path):
         if not l.strip():
@@ -126,6 +128,16 @@ def analyze(path, fit):
         return
     t0 = min(r["sent_monotonic_s"] for r in ok)
     t1 = max(r["done_monotonic_s"] for r in ok)
+    if args.warmup > 0:
+        # Stationary window: from WARMUP after the first arrival to the last
+        # arrival, by the time a request was sent (E2b); the default window
+        # (first sent to last done) is the whole transient run (E2).
+        firsts = [r["sent_monotonic_s"] for r in ok if r.get("round_index") == 0]
+        t0, t1 = min(firsts) + args.warmup, max(firsts)
+        ok = [r for r in ok if t0 <= r["sent_monotonic_s"] <= t1]
+        if len(ok) < 50:
+            print(path, "too few requests in the window (run incomplete?)")
+            return
     window = t1 - t0
     # live sessions: a session is live from its first sent to its last done
     by_sess = {}
@@ -170,9 +182,11 @@ def analyze(path, fit):
             prev_of[id(b_)] = a_
     itls = [r["itl_mean_s"] for r in ok if r.get("itl_mean_s") and (r.get("completion_tokens") or 0) >= 32]
     itl_mean = st.fmean(itls) if itls else float("nan")
+    itls_all = [r["itl_mean_s"] for r in ok if r.get("itl_mean_s") and (r.get("completion_tokens") or 0) >= 2]
+    itl_all = st.fmean(itls_all) if itls_all else float("nan")
     c0, a, b = fit["c0"], fit["a"], fit["b"]
     S, hits, misses, waits, ttfts = [], [], [], [], []
-    ttft_hit, ttft_miss, ttft_first = [], [], []
+    ttft_hit, ttft_miss, ttft_first, ttft_partial = [], [], [], []
     for r in ok:
         pt = r["prompt_tokens"]
         cached = r.get("cached_tokens") or 0
@@ -188,10 +202,21 @@ def analyze(path, fit):
             # A follow-up turn's resident prefix is the previous prompt plus the
             # previous completion; a hit is a cached length covering ≥ 90 % of
             # it (cached_tokens is rounded down to the sub-block).
+            # cached_tokens is rounded down to the sub-block (512 tokens on
+            # this stack), so a resident prefix of a few thousand tokens
+            # reports less than 90 % of itself: a hit is a cached length of
+            # at least 90 % of the prefix or of the prefix less one
+            # sub-block, whichever is smaller (the same rule as before at
+            # 50k contexts).
             prefix = (prev.get("prompt_tokens") or 0) + (prev.get("completion_tokens") or 0)
-            is_hit = prefix > 0 and cached >= 0.9 * prefix
+            is_hit = prefix > 0 and cached >= min(0.9 * prefix, prefix - args.subblock)
             (hits if is_hit else misses).append(work)
-            (ttft_hit if is_hit else ttft_miss).append(r["ttft_s"])
+            if is_hit:
+                ttft_hit.append(r["ttft_s"])
+            elif cached > 0:
+                ttft_partial.append(r["ttft_s"])  # part of the prefix evicted
+            else:
+                ttft_miss.append(r["ttft_s"])  # nothing resident: a full recompute
         else:
             ttft_first.append(r["ttft_s"])
     # Each DP rank has its own prefill queue and KV pool: compute λ, ρ, the PK
@@ -218,8 +243,11 @@ def analyze(path, fit):
         z_r = st.fmean(gaps_r) if gaps_r else z
         n_r = max(1, round(live_r))
         w_fin_r = mva_q(z_r / es_r, n_r - 1) * es_r if z_r == z_r else float("nan")
+        arr = sorted(ok[i]["sent_monotonic_s"] for i in idx)
+        ia = [b_ - a_ for a_, b_ in zip(arr, arr[1:])]
+        cv2_arr_r = st.pvariance(ia) / st.fmean(ia) ** 2 if len(ia) > 2 and st.fmean(ia) > 0 else float("nan")
         per_rank.append(dict(rank=rk, requests=len(idx), lam=lam_r, es=es_r, rho=rho_r, pk=pk_r, n_bar=live_r,
-                             n_round=n_r, z=z_r, w_fin=w_fin_r, w_obs=st.fmean(waits[i] for i in idx)))
+                             n_round=n_r, z=z_r, w_fin=w_fin_r, w_obs=st.fmean(waits[i] for i in idx), cv2_arr=cv2_arr_r))
     # Server-side view from the /metrics samples beside rounds.jsonl: the
     # time-average number of requests waiting per engine (Little's law then
     # gives the mean admission wait per request), KV usage and preemptions.
@@ -235,6 +263,7 @@ def analyze(path, fit):
             pr["preemptions"] = mrk["preemptions"]
             pr["prefix_hit_ratio"] = mrk["prefix_hit_ratio"]
             pr["running_max"] = mrk["running_max"]
+            pr["cap_share"] = mrk["cap_share"]
             pr["kv_when_waiting"] = mrk["kv_when_waiting"]
             pr["wait_share"] = mrk["wait_share"]
     wsum = sum(pr["requests"] for pr in per_rank)
@@ -243,6 +272,7 @@ def analyze(path, fit):
     w_fin = sum(pr["w_fin"] * pr["requests"] for pr in per_rank) / wsum
     n_round = sum(pr["n_round"] * pr["requests"] for pr in per_rank) / wsum
     rho_lo, rho_hi = min(pr["rho"] for pr in per_rank), max(pr["rho"] for pr in per_rank)
+    cv2_arr = sum(pr["cv2_arr"] * pr["requests"] for pr in per_rank if pr["cv2_arr"] == pr["cv2_arr"]) / wsum
     w_admit = (sum(pr.get("w_admit", 0.0) * pr["requests"] for pr in per_rank) / wsum) if metrics else float("nan")
     kv_usage = (sum(pr.get("kv_usage_avg", 0.0) * pr["requests"] for pr in per_rank) / wsum) if metrics else float("nan")
     q_srv = (sum(pr.get("queue_time_mean", 0.0) * pr["requests"] for pr in per_rank) / wsum) if metrics else float("nan")
@@ -250,6 +280,7 @@ def analyze(path, fit):
     preempt = sum(pr.get("preemptions", 0.0) for pr in per_rank) if metrics else float("nan")
     token_hit = (sum(pr.get("prefix_hit_ratio", 0.0) * pr["requests"] for pr in per_rank) / wsum) if metrics else float("nan")
     running_max = max((pr.get("running_max", 0.0) for pr in per_rank), default=float("nan")) if metrics else float("nan")
+    cap_share = max((pr.get("cap_share", 0.0) for pr in per_rank), default=float("nan")) if metrics else float("nan")
     # pooled over ranks: mean occupancy of the (rank, sample) pairs with a request waiting
     kvp = metrics.get("pooled_kv_when_waiting", float("nan")) if metrics else float("nan")
     kv_when_waiting = (kvp, kvp)
@@ -277,7 +308,8 @@ def analyze(path, fit):
     mh = st.fmean(ttft_hit) if ttft_hit else float("nan")
     mm = st.fmean(ttft_miss) if ttft_miss else float("nan")
     mf = st.fmean(ttft_first) if ttft_first else float("nan")
-    print(f"  TTFT by class: first turns {mf:.1f}s ({len(ttft_first)})  follow-up hits {mh:.1f}s ({len(ttft_hit)})  follow-up misses {mm:.1f}s ({len(ttft_miss)})")
+    mp = st.fmean(ttft_partial) if ttft_partial else float("nan")
+    print(f"  TTFT by class: first turns {mf:.1f}s ({len(ttft_first)})  follow-up hits {mh:.1f}s ({len(ttft_hit)})  partial {mp:.1f}s ({len(ttft_partial)})  follow-up misses {mm:.1f}s ({len(ttft_miss)})")
     print(f"  TTFT mean {st.fmean(ttfts):.3f}s p50 {st.median(ttfts):.3f}s p99 {sorted(ttfts)[int(0.99 * (len(ttfts) - 1))]:.3f}s")
     print(f"  per-rank ρ {rho_lo:.2f}–{rho_hi:.2f} (request-weighted mean {rho:.2f}); ranks {len(per_rank)}")
     print(f"  server view: mean admission wait (Little, per rank) {w_admit:.1f}s   KV usage {100 * kv_usage:.0f}%   "
@@ -287,9 +319,10 @@ def analyze(path, fit):
     return dict(path=path, params=params, n_err=n_err, requests=len(ok), window=window, lam=lam, n_bar=n_bar, z=z, hit=p, es=es, cv2=es2 / es**2 - 1,
                 rho=rho, share=share, ttft=st.fmean(ttfts), ttft_p50=st.median(ttfts),
                 ttft_p99=sorted(ttfts)[int(0.99 * (len(ttfts) - 1))], w_obs=st.fmean(waits), pk=pk, w_fin=w_fin, n_round=n_round,
-                rho_lo=rho_lo, rho_hi=rho_hi, per_rank=per_rank, w_admit=w_admit, kv_usage=kv_usage, q_srv=q_srv, pf_srv=pf_srv, preempt=preempt, token_hit=token_hit,
+                rho_lo=rho_lo, rho_hi=rho_hi, cv2_arr=cv2_arr, per_rank=per_rank, w_admit=w_admit, kv_usage=kv_usage, q_srv=q_srv, pf_srv=pf_srv, preempt=preempt, token_hit=token_hit,
                 hits=len(hits), misses=len(misses), ttft_hit=mh, ttft_miss=mm, ttft_first=mf, n_first=len(ttft_first),
-                think=think, door=door_mean, sojourn=sojourn_mean, itl=itl_mean, running_max=running_max,
+                ttft_partial=mp, n_partial=len(ttft_partial), n_miss=len(ttft_miss),
+                think=think, door=door_mean, sojourn=sojourn_mean, itl=itl_mean, itl_all=itl_all, running_max=running_max, cap_share=cap_share,
                 kv_when_waiting=kv_when_waiting[0], pf_over_es=pf_over_es)
 
 
@@ -297,10 +330,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fit", required=True)
     ap.add_argument("--out")
+    ap.add_argument("--subblock", type=int, default=512, help="prefix-cache granularity in tokens")
+    ap.add_argument("--warmup", type=float, default=0.0, help="seconds after the first arrival at which the window starts (0: whole run)")
     ap.add_argument("runs", nargs="+")
     a = ap.parse_args()
     fit = json.load(open(a.fit))
-    res = [analyze(p, fit) for p in a.runs]
+    res = [analyze(p, fit, a) for p in a.runs]
     if a.out:
         json.dump([r for r in res if r], open(a.out, "w"), indent=1)
 

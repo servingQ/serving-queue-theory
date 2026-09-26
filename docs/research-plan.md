@@ -10,78 +10,143 @@ Last updated: 2026-09-25.
 
 ## 0. Where we are / next steps (read this first in a new session)
 
-State on 2026-09-26 (paper v0.12). What is done, running and next, so a
+Experiment names (2026-09-26, user request; the paper never uses the
+codes): **cost fit** (E1), **long-context replay** (E2), **short-context
+replay** and **price test** (E2b), **offloading test** (E3), **eviction
+replay** (E4), **placement test** (E5), **faithfulness scoring** (E6).
+The codes survive in directory names (`data/exp/e1`, `e2`, `e2b`),
+macros (`\eOne*`, `\eTwo*`, `\eTwob*`) and older review files.
+
+State on 2026-09-26 (paper v0.14, committed at the end of the session). What is done, running and next, so a
 fresh session can continue without the chat history. Keep this section
 current at the end of every work block.
 
 **Done.**
-- Paper v0.11: 8-page main text, abstract 149 words; §4.3 "Measurements
-  on an NPU Testbed" (E1 cost-model fit, E2 replay table `tab:e2`,
-  figures `paper/exp/fig-e1.pdf`, `fig-e2.pdf`), App. E testbed tables.
-  All measured numbers enter through `make exp` (`scripts/exp/fit_e1.py`,
-  `analyze_e2.py`, `paper_e2_tables.py`, `plot_exp.py`).
+- Paper v0.13 (2026-09-26, after the user's feedback and a clarity
+  review `docs/reviews/2026-09-26-clarity.md`): §4 renamed "Results"
+  (4.1 real-world traces, 4.2 simulation, 4.3 testbed); a "Background"
+  paragraph opens §2 (prefill, decode, KV cache, prefix hit/miss,
+  chunked prefill); abstract and contributions rewritten in plain
+  sentences; notation cleaned (batch size `m`, hit rate `h`, prefill
+  load `ρ = λE[S]` defined after (2), `v_i` used in §3.1, `T_s` for the
+  session lifetime, `ℓ, σ` in the SF proof); the transient-eviction
+  caveat moved before Prop. 1; the block wait named in §2.2 and tied to
+  §4.3; figure legends moved outside the axes (Figure 1, Figure 4);
+  Figure 4 thrashed-seed counts stacked; App. B tables shortened (no
+  overfull boxes); unused E2 macros dropped; Table 11's ρ' and its
+  "ρ' ≥ 1" now computed from the same seed-mean loads; SWE-bench CV²
+  is a macro (`\trCvN`). Main text ends on page 8 with slack.
 - Testbed: MiniMax-M2.7 fp8, DP4+EP on RBLN-CR13 ×4, block 4096,
-  sub-block prefix cache, max-num-seqs 8, buckets 1/4/8, host-tensor
-  mode. How to launch, what failed and why: `docs/testbed.md`.
-- E1 (prefill cost model): 45 probes pinned to one DP rank; a = 0.194 ms
-  per token, b = 6.51 ns per token², c0 = 44 ms, K_c ≈ 30k tokens, MAPE
-  3.4 % (cold→append held-out 3.7 %). Decode iteration time from E2
-  inter-token latency: ω ≈ 0.125 s, no context dependence over 30–90k
-  tokens (β = 0).
-- E2 (open-loop replay of `cc_traj_50k_think30s.jsonl`, 37 sessions × 10
-  turns, sessions pinned to ranks), four runs done 2026-09-26
-  (`paper/exp/tab-e2.tex`, `fig-e2.pdf`; analysis corrected after review
-  round 4: hits classified against the previous prompt + completion,
-  finite-source Z = decode + think):
+  sub-block (512-token) prefix cache, max-num-seqs 8, host-tensor
+  mode; the server has been up since 2026-09-24 (port 8010). How to
+  launch, what failed and why: `docs/testbed.md`.
+- E1 (prefill cost model): a = 0.194 ms/token, b = 6.51 ns/token²,
+  c0 = 44 ms, K_c ≈ 30k, MAPE 3.4 %.
+- E2 (50k-context replays, four runs, `paper/exp/tab-e2.tex`): a
+  resident prefix does not queue (TTFT 2.0–2.6 s at every cap); a miss
+  waits 20–101× longer, for KV blocks (pool 52 × 4096 tokens per rank,
+  occupancy 78–80 % while a request waited, running ≤ 4 per rank); both
+  compute-only predictions are 1–2 orders below the observation; the
+  cap moves the wait to the entry queue (sojourn incl. entry wait
+  2583 → 1344 s, throughput 0.070 → 0.092 turns/s). The PK regime is
+  not reachable at 50k contexts on this pool.
+- **E2b (2026-09-26, new): the PK regime and the first measurement of
+  the price.** Short-context variant of the trace
+  (`scripts/exp/make_short_trace.py`: 9 copies of the 37 sessions,
+  first prompt 2k, appends scaled ×0.44 so the mean is ~940 tokens,
+  contexts 2k → 8.6k, `out ≤ 4` so decode is negligible, per-session
+  nonce, round-robin rank pinning; forced arm: 10 % of follow-ups get
+  a nonce at the head of the prompt from that turn on). Runs in
+  `data/exp/e2b/` (window: 90 s after the first arrival to the last
+  arrival), analysed by `analyze_e2.py --warmup 90` and
+  `analyze_price.py`, into `paper/exp/tab-e2b.tex`, `tab-e2b-price.tex`,
+  `macros-e2b.tex` and Figure 1(d,e):
 
-  | s / cap | hit % | door (s) | sojourn (s) | λ (1/s) | KV % | ρ/rank | TTFT hit / miss (s) | p99 (s) | W_q (s) | PK (s) | finite (s) |
-  |---|---|---|---|---|---|---|---|---|---|---|---|
-  | 20 / ∞ | 46 | 0 | 2583 | 0.070 | 61 | 0.03–0.38 | 2.6 / 263 | 503 | 123 | 3.2 | 14.5 |
-  | 20 / 16 | 59 | 499 | 2139 | 0.075 | 52 | 0.03–0.39 | 2.6 / 168 | 369 | 58 | 2.8 | 6.8 |
-  | 20 / 8 | 83 | 638 | 1344 | 0.092 | 37 | 0.03–0.20 | 2.6 / 52 | 176 | 7.3 | 0.7 | 0.5 |
-  | 10 / 8 | 84 | 772 | 1481 | 0.092 | 38 | 0.03–0.20 | 2.0 / 54 | 175 | 6.8 | 0.7 | 0.5 |
+  | run | ρ/rank (E1) | hit % | CV²_arr | TTFT hit / miss (s) | W_srv (s) | PK (s) | finite (s) |
+  |---|---|---|---|---|---|---|---|
+  | s = 2.5 s baseline | 0.35–0.36 | 98 | 1.0 | 0.57 / 1.25 | 0.11 | 0.16 | 0.13 |
+  | s = 2.5 s, 10 % forced | 0.46–0.49 | 87 | – | 0.9 / 2.5 | 0.4 | 0.54 | 0.29 |
+  | s = 1.5 s baseline (saturated) | 0.67–0.74 | 75 | 1.3 | 5.2 / 12.1 | 5.8 | 1.7 | 2.4 |
+  | s = 3.5 s baseline | 0.24–0.25 | 99 | 1.3 | 0.5 / 0.3 | 0.05 | 0.09 | 0.08 |
+  | s = 5 s baseline | 0.17 | 99 | 1.5 | 0.4 / 0.5 | 0.04 | 0.05 | 0.05 |
 
-  Reading: a resident prefix does not queue (2–2.6 s at every cap); a
-  miss waits 20–101× longer, for KV blocks (pool 52 × 4096 tokens per
-  rank, a 50k miss needs 13 blocks, occupancy 78–80 % while a request
-  waited, running ≤ 4 per rank, server prefill time = 1.07–1.10 E[S]);
-  both compute-only predictions (PK, finite-source) are 1–2 orders below
-  the observation; the cap moves the wait to the door (sojourn incl. door
-  still falls 2583 → 1344 s, throughput 0.070 → 0.092 turns/s). The
-  fourth run shows the capped replica is closed: the PK regime cannot be
-  reached at 50k contexts on this pool. First cap-16 attempt died of a
-  full home disk (`data/exp/e2_partial/`).
-- Review round 4 (2026-09-26, `docs/reviews/2026-09-26-round4.md`,
-  verdict "major revision, for the right reason") and the response
-  (`-round4-response.md`, v0.12): analysis errors fixed, claims
-  softened (Φ_i itself not yet measured), simulator ω = 0.057 s.
-- Simulator recalibrated (2026-09-25): the trace-replay scenarios use
-  the E1/E2 cost model (`CAL_*` in `libqueuingsim/src/validation.rs`,
-  checked against `data/exp/e1/fit.json` by `scripts/check_sim.sh`);
-  rates 0.0005/0.001 sessions/s, pools 4M/2M/1M tokens (corpus-sized).
-  Synthetic checks keep the old constants.
+  Price test (`analyze_price.py`; bracket of `prop:price` from the
+  baseline's λ, ρ, PK wait and each miss's own hit and miss work, over
+  every miss the change caused: the forced ones plus the unforced ones
+  net of the baseline's, since the forced arm holds more KV and LRU
+  evicts the sessions parked at the 30 s gap): at s = 3.5 s, 163 forced
+  turns, no unforced misses, L_P 1.39 → 2.14, ΔL_P = 0.75 inside
+  [0.74, 0.83]; at s = 2.5 s, 243 forced + 52 extra unforced misses
+  (26 → 78), L_P 2.36 → 4.41, ΔL_P = 2.05 inside [1.80, 2.27] (forced
+  only it would be [1.56, 1.88]). Per rank ΔL_P / lo is 0.86–1.22. The
+  head-of-line term is 55–64 % of the price, the queue's part of the
+  rise 1.4–2.9× the added service, 49–58 % of the rise is borne by turns
+  that did not miss; the finite-source wait is 0.7–1.8× the server's
+  queueing time per rank, its price understates the rise 1.9–2.5×.
+  Second seed (nonces and forced draw, `--seed 1`) at 2.5 s
+  (`s25_base_s1`, `s25_m10_s1`): ΔL_P = 2.15 inside [1.89, 2.44], so
+  the rise is inside the bracket in all three tests; per rank
+  ΔL_P / lo 0.86–1.36.
+  This is the measurement of Φ_i the round-4 review asked for.
+  Two failures worth knowing (details in `docs/testbed.md`): with
+  `out ≤ 32` the decode batch cap bound (ITL 0.02 s idle → 0.3 s
+  loaded, running = 8); at 1.5 s spacing the pool's 4096-token blocks
+  filled at ~20 live sessions per rank, LRU evicted the prefixes with
+  the longest gap (every miss followed a 30 s gap) and the replica
+  thrashed (TTFT 0.6 → 3.6 s over the run). On this stack a prefill
+  step is exclusive and has priority over decode, and the DP+EP ranks
+  step in lockstep, so ITL rises 100× under prefill load (0.017 s idle,
+  0.10 s when a peer rank prefills, 0.17–0.25 s when the own rank does;
+  `docs/testbed.md`). The paper's "prefill from the budget decode
+  leaves" is reversed here; §6 says so.
+- Review round 5 (2026-09-26, `docs/reviews/2026-09-26-round5.md`,
+  verdict "minor revision") and the response (`-round5-response.md`,
+  v0.14): every miss the change caused is priced, per-rank rows and the
+  three findings (HOL share, bystanders, finite-source wait closest /
+  price worst) are in §4.3, both wait denominators, the 1.5 s arm's two
+  routes, the derived trace described, E2's three TTFT classes (miss
+  46–107× a hit), W_q = W_q^P + W_q^M, R_j for the move cost, abstract
+  146 words. Round-4 leftovers done in v0.13.
+- Simulator recalibrated on E1/E2 (`CAL_*`), ω = 0.057 s; `make sim`
+  OK (35 checks).
 
 **Next (in order).**
-1. PK regime and the first measurement of Φ_i (review-4 action item 7):
-   a short-context variant of `cc_traj` (≤ 12k tokens), cap 32,
-   round-robin pinning, the trace's real gaps, ρ ≈ 0.5–0.7, and an arm
-   with 5 % forced misses (a nonce prepended to the prompt); record
-   interarrival CV² next to the PK ratio. Server time ≈ 1 h; the
-   replayer needs a `--force-miss` option.
-2. Round-4 minor leftovers: Figure 4 annotation overlap, App. B tables
-   overfull by 30/19 pt, empty pages 16–17 (float placement), unused
-   E2 macros, Table 11 prints ρ'=0.83 beside "ρ' ≥ 1".
-3. Professor review round 5 after item 1 (or after item 2 if no server
-   time): same prompt shape as round 4, focus on §4.3.
-4. E6-lite: replay the same `cc_traj` trace in the calibrated simulator
-   (needs a `TraceCorpus` loader for that JSONL: fields `requests[].in/out/think_time`)
-   and compare with `tab:e2` per rank (Kendall τ over the three caps,
-   TTFT MAPE); table layout in §4.2a.
-5. Remaining review-3 leftovers: Figure 1 annotation check, UNVERIFIED
-   venue notes in `paper/refs.bib`.
+1. **A100 testbed (user decision, 2026-09-26).** Reproduce the cost fit
+   and both replays on GPU vLLM, then run the pending experiments there
+   (offloading test with LMCache, eviction replay with 16-token blocks,
+   placement test, faithfulness scoring). Why GPU: the vllm-rbln
+   scheduler runs prefill exclusively and with priority over decode and
+   the DP+EP ranks step in lockstep, so the §2.2 model ("prefill from
+   the budget decode leaves", Prop. 3 insensitivity) and everything that
+   needs LMCache or a router cannot be tested on RBLN; the RBLN results
+   stay as the second stack. Plan: (a) pick the GPU box and the model
+   (MiniMax-M2.7 needs 8×A100-80GB in bf16, since A100 has no fp8; a
+   30B-class dense model is enough for the mechanism and needs one
+   A100); (b) `scripts/exp/serve_gpu.sh` (draft exists: vLLM with
+   prefix caching, chunked prefill, `--max-num-seqs`, `/metrics`);
+   (c) `probe_prefill.py` for the cost fit → new `fit.json` under
+   `data/exp/gpu/e1`; (d) the replays with `run_e2.sh` (`BASE`, `TRACES`,
+   `OUTBASE=data/exp/gpu/...`, `DP_SIZE=0` on a single replica); the
+   analysis and table scripts are stack-agnostic; add a stack column or
+   a second table. The replayer's `--dp-size` pinning is not needed on
+   one GPU replica.
+2. Review round 6 (same prompt shape; focus: the second seed, the price
+   table, the GPU rows once they exist).
+3. E6-lite: replay `cc_traj` and the short trace in the calibrated
+   simulator (needs a `TraceCorpus` loader for that JSONL) and compare
+   with `tab:e2`/`tab:e2b` per rank (Kendall τ, TTFT MAPE).
+4. Remaining review-3 leftovers: UNVERIFIED venue notes in
+   `paper/refs.bib`.
+5. If more server time: E2b at a 5 % forced share (round-5 item 7b),
+   a short-context baseline with the real gaps (7c; the 30 s cap is the
+   atom LRU evicts), and the real gaps for the 50k trace.
 
-**Do not.** Type measured numbers into the paper; run two replays at
-once on the server; leave caches under `~/.cache` (see CLAUDE.md).
+**Do not.** Attribute a bracket overshoot to the prefill-time
+inflation (scaling every service time by it over-corrects; round 5
+issue 1). Type measured numbers into the paper; run two replays at
+once on the server; leave caches under `~/.cache` (see CLAUDE.md);
+use `pkill -f` with a pattern that appears in your own command line
+(it kills the shell; write the pattern with a bracket, `run_al[l]`).
 
 ## 1. Thesis
 

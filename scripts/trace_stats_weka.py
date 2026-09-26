@@ -191,7 +191,7 @@ def main():
                 f.write(f"{rng} & {cnt:,} & {med:.2f} & {p90:.2f} \\\\\n".replace(',', '\\,'))
             f.write('\\bottomrule\n\\end{tabular}\n')
         with open(os.path.join(a.tex, f'tab-{L}-cv2.tex'), 'w') as f:
-            f.write(hdr + '\\begin{tabular}{@{}rrrrrr@{}}\n\\toprule\n$K_c$ & miss/hit & all hit & $p{=}0.90$ & $p{=}0.96$ & $p{=}0.99$ \\\\\n\\midrule\n')
+            f.write(hdr + '\\begin{tabular}{@{}rrrrrr@{}}\n\\toprule\n$K_c$ & miss/hit & all hit & $h{=}0.90$ & $h{=}0.96$ & $h{=}0.99$ \\\\\n\\midrule\n')
             for kc, r in rows:
                 kcs = '$\\infty$' if kc == '∞' else (kc.replace(',000', 'k'))
                 f.write(f"{kcs} & {r[0]['ratio']:.0f} & {r[0]['cv2_hit']:.0f} & " + ' & '.join(f"{x['cv2']:.0f} ({100 * x['share']:.0f})" for x in r) + ' \\\\\n')

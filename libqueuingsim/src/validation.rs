@@ -2601,8 +2601,7 @@ pub fn trace_price_row(
     delta: f64,
 ) -> TracePriceRow {
     let mut dl = vec![];
-    let (mut lo_sum, mut hi_sum, mut rho_sum, mut live_sum, mut hit_sum) =
-        (0.0, 0.0, 0.0, 0.0, 0.0);
+    let (mut lo_sum, mut rho_sum, mut live_sum, mut hit_sum) = (0.0, 0.0, 0.0, 0.0);
     let (mut rho1_sum, mut live1_sum, mut lp_sum, mut fin_sum) = (0.0, 0.0, 0.0, 0.0);
     for seed in 1..=TRACE_PRICE_SEEDS {
         // The open-pool configuration of `trace_replay_scenario`: at most
@@ -2656,11 +2655,6 @@ pub fn trace_price_row(
         }
         let lo = phi_sum / window; // = λ Σ q_i Φ_i (rate of forced turns × mean Φ)
         let rho1 = rho + ds_sum / window;
-        let hi = if rho1 < 1.0 {
-            (1.0 - rho) / (1.0 - rho1) * lo
-        } else {
-            f64::INFINITY
-        };
         // Finite-source price: M/M/1//N with N = baseline mean live count,
         // Z = corpus mean think time, mean work es → es + added work per turn.
         let n_live = r0.mean_sessions.round().max(1.0) as usize;
@@ -2668,7 +2662,6 @@ pub fn trace_price_row(
         fin_sum += finite_source_price(n_live, corpus.mean_think(), es, es1);
         dl.push(r1.mean_prefill_number - r0.mean_prefill_number);
         lo_sum += lo;
-        hi_sum += hi;
         rho_sum += rho;
         rho1_sum += rho1;
         live_sum += r0.mean_sessions;
@@ -2677,17 +2670,26 @@ pub fn trace_price_row(
         hit_sum += r1.hit_rate;
     }
     let k = TRACE_PRICE_SEEDS as f64;
+    // The upper end of the bracket from the seed-mean loads, so that the
+    // printed ρ' and the printed "ρ' ≥ 1" agree (a seed-wise mean is
+    // infinite as soon as one seed is unstable).
+    let (rho_m, rho1_m) = (rho_sum / k, rho1_sum / k);
+    let hi = if rho1_m < 1.0 {
+        (1.0 - rho_m) / (1.0 - rho1_m) * lo_sum / k
+    } else {
+        f64::INFINITY
+    };
     TracePriceRow {
         rate,
         delta,
-        rho: rho_sum / k,
+        rho: rho_m,
         live: live_sum / k,
-        rho1: rho1_sum / k,
+        rho1: rho1_m,
         live1: live1_sum / k,
         l_p: lp_sum / k,
         dl_p: replications(&dl),
         lo: lo_sum / k,
-        hi: hi_sum / k,
+        hi,
         finite: fin_sum / k,
         hit_rate: hit_sum / k,
     }

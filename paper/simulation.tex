@@ -9,46 +9,43 @@
 % ===========================================================================
 % (sim/macros is \input in the preamble of main.tex)
 
-\subsection{Simulation on Replayed Production Sessions}\label{sec:sim}
+\subsection{Simulation: Replayed Production Sessions}\label{sec:sim}
 
 The simulator replays the production sessions of \S\ref{sec:exp-traces}
 against a simulated replica: decode is a bandwidth PS with the
 demand~\eqref{eq:decode}, prefill a FIFO server on the compute the
 batch leaves, resident KV a prefix that a turn re-prefills with the
-work~\eqref{eq:prefill} once evicted. The workload side is measured, and the cost model is the one fitted on
-the NPU testbed in \S\ref{sec:exp-testbed}: the prefill terms of E1
-and a decode iteration of $\omega=\simCalOmega$\,s, the mean
-inter-token latency of the E2 replays, which did not vary with the
-context ($\beta=0$); so the replica is simulated at the measured
-costs, but no number here is a measurement of a serving system.
+work~\eqref{eq:prefill} once evicted. The workload side is measured and the cost model is the testbed's
+(\S\ref{sec:exp-testbed}): the prefill terms of the cost fit and a
+decode iteration of $\omega=\simCalOmega$\,s, the inter-token latency
+of the lightest long-context replay, which did not vary with the
+context ($\beta=0$);
+no number here is a measurement of a serving system.
 Before the replay, every proposition is checked as a seeded test under
 its own assumptions and with one assumption dropped
 (Appendix~\ref{app:sim}; \simChecksPassed{} of \simChecks{} checks
-pass): the closed forms are reproduced within 2\,\% or their
-confidence intervals; forced misses land at the upper end of the
-bracket of Proposition~\ref{prop:price} and raise the prefill queue
-while leaving the decode batch unchanged; the priced eviction orders
-beat shortest-first only within seed noise while the admission cap
-decides whether the replica thrashes; and the load at which moving
-beats affinity follows $\rho^*$ of~\eqref{eq:rhostar}.
+pass). Three of those checks matter later: forced misses land at the
+upper end of the bracket of Proposition~\ref{prop:price} and leave the
+decode batch unchanged; the priced eviction orders beat shortest-first
+only within seed noise, while the admission cap decides whether the
+replica thrashes; and the load at which moving beats affinity follows
+$\rho^*$ of~\eqref{eq:rhostar}.
 
 \paragraph{Replayed production sessions.} Table~\ref{tab:sim-trace}
 (Appendix~\ref{app:sim}) plays each real session's appends, outputs, think times and length on
 the replica; a gap above ten minutes starts a new session whose first
-prompt is the accumulated context (splitting at thirty minutes changes
-$W_q$, the PK wait and TTFT within seed noise,
-Table~\ref{tab:sim-trace-split}). With no eviction every follow-up turn
+prompt is the accumulated context (Table~\ref{tab:sim-trace-split}
+varies the threshold). With no eviction every follow-up turn
 hits and its prefill work still has
 $\mathrm{CV}^2=\simTraceOpenCvMin$--$\simTraceOpenCvMax$ from the
 appends alone, while the mean TTFT of
 \simTraceOpenTtftMin--\simTraceOpenTtftMax\,s is set by the cold first
-prompts. Once the pool is finite the cap on live sessions binds, the
-replica is a closed system of $N$ sessions and the entry queue grows
-for the whole horizon; at the tight cap the hit rate stays at or above
-\simTraceTightHitMin{} and the hit/miss mixture supplies
-\simTraceTightMixMin--\simTraceTightMixMax\,\% of the variance of
-follow-up prefill work, at the loose cap the replica thrashes (hit rate
-at most \simTraceLooseHitMax, mean TTFT above
+prompts. Once the pool is finite the cap on live sessions binds and
+the replica is a closed system of $N$ sessions; at the smaller $N$ of
+each pool the hit rate stays at or above \simTraceTightHitMin{} and the
+mixture supplies \simTraceTightMixMin--\simTraceTightMixMax\,\% of the
+variance of follow-up prefill work, at the larger $N$ the replica
+thrashes (hit rate at most \simTraceLooseHitMax, mean TTFT above
 \simTraceLooseTtftMin\,s). The PK wait from the measured $\lambda$,
 $\E[S]$ and $\E[S^2]$ is above the observed wait in every cell, by
 \simTracePkRatioMin{} to \simTracePkRatioMax{} times, as
@@ -57,11 +54,12 @@ the price itself, Table~\ref{tab:sim-trace-price} forces a share
 $\delta$ of resident follow-up turns to miss and compares the rise of
 the number in the prefill stage with the bracket of
 Proposition~\ref{prop:price} and with the finite-source price of
-Proposition~\ref{prop:finite}: with \simPriceLiveMin{} to
+Proposition~\ref{prop:finite}. With \simPriceLiveMin{} to
 \simPriceLiveMax{} sessions live, the open bracket's lower end
-overstates the rise by \simPriceOverMin{} to \simPriceOverMax{} times,
-at the higher rate and $\delta\ge3\,\%$ the added work puts the open
-queue past its pole while the capped replica stays finite, the Markovian finite-source price, which
-ignores the second moment of the work, understates the rise by
-\simPriceFiniteRatioMin{} to \simPriceFiniteRatioMax{} times, and the
-cap $N-L_P$ holds in \simPriceCapHolds{} cell.
+overstates the rise by \simPriceOverMin{} to \simPriceOverMax{} times.
+At the higher rate and $\delta=10\,\%$ the added work puts the open
+queue past its pole while the capped replica stays finite. The
+Markovian finite-source price, which ignores the second moment of the
+work, understates the rise by \simPriceFiniteRatioMin{} to
+\simPriceFiniteRatioMax{} times. The cap $N-L_P$ holds in
+\simPriceCapHolds{} cell.
