@@ -59,6 +59,6 @@ repository (`.github/actions/seq-access`). To create it:
 ```bash
 ssh-keygen -t ed25519 -N "" -C "serving-queue-theory CI (read seQ)" -f /tmp/seq_deploy
 gh repo deploy-key add /tmp/seq_deploy.pub -R vrvrv/seQ -t "serving-queue-theory CI"
-GH_TOKEN=$(gh auth token -u rebel-jinhwan) gh secret set SEQ_DEPLOY_KEY -R rebel-jinhwan/serving-queue-theory < /tmp/seq_deploy
+gh secret set SEQ_DEPLOY_KEY -R vrvrv/serving-queue-theory < /tmp/seq_deploy
 rm /tmp/seq_deploy /tmp/seq_deploy.pub
 ```
