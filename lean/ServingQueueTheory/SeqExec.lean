@@ -6,7 +6,10 @@ semantics of one memory pool (`Step`, with the memory invariant). This
 module gives an *executable* semantics of the fragment that production
 schedulers are written in: values are natural numbers (tokens), time is
 the clock of a `step` engine (one iteration per tick), and the deployment
-is a list of pools plus the engine (stage 0) and a delay stage (stage 1).
+is a list of pools plus the engine (stage 0); every other stage is a
+delay. The workload is data (`Workload`): each session's preset
+attributes and, optionally, its turns, which a `turn` statement reads in
+order (as seQ reads explicit sessions of its IR, or an ordered trace).
 
 * **Pools** allocate in blocks, keep released prefixes as cache entries
   (per session, tail blocks evicted first, least recently released entry
@@ -28,7 +31,8 @@ v1 scheduler step for step (seQ `docs/language.md` §7). The vLLM
 scheduler scenarios of seQ `tools/oracle/` are then theorems about seQ
 programs (`SeqOracle.lean`), checked by evaluation in the kernel.
 
-Key definitions: `Exec.Deployment`, `Exec.Machine`, `Exec.tick`, `Exec.run`.
+Key definitions: `Exec.Deployment`, `Exec.Workload`, `Exec.Machine`,
+`Exec.tick`, `Exec.run`, `Exec.runW`.
 Key theorems: `Exec.makeRoom_used` (eviction never touches the allocation),
 `Exec.makeRoom_room` (the eviction loop makes the room it is asked for, or
 empties the cache).
@@ -103,6 +107,19 @@ structure Sess where
   stack : List Frame
   status : Status
   admSeq : ℕ
+  /-- the next of the session's turns (`Workload.turns`) -/
+  turnIx : ℕ := 0
+
+/-- The workload instance: per session, preset attributes (slot, value) and
+its turns, each a list of (slot, value). A `turn` statement counts turns in
+`turnSlot`, sets the next turn's values, and sets `moreSlot` to 1 while
+another turn remains and to 0 after the last (seQ `src/sim.rs`, `do_turn`).
+A session without turns leaves `moreSlot` alone. -/
+structure Workload where
+  init : List (List (ℕ × ℕ))
+  turns : List (List (List (ℕ × ℕ))) := []
+  turnSlot : Option ℕ := none
+  moreSlot : ℕ := 0
 
 structure Job where
   owner : ℕ
@@ -117,6 +134,7 @@ structure PoolSt where
   queue : List ℕ
 
 structure Machine where
+  wl : Workload := ⟨[], [], none, 0⟩
   now : ℕ
   sess : List Sess
   pools : List PoolSt
@@ -141,7 +159,7 @@ def roundDown (b u : ℕ) : ℕ := if b = 0 then u else u / b * b
 def pdef (p : ℕ) : PoolDef := D.pools.getD p ⟨0, 1, false⟩
 def pst (m : Machine) (p : ℕ) : PoolSt := m.pools.getD p ⟨0, [], [], []⟩
 def setPool (m : Machine) (p : ℕ) (s : PoolSt) : Machine := { m with pools := m.pools.set p s }
-def getS (m : Machine) (i : ℕ) : Sess := m.sess.getD i ⟨i, fun _ => 0, 0, .stop, [], .ended, 0⟩
+def getS (m : Machine) (i : ℕ) : Sess := m.sess.getD i ⟨i, fun _ => 0, 0, .stop, [], .ended, 0, 0⟩
 def setS (m : Machine) (i : ℕ) (s : Sess) : Machine := { m with sess := m.sess.set i s }
 
 def cachedTotal (s : PoolSt) : ℕ := (s.entries.map Entry.size).sum
@@ -383,7 +401,19 @@ def exec : ℕ → Machine → ℕ → Machine
         exec f (setS m i { getS m i with prog := k }) i
       | .loop body :: st => exec f (setS m i { s with prog := body, stack := List.cons (Frame.loop body) st }) i
     | .stop => endSession D m i
-    | .turn k => exec f (setS m i { s with prog := k }) i
+    | .turn k =>
+      let a := match m.wl.turnSlot with
+        | some t => Function.update s.attr t (s.attr t + 1)
+        | none => s.attr
+      let ts := m.wl.turns.getD s.serial []
+      if ts = [] then exec f (setS m i { s with attr := a, prog := k }) i
+      else match ts[s.turnIx]? with
+        | some asg =>
+          let a := asg.foldl (fun a p => Function.update a p.1 p.2) a
+          let a := Function.update a m.wl.moreSlot (if s.turnIx + 1 < ts.length then 1 else 0)
+          exec f (setS m i { s with attr := a, prog := k, turnIx := s.turnIx + 1 }) i
+        | none =>
+          exec f (setS m i { s with attr := Function.update a m.wl.moreSlot 0, prog := k }) i
     | .set slot e k =>
       let v := evalE m i e
       exec f (setS m i { s with attr := Function.update s.attr slot v, prog := k }) i
@@ -397,7 +427,7 @@ def exec : ℕ → Machine → ℕ → Machine
     | .run st mode w g k =>
       let work := evalE m i w
       if work = 0 then exec f (setS m i { s with prog := k }) i
-      else if st = 1 then
+      else if st ≠ 0 then
         { setS m i { s with prog := k, status := .delay (m.now + work) m.nextDelay } with
           nextDelay := m.nextDelay + 1 }
       else
@@ -563,10 +593,11 @@ def tick (m : Machine) : Machine :=
   startIteration D (settle D m)
 
 /-- `n` sessions with attributes `init i`, all running `prog`, from time 0. -/
-def start (n : ℕ) (init : ℕ → ℕ → ℕ) (prog : Prog) : Machine :=
+def start (n : ℕ) (init : ℕ → ℕ → ℕ) (prog : Prog) (wl : Workload := ⟨[], [], none, 0⟩) : Machine :=
   let m : Machine := {
+    wl := wl
     now := 0
-    sess := (List.range n).map fun i => ⟨i, init i, 0, prog, [], .ready, 0⟩
+    sess := (List.range n).map fun i => ⟨i, init i, 0, prog, [], .ready, 0, 0⟩
     pools := D.pools.map fun _ => ⟨0, [], [], []⟩
     jobs := [], iter := [], obs := [], preempts := 0
     nextAdm := 0, nextRel := 0, nextDead := 0, nextDelay := 0
@@ -575,6 +606,14 @@ def start (n : ℕ) (init : ℕ → ℕ → ℕ) (prog : Prog) : Machine :=
 
 def run (ticks n : ℕ) (init : ℕ → ℕ → ℕ) (prog : Prog) : Machine :=
   (List.range ticks).foldl (fun m _ => tick D m) (start D n init prog)
+
+/-- A session's preset value of `slot`. -/
+def Workload.attr (w : Workload) (i slot : ℕ) : ℕ :=
+  (((w.init.getD i []).find? (·.1 = slot)).map (·.2)).getD 0
+
+/-- Run a workload instance: one session per `init` entry. -/
+def runW (ticks : ℕ) (w : Workload) (prog : Prog) : Machine :=
+  (List.range ticks).foldl (fun m _ => tick D m) (start D w.init.length w.attr prog w)
 
 /-- The values of observation `name`, as (serial, value), in serial order. -/
 def observed (m : Machine) (name : ℕ) : List (ℕ × ℕ) :=

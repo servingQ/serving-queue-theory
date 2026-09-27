@@ -30,13 +30,15 @@ current at the end of every work block.
   `tools/oracle/*.ir.json`, the seQ test runs those files, and
   `SeqOracle.lean`'s program, deployments and request tables are
   translated from them (same six theorems). Experiment scripts pass traces
-  with `--trace` and record `program.ir.json`. Next: trace-driven
-  attributes in the Lean fragment, so `vllmTurn` is generated from
-  `vllm_replay.seq`'s IR too.
+  with `--trace` and record `program.ir.json`. **Done (dev3):** sessions
+  carry their turns in the IR (`--inline-trace`), the Lean executable
+  semantics reads them (`Exec.Workload`, delays on every stage but the
+  engine), and `vllmTurn` with the cache theorem is generated from
+  `cache_trace.ir.json`; no oracle program is hand-written any more.
 - **The language is seQ, a separate project (2026-09-27).** The serving-
   deployment language, its interpreter and CLI
   (`seq-lang`), the example programs and the vLLM oracle with its test
-  vectors are https://github.com/vrvrv/seQ (release v0.1.0-dev2); this
+  vectors are https://github.com/vrvrv/seQ (release v0.1.0-dev3); this
   repository uses the pinned release as a Cargo git dependency and through
   `.seq/` (`docs/seq.md`). The Lean model of the language stays here
   (`lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean`, the oracle

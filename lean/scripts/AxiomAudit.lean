@@ -134,6 +134,7 @@ open ServingQueueTheory
 #print axioms SeqLang.Oracle.vllm_mixed
 #print axioms SeqLang.Oracle.vllm_preempt
 #print axioms SeqLang.Oracle.vllm_seqcap
+#print axioms SeqLang.Oracle.vllmTurn_wf
 #print axioms SeqLang.Oracle.vllm_cache_trace
 -- serving order of a step engine (admission order is decode-first without a chunk cap)
 #print axioms SeqLang.Serve.serve_preserves_shape
