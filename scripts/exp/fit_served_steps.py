@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Fit ROUTE's step-cost expression to a *served* vLLM engine, from the step
+"""Fit seQ's step-cost expression to a *served* vLLM engine, from the step
 trace written by scripts/exp/lambda/steptrace/sitecustomize.py
-(data/exp/gpu_route/trace/<run>.steps.<pid>: one JSON line per scheduler step
+(data/exp/gpu_seq/trace/<run>.steps.<pid>: one JSON line per scheduler step
 with t_sched, t_done and per request [tokens, computed before, prompt, held]).
 
 The period of step i is t_sched(i+1) - t_sched(i) while the engine stays
 busy (gaps above `--idle` seconds are idle time and dropped). Under
 asynchronous scheduling the period, not t_done - t_sched, is what a request
-waits per step. Fitted form (the one of vllm_replay.route):
+waits per step. Fitted form (the one of vllm_replay.seq):
     period = c + d ndec + e kvb + a npre + b attn
 Writes the coefficients and the MAPE by step kind as JSON."""
 import glob

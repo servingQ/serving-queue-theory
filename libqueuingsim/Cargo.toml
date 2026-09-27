@@ -8,9 +8,10 @@ publish = false
 
 [dependencies]
 rand = "0.9"
-# ROUTE, the serving-deployment language: the validation checks run its
-# programs next to the hand-written models (docs/route-language.md).
-route = { path = "../route" }
+# seQ, the serving-deployment language (a pinned release; scripts/fetch_seq.sh
+# checks out the same tag): the validation checks run its programs next to
+# the hand-written models.
+seq = { package = "seq-lang", git = "https://github.com/vrvrv/seQ", tag = "v0.1.0-dev1" }
 
 # Statistical tests simulate millions of customers; run them optimised.
 [profile.test]

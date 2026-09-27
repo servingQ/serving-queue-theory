@@ -1,0 +1,48 @@
+//! The same scenarios in seQ and in `libqueuingsim`'s hand-written
+//! models. The two use different random streams, so they are compared
+//! statistically over seeds.
+
+use libqueuingsim::models::agentic::{self, AgenticConfig};
+use seq::run_program;
+
+fn mean(xs: &[f64]) -> f64 {
+    xs.iter().sum::<f64>() / xs.len() as f64
+}
+
+#[test]
+fn agentic_replica_matches_hand_written_model() {
+    for (programs, kv) in [(16usize, 1.0e9), (32, 3.0e5), (48, 3.0e5)] {
+        let mut ours = (vec![], vec![], vec![]);
+        let mut theirs = (vec![], vec![], vec![]);
+        for seed in 1..=4u64 {
+            let mut cfg = AgenticConfig::example(programs, kv);
+            cfg.seed = seed;
+            if kv > 1e8 {
+                cfg.max_context = 2.0e5;
+            }
+            let r = agentic::simulate(&cfg);
+            theirs.0.push(r.throughput);
+            theirs.1.push(r.hit_rate);
+            theirs.2.push(r.response.mean());
+            let sets = [
+                format!("N={programs}"),
+                format!("C={kv}"),
+                format!("maxctx={}", cfg.max_context),
+            ];
+            let sets: Vec<&str> = sets.iter().map(String::as_str).collect();
+            let o = run_program("agentic", &sets, Some(seed), None);
+            ours.0.push(o.stage("svc").unwrap().throughput);
+            ours.1.push(o.observe("hit").unwrap().mean);
+            ours.2.push(o.observe("response").unwrap().mean);
+        }
+        let (x0, x1) = (mean(&ours.0), mean(&theirs.0));
+        let (h0, h1) = (mean(&ours.1), mean(&theirs.1));
+        let (r0, r1) = (mean(&ours.2), mean(&theirs.2));
+        eprintln!(
+            "N={programs} C={kv}: throughput {x0:.4} vs {x1:.4}, hit {h0:.3} vs {h1:.3}, response {r0:.3} vs {r1:.3}"
+        );
+        assert!((x0 - x1).abs() / x1 < 0.05, "throughput {x0} vs {x1}");
+        assert!((h0 - h1).abs() < 0.05, "hit rate {h0} vs {h1}");
+        assert!((r0 - r1).abs() / r1 < 0.10, "response {r0} vs {r1}");
+    }
+}

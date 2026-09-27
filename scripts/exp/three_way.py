@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Three-way comparison of a GPU replay: the measured run, the real vLLM
-scheduler under ROUTE's time model (`route/tools/vllm_replay_oracle.py`),
-and the ROUTE program (`data/exp/route/<run>/*.csv` from route_vs_vllm.py).
+scheduler under seQ's time model (`.seq/src/tools/vllm_replay_oracle.py`),
+and the seQ program (`data/exp/seq/<run>/*.csv` from seq_vs_vllm.py).
 
     python3 scripts/exp/three_way.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b s35_base ...
 
@@ -69,7 +69,7 @@ def load_oracle(path):
     return rows
 
 
-def load_route(d):
+def load_seq(d):
     def read(name):
         out = {}
         for line in open(os.path.join(d, f"{name}.csv")).read().splitlines()[1:]:
@@ -91,8 +91,8 @@ def load_route(d):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpu", required=True)
-    ap.add_argument("--oracle", default="data/exp/route/oracle")
-    ap.add_argument("--route", default="data/exp/route")
+    ap.add_argument("--oracle", default="data/exp/seq/oracle")
+    ap.add_argument("--seq", default="data/exp/seq")
     ap.add_argument("--out")
     ap.add_argument("runs", nargs="+")
     a = ap.parse_args()
@@ -102,7 +102,7 @@ def main():
         hi = max(r["sent"] for r in g.values())
         for name, rows in [("measured", g),
                            ("vllm-sim", load_oracle(os.path.join(a.oracle, run + ".csv"))),
-                           ("route", load_route(os.path.join(a.route, run)))]:
+                           ("seq", load_seq(os.path.join(a.seq, run)))]:
             m = summarise(rows, 90.0, hi)
             lines.append(f"{run:9s} {name:8s} {m['n']:10d} {m['hit']:9.3f} {m['lost']:12d} {m['cached']:12.0f} {m['ttft']:10.3f}")
     txt = "\n".join(lines)

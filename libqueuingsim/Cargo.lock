@@ -31,7 +31,7 @@ name = "libqueuingsim"
 version = "0.1.0"
 dependencies = [
  "rand",
- "route",
+ "seq-lang",
 ]
 
 [[package]]
@@ -97,8 +97,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "route"
-version = "0.1.0"
+name = "seq-lang"
+version = "0.1.0-dev1"
+source = "git+https://github.com/vrvrv/seQ?tag=v0.1.0-dev1#8775bbd97ce1484f9d3a6c30cb21123a2ef9e06a"
 dependencies = [
  "rand",
 ]

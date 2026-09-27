@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Fit the step-cost expression of route/programs/vllm_replay.route to the
-A100 step sweeps (data/exp/gpu_route/steps.jsonl, scripts/exp/lambda/route_cases.py).
+"""Fit the step-cost expression of .seq/src/programs/vllm_replay.seq to the
+A100 step sweeps (data/exp/gpu_seq/steps.jsonl, scripts/exp/lambda/seq_cases.py).
 
-Two forms, both in ROUTE's step quantities (ntok, npre, ndec, kvb = KV held by
+Two forms, both in seQ's step quantities (ntok, npre, ndec, kvb = KV held by
 the scheduled decoders, attn = sum over prefill chunks n (K + n/2)):
   sum: t = c + d ndec + e kvb + a npre + b attn
   max: t = c + max(w + e kvb + d ndec, a ntok + b attn)
@@ -12,7 +12,7 @@ import sys
 
 import numpy as np
 
-rows = [json.loads(l) for l in open(sys.argv[1] if len(sys.argv) > 1 else "data/exp/gpu_route/steps.jsonl")]
+rows = [json.loads(l) for l in open(sys.argv[1] if len(sys.argv) > 1 else "data/exp/gpu_seq/steps.jsonl")]
 rows = [r for r in rows if r["batch"][0] > 0 and r["step"] > 2]
 t = np.array([r["t_ms"] / 1000 for r in rows])
 ndec = np.array([r["ndec"] for r in rows], float)
@@ -34,4 +34,4 @@ def mape(p):
 
 out = {"sum": dict(zip(["c", "d", "e", "a", "b"], map(float, coef))), "sum_mape": mape(pred), "n": len(rows)}
 print(json.dumps(out, indent=1))
-json.dump(out, open("data/exp/gpu_route/fit.json", "w"), indent=1)
+json.dump(out, open("data/exp/gpu_seq/fit.json", "w"), indent=1)

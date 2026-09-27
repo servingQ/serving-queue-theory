@@ -30,3 +30,6 @@ runtime.log
 
 # Python bytecode from scripts/exp imports
 __pycache__/
+
+# seQ release checked out by scripts/fetch_seq.sh
+/.seq/

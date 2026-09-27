@@ -114,31 +114,33 @@ open ServingQueueTheory
 #print axioms pkFeedback_collapse
 #print axioms feedback_map_monotone_two_channel
 #print axioms pkFeedback_absorbing
--- ROUTE (docs/route-language.md): the deployment language and its pool semantics
-#print axioms RouteLang.Step.invariant
-#print axioms RouteLang.Step.nonneg
-#print axioms RouteLang.total_evictUntil_le
-#print axioms RouteLang.sharedRate_sum
-#print axioms RouteLang.serialRate_sum
-#print axioms RouteLang.disaggregatedReplica_wf
-#print axioms RouteLang.colocatedReplica_wf
-#print axioms RouteLang.colocatedReplica'_eq
-#print axioms RouteLang.admit_guard_units_only
+-- seQ, the serving-deployment language (Seq*.lean; docs/seq.md)
+-- syntax and pool semantics (Seq.lean)
+#print axioms SeqLang.Step.invariant
+#print axioms SeqLang.Step.nonneg
+#print axioms SeqLang.total_evictUntil_le
+#print axioms SeqLang.sharedRate_sum
+#print axioms SeqLang.serialRate_sum
+#print axioms SeqLang.admit_guard_units_only
 
--- ROUTE executable semantics: the vLLM scheduler scenarios (RouteOracle.lean, generated)
-#print axioms RouteLang.Exec.makeRoom_used
-#print axioms RouteLang.Exec.makeRoom_room
-#print axioms RouteLang.Exec.evictOne_lt
-#print axioms RouteLang.Oracle.vllmRequest_wf
-#print axioms RouteLang.Oracle.vllm_chunked
-#print axioms RouteLang.Oracle.vllm_hol
-#print axioms RouteLang.Oracle.vllm_longchunk
-#print axioms RouteLang.Oracle.vllm_mixed
-#print axioms RouteLang.Oracle.vllm_preempt
-#print axioms RouteLang.Oracle.vllm_seqcap
-#print axioms RouteLang.Oracle.vllm_cache_trace
--- ROUTE: serving order of a step engine (admission order is decode-first without a chunk cap)
-#print axioms RouteLang.Serve.serve_preserves_shape
-#print axioms RouteLang.Serve.serve_eq_decode_first
-#print axioms RouteLang.Serve.shape_append_prefill
-#print axioms RouteLang.Serve.chunk_cap_breaks_shape
+-- executable semantics and the vLLM scheduler scenarios (SeqOracle.lean, generated)
+#print axioms SeqLang.Exec.makeRoom_used
+#print axioms SeqLang.Exec.makeRoom_room
+#print axioms SeqLang.Exec.evictOne_lt
+#print axioms SeqLang.Oracle.vllmRequest_wf
+#print axioms SeqLang.Oracle.vllm_chunked
+#print axioms SeqLang.Oracle.vllm_hol
+#print axioms SeqLang.Oracle.vllm_longchunk
+#print axioms SeqLang.Oracle.vllm_mixed
+#print axioms SeqLang.Oracle.vllm_preempt
+#print axioms SeqLang.Oracle.vllm_seqcap
+#print axioms SeqLang.Oracle.vllm_cache_trace
+-- serving order of a step engine (admission order is decode-first without a chunk cap)
+#print axioms SeqLang.Serve.serve_preserves_shape
+#print axioms SeqLang.Serve.serve_eq_decode_first
+#print axioms SeqLang.Serve.shape_append_prefill
+#print axioms SeqLang.Serve.chunk_cap_breaks_shape
+-- the paper's replicas as seQ programs (Deployments.lean)
+#print axioms Deployments.disaggregatedReplica_wf
+#print axioms Deployments.colocatedReplica_wf
+#print axioms Deployments.colocatedReplica'_eq

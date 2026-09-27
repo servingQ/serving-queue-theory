@@ -19,7 +19,8 @@ import ServingQueueTheory.BatchServer
 import ServingQueueTheory.Footprint
 import ServingQueueTheory.FiniteSource
 import ServingQueueTheory.MissFeedback
-import ServingQueueTheory.Route
-import ServingQueueTheory.RouteExec
-import ServingQueueTheory.RouteOracle
-import ServingQueueTheory.RouteServe
+import ServingQueueTheory.Seq
+import ServingQueueTheory.SeqExec
+import ServingQueueTheory.SeqOracle
+import ServingQueueTheory.SeqServe
+import ServingQueueTheory.Deployments

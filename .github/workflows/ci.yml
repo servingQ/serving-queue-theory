@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/seq-access
+        with:
+          deploy-key: ${{ secrets.SEQ_DEPLOY_KEY }}
       - name: Install elan
         run: |
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
@@ -68,6 +71,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/seq-access
+        with:
+          deploy-key: ${{ secrets.SEQ_DEPLOY_KEY }}
       - name: Install pinned Rust toolchain (libqueuingsim/rust-toolchain.toml)
         working-directory: libqueuingsim
         run: rustup toolchain install && cargo --version
@@ -87,16 +93,3 @@ jobs:
           name: sim-validation-report
           path: libqueuingsim/validation-report.md
 
-  route:
-    name: ROUTE language (route)
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pinned Rust toolchain (route/rust-toolchain.toml)
-        working-directory: route
-        run: rustup toolchain install && cargo --version
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: route
-      - name: fmt, clippy, tests (pool semantics, vLLM oracle scenarios), programs link
-        run: scripts/check_route.sh

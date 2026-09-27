@@ -7,11 +7,11 @@ set -u
 cd "$(dirname "$0")/../../.."
 PORT=8020; BASE=http://127.0.0.1:$PORT; MODEL=Qwen/Qwen3-8B
 export BASE MODEL DP_SIZE=0 REPLAYER=replayer/replay_text_trace.py
-T=data/exp/traces; S=data/exp/gpu/route_trace; mkdir -p $S
+T=data/exp/traces; S=data/exp/gpu/seq_trace; mkdir -p $S
 log() { echo "[steptrace] $(date '+%F %T') $*"; }
-# let the running s30_base finish, then stop run_route.sh (s35_m10 exists from 2026-09-26)
+# let the running s30_base finish, then stop run_seq.sh (s35_m10 exists from 2026-09-26)
 while pgrep -f "[r]un_route.sh" >/dev/null; do
-  if grep -q "done s30_base" data/exp/gpu/route/run_route.log; then pkill -f "[r]un_route.sh"; pkill -f "[r]eplay_text_trace.py"; pkill -f "[r]un_e2.sh"; fi
+  if grep -q "done s30_base" data/exp/gpu/seq/run_seq.log; then pkill -f "[r]un_route.sh"; pkill -f "[r]eplay_text_trace.py"; pkill -f "[r]un_e2.sh"; fi
   sleep 20
 done
 for r in "s30_base 3.0 0" "s30_pin 3.0 1" "s25_pin 2.5 1"; do

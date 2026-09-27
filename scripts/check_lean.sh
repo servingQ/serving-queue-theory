@@ -12,6 +12,9 @@ if grep -rn --include='*.lean' -E '\bsorry\b' ServingQueueTheory ServingQueueThe
   echo "FAIL: literal 'sorry' found in sources"; exit 1
 fi
 
+echo "== seQ oracle theorems current =="
+( cd .. && scripts/fetch_seq.sh --src && python3 scripts/gen_seq_oracle.py --check )
+
 echo "== axiom audit =="
 lake env lean scripts/AxiomAudit.lean 2>&1 | perl -0pe 's/\n[ \t]+/ /g' | tee axioms.log
 # Every line looks like: 'ServingQueueTheory.foo' depends on axioms: [propext, Classical.choice, Quot.sound]

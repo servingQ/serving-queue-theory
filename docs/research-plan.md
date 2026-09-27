@@ -22,19 +22,29 @@ fresh session can continue without the chat history. Keep this section
 current at the end of every work block.
 
 **Done.**
-- **ROUTE, second pass (2026-09-27).** The vLLM program now reproduces
+- **The language is seQ, a separate project (2026-09-27).** The serving-
+  deployment language, its interpreter and CLI
+  (`seq-lang`), the example programs and the vLLM oracle with its test
+  vectors are https://github.com/vrvrv/seQ (release v0.1.0-dev1); this
+  repository uses the pinned release as a Cargo git dependency and through
+  `.seq/` (`docs/seq.md`). The Lean model of the language stays here
+  (`lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean`, the oracle
+  theorems generated from seQ's vectors by `scripts/gen_seq_oracle.py`),
+  as do the paper's replica programs (`Deployments.lean`). CI reads seQ
+  with a read-only deploy key (secret `SEQ_DEPLOY_KEY`, `docs/seq.md`).
+- **seQ, second pass (2026-09-27).** The vLLM program now reproduces
   the real scheduler request for request on the full short-context trace
   (3 321/3 321; six semantic gaps found by differential replay and fixed in
   the language: admission served by the engine, whole-prompt gate, partial
   reuse with dead blocks, `end` keeps the cache, admission order, release
-  order); the six scenarios are Lean theorems (`RouteOracle.lean`,
+  order); the six scenarios are Lean theorems (`SeqOracle.lean`,
   `decide +kernel`) and hold on the real A100 engine; the paper's "prefill
   from what decode leaves" equals vLLM's admission order unless a
-  per-request chunk cap is set (`RouteServe.lean`, cited in §2.2). The A100
+  per-request chunk cap is set (`SeqServe.lean`, cited in §2.2). The A100
   miss under-prediction (117 vs 426) was these semantic gaps; with them fixed
   the model's remaining error is the time model (two overhead constants),
-  `docs/route-language.md` §8. Review round with ROUTE:
-  `docs/reviews/2026-09-27-route-round1*.md`.
+  `seQ `docs/language.md`` §8. Review round with seQ:
+  `docs/reviews/2026-09-27-seq-round1*.md`.
   **Hypothesis H-pin (new):** pinning a queued turn's cached prefix (the
   vLLM rule leaves it evictable until the turn is scheduled) removes the
   wait channel of Lecture 5 and moves the cliff; in simulation of the A100
@@ -44,38 +54,38 @@ current at the end of every work block.
   (`scripts/exp/lambda/steptrace/pinpatch.py`). **Result (A100, served,
   2026-09-27, one run per point):** at 2.5 s the vLLM rule collapses (TTFT
   34.6 s, full-hit 0.22) and the pinned engine does not (0.88 s, 0.78;
-  ROUTE pre-registered 0.89 s, 0.75); at 3.0 s both are off the cliff
-  (0.44 → 0.41 s). Data `data/exp/gpu_route/trace/`, table in
-  `docs/route-language.md` §8. The Lambda instance was terminated after
+  seQ pre-registered 0.89 s, 0.75); at 3.0 s both are off the cliff
+  (0.44 → 0.41 s). Data `data/exp/gpu_seq/trace/`, table in
+  `seQ `docs/language.md`` §8. The Lambda instance was terminated after
   the runs. Candidate for the paper's §3.3 admission step (needs a same-day
   unpinned 2.5 s rerun with the tracer and seeds before it goes in).
-  **Next for ROUTE** (in order): (1) port the paper's §4.2 replay
-  (libqueuingsim `TwoStage`, calibrated on RBLN) to a ROUTE program with the
+  **Next for seQ** (in order): (1) port the paper's §4.2 replay
+  (libqueuingsim `TwoStage`, calibrated on RBLN) to a seQ program with the
   engine rules that the vLLM diff established (engine-served admission,
   whole-prompt gate, dead blocks, `end` keeps the cache) and check whether
   the §4.2 conclusions move; (2) identify the served overhead constants
   from a served step trace with synchronous against asynchronous
   scheduling at light load; (3) Kani harnesses, then Aeneas, on a pure pool
-  core of `route/src/sim.rs` against `RouteLang.Step` and
+  core of `seQ src/sim.rs` against `SeqLang.Step` and
   `Exec.makeRoom_room`.
-- **ROUTE (2026-09-27): the serving-deployment language of Lecture 1
+- **seQ (2026-09-27): the serving-deployment language of Lecture 1
   rebuilt as a programming language for the formal verification and
-  simulation of serving systems.** `route/` (Rust parser, interpreter,
-  CLI), `lean/ServingQueueTheory/Route.lean` (syntax, pool semantics,
-  memory invariant `RouteLang.Step.invariant`, the two replicas as
+  simulation of serving systems.** seQ (Rust parser, interpreter,
+  CLI), `lean/ServingQueueTheory/Seq.lean` (syntax, pool semantics,
+  memory invariant `SeqLang.Step.invariant`, the two replicas as
   programs, the surface syntax `[route| … ]` inside Lean),
-  `route/programs/*.route` (M/G/1, PS, M/M/1//N, the agentic replica,
+  `seQ programs/*.seq` (M/G/1, PS, M/M/1//N, the agentic replica,
   the paper's two-resource replica, PD tandem, routing, vLLM v1, vLLM
   on the A100 replaying the short trace). Validated against the closed
   forms, the hand-written `libqueuingsim` models (now run under `make
-  sim`, `libqueuingsim/tests/route_*.rs`), the real upstream vLLM
+  sim`, `libqueuingsim/tests/seq_*.rs`), the real upstream vLLM
   scheduler on six deterministic scenarios (6/6 step-exact,
-  `route/tests/vllm_oracle.rs`) and the ten measured A100 runs (one
+  `seQ tests/vllm_oracle.rs`) and the ten measured A100 runs (one
   calibrated parameter; mean TTFT within 10–30 % below the cliff, the
-  cliff at 2.5 s reproduced; `data/exp/route/gpu.txt`). Spec
-  `docs/route-language.md`; review of the lecture's version against
+  cliff at 2.5 s reproduced; `data/exp/seq/gpu.txt`). Spec
+  `seQ `docs/language.md``; review of the lecture's version against
   vLLM, design, self-review and the verification-tooling survey
-  `docs/route-review.md`. Next for ROUTE: an executable Lean semantics
+  `seQ `docs/review.md``. Next for seQ: an executable Lean semantics
   (`#eval`) fed by the oracle scenarios, Aeneas/Kani on the pool core,
   cross-session prefix sharing, a fluid option for the step stage, and
   the eviction under-prediction on the A100 (117 vs 426 misses at
