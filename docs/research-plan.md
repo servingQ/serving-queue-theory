@@ -72,11 +72,19 @@ current at the end of every work block.
   `seQ `docs/language.md`` §8. The Lambda instance was terminated after
   the runs. Candidate for the paper's §3.3 admission step (needs a same-day
   unpinned 2.5 s rerun with the tracer and seeds before it goes in).
-  **Next for seQ** (in order): (1) port the paper's §4.2 replay
-  (libqueuingsim `TwoStage`, calibrated on RBLN) to a seQ program with the
-  engine rules that the vLLM diff established (engine-served admission,
-  whole-prompt gate, dead blocks, `end` keeps the cache) and check whether
-  the §4.2 conclusions move; (2) identify the served overhead constants
+  **§4.2 replay in seQ (done 2026-09-27, `docs/seq-replay42.md`,
+  `programs/replay_{twostage,vllm}.seq`, `scripts/exp/seq_replay42.py`):**
+  the qualitative conclusions stay (open replica all hits; the admission
+  cap decides thrashing under every rule set; priced ≤ LRU in TTFT); the
+  quoted numbers move under vLLM's rules (block tail eviction makes misses
+  partial: TTFT 1.3–3.7× lower, mixture share of variance much lower; a
+  priced key that keeps finished sessions' blocks loses hit rate, so the
+  §3 scheduler needs the program's end). Paper decision pending: scope
+  §4.2 to whole-session eviction, move it to the vLLM-rule program, or
+  report both (the doc's options a–c).
+  **Next for seQ** (in order): (1) keep a growing hold's position integral
+  (fractional chunks lose a block when rounded, found in the replay port);
+  (2) identify the served overhead constants
   from a served step trace with synchronous against asynchronous
   scheduling at light load; (3) Kani harnesses, then Aeneas, on a pure pool
   core of `seQ src/sim.rs` against `SeqLang.Step` and

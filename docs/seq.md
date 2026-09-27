@@ -23,6 +23,7 @@ pinned seQ release:
 | `lean/ServingQueueTheory/SeqServe.lean` | serving order of a step engine, cited in §2.2 | |
 | `lean/ServingQueueTheory/Deployments.lean` | the paper's two replicas as seQ programs | |
 | `libqueuingsim/tests/seq_*.rs` | seQ programs against the hand-written models and closed forms | the crate (`seq = { package = "seq-lang", git = …, tag = … }`) |
+| `programs/replay_{twostage,vllm}.seq`, `scripts/exp/seq_replay42.py` | §4.2's replay with libqueuingsim's and vLLM's engine rules (`docs/seq-replay42.md`) | `.seq/bin/seq-lang` |
 | `scripts/exp/*seq*`, `diff_seq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.seq/bin/seq-lang`, `.seq/src/programs`, `.seq/src/tools` |
 
 The pin is the `tag` in `libqueuingsim/Cargo.toml`. `scripts/fetch_seq.sh`

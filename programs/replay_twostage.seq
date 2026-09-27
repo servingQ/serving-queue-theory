@@ -1,0 +1,87 @@
+// §4.2's replica (libqueuingsim `trace_replay_cfg`, `Server::TwoStage`) as a
+// seQ program, with libqueuingsim's rules: the paper's two-resource replica
+// fed by the production sessions of the WEKA corpus.
+//
+// Rules (libqueuingsim `models::batch`): a live-session cap with an entry
+// queue; a batch of at most B turns that reserves a turn's whole KV
+// (context + append + output) when it is admitted, first come first served;
+// every iteration decodes one token per decoding turn and spends the
+// compute left on the head-of-line prefill (`decode first`); eviction only
+// of sessions outside the batch, sessions in a tool call before waiting
+// ones, whole sessions, cheapest price per byte-second first; a turn hits
+// iff its whole context is resident and otherwise re-prefills it; a
+// finished or truncated session's KV is dropped.
+//
+// Time model (paper §4.3, the RBLN cost fit): prefill P(n, K) = c0 + a n +
+// b n (K + n/2) s, a decode iteration ω s (β = 0); work is counted in
+// tokens of `a` seconds, so the budget of an iteration is ω/a tokens
+// (rounded down to whole tokens, and c0/a up, in both replay programs:
+// fractional chunks would round a growing hold's blocks away).
+// Program counterpart with the vLLM engine's rules: `replay_vllm.seq`.
+
+let Lambda = 0.001;    // sessions per second
+let cap = 24;          // live sessions (entry queue beyond)
+let B = 8;             // batch cap
+let C = 1e15;          // KV pool (tokens); 1e15 = no eviction
+let maxctx = 0.9 * C;  // a session whose context passes this ends (truncated)
+let c0 = 0.044;        // s per request (prefill overhead)
+let a = 1.94e-4;       // s per prefill token
+let b = 6.51e-9;       // s per prefill token per context token
+let omega = 0.057;     // s per decode iteration
+let p = 0.9711687819662815;  // corpus resume fraction (the key's p)
+let tau = 22.65186432082386; // corpus mean think time, s (the key's τ)
+
+pool live { cap cap; }
+pool batch { cap B; }
+// price per byte-second of dropping a cached context of `size` tokens:
+// q Φ(ΔS) / (size τ), q = p (tool call) or 1 (waiting), τ = tau or 1
+pool kv {
+  cap C;
+  evict by (queued,
+            (queued ? 1 : p) * price(engine, c0, a * size + b * size * size / 2)
+              / (size * (queued ? 1 : tau)));
+}
+stage engine : step {
+  budget max(ndec, floor(omega / a));   // whole tokens (ω/a = 293.8)
+  cost max(omega, ntok * a);
+  decode first;
+  memory kv;
+}
+stage tool : delay;
+
+workload {
+  arrive poisson(Lambda);
+  trace "../libqueuingsim/data/weka-sessions.csv";
+}
+
+route {
+  set t_arr = now;
+  hold live (1) {
+    observe entry_wait = now - t_arr;
+    set K = 0;
+    set cold = 1;
+    turn;
+    loop {
+      set t0 = now;
+      hold batch (1), kv (K + new + out) {
+        set hit = !cold && cached >= K;
+        set m = hit ? new : K + new;          // tokens prefilled
+        set k0 = hit ? K : 0;                 // on a resident prefix of k0
+        run engine prefill (ceil(c0 / a) + m + (b / a) * m * (k0 + m / 2));
+        observe ttft = now - t0;
+        branch (!cold) {
+          observe hit = hit;
+          observe reused = hit;
+          observe work = c0 + a * m + b * m * (k0 + m / 2);
+        }
+        run engine decode (out);
+      } cache (K + new + out);
+      set K = K + new + out;
+      set cold = 0;
+      branch (K > maxctx) { drop kv; end; }
+      branch (more) { run tool (think); turn; } else { drop kv; end; }
+    }
+  }
+}
+
+run { horizon 66000; warmup 6000; seed 1; }

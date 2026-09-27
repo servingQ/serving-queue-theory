@@ -120,6 +120,7 @@ scripts/check_lean.sh          build + sorry + axiom audit
 scripts/check_lean_refs.sh     \leanref ↔ Lean name check
 scripts/check_sim.sh           simulator: cited Lean names exist + cargo fmt/clippy/test
 scripts/fetch_seq.sh           the pinned seQ release into .seq/ (docs/seq.md: pin, upgrading, CI access)
+programs/*.seq                 this repo's seQ programs: §4.2's replay with libqueuingsim's and with vLLM's rules (docs/seq-replay42.md; run by scripts/exp/seq_replay42.py; tables in docs/seq-replay42-tables.md, generated)
 libqueuingsim/src/validation.rs  one named check per proposition (tests + report)
 scripts/hooks/post-edit.sh     Claude Code hook: rebuild after edits
 docs/add-proposition.md        step-by-step workflow for a new result

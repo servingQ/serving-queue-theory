@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""§4.2's trace replay in seQ, with libqueuingsim's rules and with the vLLM
+engine's rules (docs/seq-replay42.md).
+
+Runs `programs/replay_twostage.seq` (libqueuingsim's TwoStage rules) and
+`programs/replay_vllm.seq` (the vLLM v1 engine's rules; `lru=0` priced
+eviction as in §4.2, `lru=1` vLLM's LRU) on every cell of §4.2's replay
+table (`paper/sim/data/trace.csv`: rate, pool, cap) over the same seeds,
+and reports per cell the hit rate of follow-up turns, the mean TTFT, the
+live sessions, the share of follow-up prefill-work variance that the
+hit/miss mixture supplies, and preemptions, next to libqueuingsim's
+numbers. Simulator output on a replayed workload, not a measurement.
+
+    python3 scripts/exp/seq_replay42.py [--seeds 5] [--jobs 8] [--out data/exp/seq/replay42]
+"""
+import argparse
+import csv
+import json
+import math
+import os
+import subprocess
+import tempfile
+from concurrent.futures import ProcessPoolExecutor
+
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+SEQ = os.path.join(ROOT, ".seq", "bin", "seq-lang")
+VARIANTS = [
+    ("twostage", "programs/replay_twostage.seq", []),
+    ("vllm", "programs/replay_vllm.seq", ["lru=0"]),
+    ("vllm-lru", "programs/replay_vllm.seq", ["lru=1"]),
+    ("vllm-drop", "programs/replay_vllm.seq", ["lru=0", "keep=0"]),
+]
+T975 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262}
+
+
+def cells():
+    rows = [r for r in csv.reader(open(os.path.join(ROOT, "paper/sim/data/trace.csv"))) if r and not r[0].startswith("#")]
+    head, body = rows[0], rows[1:]
+    return [dict(zip(head, r)) for r in body]
+
+
+def read(d, name):
+    out = {}
+    p = os.path.join(d, name + ".csv")
+    if not os.path.exists(p):
+        return out
+    for line in open(p).read().splitlines()[1:]:
+        t, s, k, v = line.split(",")
+        out[(int(s), int(k))] = float(v)
+    return out
+
+
+def one(job):
+    variant, prog, extra, cell, seed = job
+    pool = float("inf") if cell["pool"] == "inf" else float(cell["pool"])
+    sets = [f"Lambda={cell['rate']}", f"cap={cell['cap']}", f"C={1e15 if math.isinf(pool) else pool}"] + extra
+    with tempfile.TemporaryDirectory() as d:
+        args = [SEQ, "run", os.path.join(ROOT, prog), "--seed", str(seed), "--json", "--dump", d]
+        for s in sets:
+            args += ["--set", s]
+        rep = json.loads(subprocess.run(args, check=True, capture_output=True, text=True).stdout)
+        hit, work = read(d, "hit"), read(d, "work")
+    keys = [k for k in hit if k in work]
+    h = [work[k] for k in keys if hit[k] >= 1]
+    m = [work[k] for k in keys if hit[k] < 1]
+
+    def mv(xs):
+        if not xs:
+            return 0.0, 0.0
+        mu = sum(xs) / len(xs)
+        return mu, (sum((x - mu) ** 2 for x in xs) / (len(xs) - 1) if len(xs) > 1 else 0.0)
+
+    p = len(h) / max(1, len(h) + len(m))
+    (mh, vh), (mm, vm) = mv(h), mv(m)
+    between = p * (1 - p) * (mm - mh) ** 2
+    var = between + p * vh + (1 - p) * vm
+    pools = {x["name"]: x for x in rep["pools"]}
+    obs = rep["observes"]
+    return {
+        "variant": variant, "rate": cell["rate"], "pool": cell["pool"], "cap": cell["cap"], "seed": seed,
+        "hit": obs["hit"]["mean"] if obs["hit"]["count"] else float("nan"),
+        "ttft": obs["ttft"]["mean"],
+        "reused": obs["reused"]["mean"] if obs["reused"]["count"] else float("nan"),
+        "live": pools["live"]["mean_holders"],
+        "entry_wait": obs["entry_wait"]["mean"] if obs["entry_wait"]["count"] else 0.0,
+        "mixture_share": between / var if var > 0 else 0.0,
+        "preemptions": pools["kv"]["preemptions"],
+        "turns": rep["turns"],
+    }
+
+
+def ci(xs):
+    xs = [x for x in xs if not math.isnan(x)]
+    n = len(xs)
+    if n == 0:
+        return float("nan"), float("nan")
+    mu = sum(xs) / n
+    if n < 2:
+        return mu, 0.0
+    sd = math.sqrt(sum((x - mu) ** 2 for x in xs) / (n - 1))
+    return mu, T975.get(n - 1, 1.96) * sd / math.sqrt(n)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seeds", type=int, default=5)
+    ap.add_argument("--jobs", type=int, default=8)
+    ap.add_argument("--out", default=os.path.join(ROOT, "data/exp/seq/replay42"))
+    ap.add_argument("--md", default=os.path.join(ROOT, "docs/seq-replay42-tables.md"))
+    a = ap.parse_args()
+    os.makedirs(a.out, exist_ok=True)
+    cs = cells()
+    jobs = [(v, p, e, c, s) for v, p, e in VARIANTS for c in cs for s in range(1, a.seeds + 1)]
+    with ProcessPoolExecutor(a.jobs) as ex:
+        runs = list(ex.map(one, jobs))
+    with open(os.path.join(a.out, "runs.csv"), "w") as f:
+        w = csv.DictWriter(f, fieldnames=list(runs[0]))
+        w.writeheader()
+        w.writerows(runs)
+    summary = []
+    for c in cs:
+        row = {"rate": c["rate"], "pool": c["pool"], "cap": c["cap"],
+               "lqs_hit": float(c["hit"]), "lqs_hit_hw": float(c["hit_hw"]), "lqs_ttft": float(c["ttft"]),
+               "lqs_ttft_hw": float(c["ttft_hw"]), "lqs_live": float(c["sessions"]),
+               "lqs_mixture_share": float(c["mixture_share"])}
+        for v, _, _ in VARIANTS:
+            rs = [r for r in runs if r["variant"] == v and (r["rate"], r["pool"], r["cap"]) == (c["rate"], c["pool"], c["cap"])]
+            for k in ("hit", "reused", "ttft", "live", "mixture_share", "preemptions", "entry_wait"):
+                mu, hw = ci([r[k] for r in rs])
+                row[f"{v}_{k}"], row[f"{v}_{k}_hw"] = mu, hw
+        summary.append(row)
+    with open(os.path.join(a.out, "summary.csv"), "w") as f:
+        w = csv.DictWriter(f, fieldnames=list(summary[0]))
+        w.writeheader()
+        w.writerows(summary)
+    names = [v for v, _, _ in VARIANTS]
+    write_md(a, summary, names)
+    for key, d, lq in (("hit", 2, "lqs_hit"), ("reused", 2, None), ("ttft", 0, "lqs_ttft"),
+                       ("mixture_share", 2, "lqs_mixture_share"), ("preemptions", 1, None)):
+        print(f"\n{key}: " + " | ".join((["libqueuingsim"] if lq else []) + names))
+        for r in summary:
+            f = lambda k: f"{r[k]:.{d}f}±{r[k + '_hw']:.{d}f}"
+            lqs = [f"{r[lq]:.{d}f}"] if lq else []
+            print(f"  {r['rate']:6} {r['pool']:>7} {r['cap']:>3}  " + " | ".join(lqs + [f(f'{v}_{key}') for v in names]))
+
+
+def write_md(a, summary, names):
+    """The tables of docs/seq-replay42.md, generated (do not edit by hand)."""
+    L = [f"<!-- Generated by scripts/exp/seq_replay42.py --seeds {a.seeds}; do not edit. -->", "",
+         "# §4.2 replay in seQ: generated tables", "",
+         f"Mean ± 95% half-width over {a.seeds} seeds (seQ) and 5 seeds (libqueuingsim, "
+         "`paper/sim/data/trace.csv`). Simulator output on the replayed WEKA workload, not a measurement.", ""]
+    for key, d, lq, title in (("hit", 2, "lqs_hit", "Hit rate of follow-up turns (whole reusable prefix reused)"),
+                              ("reused", 2, None, "Share of the reusable prefix reused"),
+                              ("ttft", 0, "lqs_ttft", "Mean TTFT (s)"),
+                              ("mixture_share", 2, "lqs_mixture_share", "Share of follow-up prefill-work variance from the hit/miss mixture"),
+                              ("preemptions", 1, None, "Preemptions per run")):
+        L += [f"## {title}", "", "| rate | pool | cap | " + " | ".join((["libqueuingsim"] if lq else []) + names) + " |",
+              "|" + "---|" * (3 + len(names) + (1 if lq else 0))]
+        for r in summary:
+            cellv = [f"{r[f'{v}_{key}']:.{d}f} ± {r[f'{v}_{key}_hw']:.{d}f}" for v in names]
+            lqs = [f"{r[lq]:.{d}f}"] if lq else []
+            L.append(f"| {r['rate']} | {r['pool']} | {r['cap']} | " + " | ".join(lqs + cellv) + " |")
+        L.append("")
+    # the numbers §4.2 quotes (paper/sim/macros.tex), per variant
+    tight = [r for r in summary if r["pool"] != "inf" and int(r["cap"]) == min(int(x["cap"]) for x in summary if x["pool"] == r["pool"])]
+    loose = [r for r in summary if r["pool"] != "inf" and r not in tight]
+    L += ["## The quantities §4.2 quotes", "",
+          "| quantity (§4.2 macro) | libqueuingsim | " + " | ".join(names) + " |", "|" + "---|" * (2 + len(names))]
+    qs = [("tight caps: lowest hit rate (`simTraceTightHitMin`)", lambda rs, v: min(r[f"{v}_hit"] for r in rs), tight, "hit", 2),
+          ("tight caps: mixture share of variance, % (`simTraceTightMix{Min,Max}`)", None, tight, "mixture_share", 0),
+          ("loose caps: highest hit rate (`simTraceLooseHitMax`)", lambda rs, v: max(r[f"{v}_hit"] for r in rs), loose, "hit", 2),
+          ("loose caps: lowest mean TTFT, s (`simTraceLooseTtftMin`)", lambda rs, v: min(r[f"{v}_ttft"] for r in rs), loose, "ttft", 0),
+          ("tight caps: highest mean TTFT, s", lambda rs, v: max(r[f"{v}_ttft"] for r in rs), tight, "ttft", 0)]
+    for label, fn, rs, key, d in qs:
+        if fn is None:
+            vals = [f"{100 * min(r[f'lqs_{key}'] for r in rs):.0f}–{100 * max(r[f'lqs_{key}'] for r in rs):.0f}"]
+            vals += [f"{100 * min(r[f'{v}_{key}'] for r in rs):.0f}–{100 * max(r[f'{v}_{key}'] for r in rs):.0f}" for v in names]
+        else:
+            vals = [f"{fn([{**r, 'lqs_hit': r['lqs_hit']} for r in rs], 'lqs'):.{d}f}"] + [f"{fn(rs, v):.{d}f}" for v in names]
+        L.append(f"| {label} | " + " | ".join(vals) + " |")
+    open(a.md, "w").write("\n".join(L) + "\n")
+
+
+if __name__ == "__main__":
+    main()
