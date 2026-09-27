@@ -44,12 +44,9 @@ def model(run, spacing, hi, c_it, c0, tmp):
     if run.endswith("_s1"):
         trace += "_s1"
     csv = os.path.abspath(os.path.join(ROOT, ".seq", "src", "programs", "data", trace + ".csv"))
-    src = open(os.path.join(ROOT, ".seq", "src", "programs", "vllm_replay.seq")).read()
-    src = src.replace('trace "data/short_base.csv" ordered;', f'trace "{csv}" ordered;')
-    prog = os.path.join(tmp, "p.seq")
-    open(prog, "w").write(src)
+    prog = os.path.join(ROOT, ".seq", "src", "programs", "vllm_replay.seq")
     d = os.path.join(tmp, "d")
-    subprocess.run([os.path.join(ROOT, ".seq", "bin", "seq-lang"), "run", prog,
+    subprocess.run([os.path.join(ROOT, ".seq", "bin", "seq-lang"), "run", prog, "--trace", csv,
                     "--set", f"spacing={spacing}", "--set", f"c_it={c_it}", "--set", f"c0={c0}",
                     "--dump", d], check=True, stdout=subprocess.DEVNULL)
 

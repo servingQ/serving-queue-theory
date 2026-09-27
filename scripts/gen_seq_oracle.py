@@ -1,25 +1,239 @@
 #!/usr/bin/env python3
-"""Generate lean/ServingQueueTheory/SeqOracle.lean from the vLLM scheduler
-scenarios of the pinned seQ release (.seq/src/tools/oracle/*.json, checked
-out by scripts/fetch_seq.sh) and the real scheduler's answers
-*.out.json: one theorem per scenario stating that the seQ program of the
-vLLM engine, run by the executable semantics (lean/ServingQueueTheory/SeqExec.lean), gives the
-same first-token step, last-token step and preemption count for every
-request. `--check` fails if the committed file is stale."""
+"""Generate lean/ServingQueueTheory/SeqOracle.lean from the IR of the vLLM
+scheduler scenarios in the pinned seQ release (.seq/src/tools/oracle/
+<name>.ir.json: programs/vllm_request.seq compiled with the scenario's
+engine, the requests as explicit sessions; checked out by
+scripts/fetch_seq.sh; SEQ_SRC overrides the checkout) and the real
+scheduler's answers (<name>.out.json).
+
+The program `vllmRequest`, every scenario's deployment and its request
+table are translated from the IR, not written by hand: the Lean theorems
+are about the same IR the seQ tests run. The translation accepts the
+fragment of the IR the executable semantics (SeqExec.lean) covers and
+fails on anything else. One theorem per scenario: the executable semantics
+gives the same first-token step, last-token step and preemption count for
+every request as the real scheduler. `--check` fails if the committed file
+is stale. The multi-turn cache scenario (`vllmTurn`) is still written
+here by hand: its turns read a trace, which the Lean fragment lacks."""
 import json
 import os
 import sys
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-ODIR = os.path.join(ROOT, ".seq", "src", "tools", "oracle")
+SEQ_SRC = os.environ.get("SEQ_SRC", os.path.join(ROOT, ".seq", "src"))
+ODIR = os.path.join(SEQ_SRC, "tools", "oracle")
 OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SeqOracle.lean")
+
+class Fragment(Exception):
+    """An IR construct outside the Lean executable fragment."""
+
+
+def nat(v, what):
+    if not (isinstance(v, (int, float)) and v >= 0 and float(v).is_integer()):
+        raise Fragment(f"{what}: {v} is not a natural number")
+    return int(v)
+
+
+def one_ref(r, what):
+    if r["count"] != 1 or r["index"] is not None:
+        raise Fragment(f"{what}: families of pools/stages are outside the fragment")
+    return r["base"]
+
+
+class Lean:
+    """IR (a seQ program as JSON) to the Lean surface syntax `[route| … ]`
+    of `Route Exec.Env ℕ`. `attr_ix` maps IR attribute slots to Lean
+    attribute indices (the columns of the scenario's request table)."""
+
+    def __init__(self, ir, attr_ix):
+        self.ir = ir
+        self.attr_ix = attr_ix
+        self.builtin = {ir["slot_cached"]: "x.cached", ir["slot_serial"]: "x.serial"}
+
+    def arg(self, a):
+        if "Expr" not in a:
+            raise Fragment(f"argument {a}")
+        return self.expr(a["Expr"])
+
+    def expr(self, e):
+        if "Num" in e:
+            return str(nat(e["Num"], "constant"))
+        if "Attr" in e:
+            k = e["Attr"]
+            if k in self.builtin:
+                return self.builtin[k]
+            if k not in self.attr_ix:
+                raise Fragment(f"attribute `{self.ir['attrs'][k]}` is not in the request table")
+            return f"(x.attr {self.attr_ix[k]})"
+        if "Ctx" in e:
+            if e["Ctx"] == "Now":
+                return "x.now"
+            raise Fragment(f"context variable {e['Ctx']}")
+        if "Call" in e:
+            f, args = e["Call"]
+            if f in ("Min", "Max") and len(args) == 2:
+                return f"({f.lower()} {self.arg(args[0])} {self.arg(args[1])})"
+            if f == "BudgetLeft" and len(args) == 1 and "Stage" in args[0]:
+                if one_ref(args[0]["Stage"], "budget_left") != 0:
+                    raise Fragment("budget_left of a stage other than the engine")
+                return "x.budgetLeft"
+            if f == "CachedIn" and len(args) == 1 and "Pool" in args[0]:
+                return f"(x.cachedIn {one_ref(args[0]['Pool'], 'cachedin')})"
+            if f == "Floor" and len(args) == 1 and "Binary" in args[0].get("Expr", {}):
+                op, a, b = args[0]["Expr"]["Binary"]
+                if op == "Div":
+                    return f"({self.expr(a)} / {self.expr(b)})"
+            raise Fragment(f"call {f}")
+        if "Binary" in e:
+            op, a, b = e["Binary"]
+            sym = {"Add": "+", "Sub": "-", "Mul": "*"}.get(op)
+            if sym is None:
+                raise Fragment(f"operator {op}")
+            return f"({self.expr(a)} {sym} {self.expr(b)})"
+        raise Fragment(f"expression {e}")
+
+    def top(self, e):
+        """An expression in statement position: drop one pair of outer parentheses."""
+        t = self.expr(e)
+        return t[1:-1] if t.startswith("(") and t.endswith(")") else t
+
+    def block(self, b, ind):
+        pad = "  " * ind
+        out = []
+        for st in self.ir["blocks"][b]:
+            if st == "End":
+                out.append(pad + "stop")
+                return "\n".join(out)
+            if st == "Turn":
+                out.append(pad + "turn;")
+                continue
+            (kind, v), = st.items()
+            if kind == "Set":
+                slot, e = v
+                if slot not in self.attr_ix:
+                    raise Fragment(f"set of `{self.ir['attrs'][slot]}`")
+                out.append(f"{pad}set {self.attr_ix[slot]} = {self.top(e)};")
+            elif kind == "Observe":
+                k, e = v
+                out.append(f"{pad}observe {k} = {self.top(e)};")
+            elif kind == "Run":
+                s = one_ref(v["stage"], "run")
+                mode = {"Plain": "", "Prefill": " prefill", "Decode": " decode"}[v["mode"]]
+                g = f" growing {one_ref(v['growing'], 'growing')}" if v["growing"] else ""
+                if not mode and g:
+                    raise Fragment("plain run growing a pool")
+                out.append(f"{pad}run {s}{mode} ({self.top(v['work'])}){g};")
+            elif kind == "Hold":
+                ps = []
+                for r, u, fits in v["pools"]:
+                    f = f" fits ({self.top(fits)})" if fits is not None else ""
+                    ps.append(f"{one_ref(r, 'hold')} ({self.top(u)}){f}")
+                ru = f" reuse ({self.top(v['reuse'])})" if v["reuse"] is not None else ""
+                ca = f" cache ({self.top(v['cache'])})" if v["cache"] is not None else ""
+                out.append(f"{pad}hold {', '.join(ps)}{ru} {{")
+                out.append(self.block(v["body"], ind + 1))
+                out.append(f"{pad}}}{ca};")
+            elif kind == "Branch":
+                c, t, f = v
+                out.append(f"{pad}branch ({self.top(c)}) {{")
+                out.append(self.block(t, ind + 1))
+                out.append(f"{pad}}} else {{")
+                out.append(self.block(f, ind + 1))
+                out.append(f"{pad}}};")
+            elif kind == "Loop":
+                out.append(f"{pad}loop {{")
+                out.append(self.block(v, ind + 1))
+                out.append(f"{pad}}}")
+                return "\n".join(out)
+            else:
+                raise Fragment(f"statement {kind}")
+        out.append(pad + "done")
+        return "\n".join(out)
+
+    def deployment(self):
+        ir = self.ir
+        st = ir["stages"]
+        if len(st) != 2 or "Step" not in st[0]["kind"] or st[1]["kind"] != "Delay":
+            raise Fragment("stages must be one step engine (0) and one delay (1)")
+        step = st[0]["kind"]["Step"]
+        if step["cost"] != {"Num": 1.0}:
+            raise Fragment("the engine's iteration cost must be 1 (the step clock)")
+        if step["exclusive_prefill"] or step["decode_first"]:
+            raise Fragment("exclusive prefill / decode first")
+        pools = []
+        for i, p in enumerate(ir["pools"]):
+            if p["evict"] != "Lru" or p["queue"] is not None or p["spill"] is not None:
+                raise Fragment(f"pool {p['name']}: only LRU eviction, FIFO queue, no spill")
+            via = p["admit_via"] is not None
+            if via and p["admit_via"] != 0:
+                raise Fragment(f"pool {p['name']}: admitted by a stage other than the engine")
+            if p["preempt"] != ("None" if via else "Lifo"):
+                raise Fragment(f"pool {p['name']}: preemption {p['preempt']}")
+            if not via and step["memory"] != i:
+                raise Fragment(f"pool {p['name']}: not the engine's memory")
+            pools.append(f"⟨{nat(p['cap'], 'cap')}, {nat(p['block'] or 1, 'block')}, {'true' if via else 'false'}⟩")
+        return (f"⟨[{', '.join(pools)}], {nat(step['budget'].get('Num'), 'budget')}, "
+                f"{nat(step['chunk'].get('Num'), 'chunk')}⟩")
+
+
+def load_ir(name):
+    ir = json.load(open(os.path.join(ODIR, name + ".ir.json")))
+    if ir["version"] != 1:
+        raise Fragment(f"{name}: IR version {ir['version']}")
+    ss = ir["arrival"].get("Sessions") if isinstance(ir["arrival"], dict) else None
+    if not ss:
+        raise Fragment(f"{name}: the scenario's requests must be explicit sessions")
+    cols = [slot for slot, _ in ss[0]["attrs"]]
+    if any([slot for slot, _ in s["attrs"]] != cols for s in ss):
+        raise Fragment(f"{name}: sessions preset different attributes")
+    # `init` must be entirely overridden by the presets (Lean has no `init`)
+    for st in ir["blocks"][ir["init"]]:
+        if "Set" not in st or st["Set"][0] not in cols:
+            raise Fragment(f"{name}: `init` does more than the presets override")
+    if ir["blocks"][ir["turn"]]:
+        raise Fragment(f"{name}: a `turn` block is outside the fragment")
+    lean = Lean(ir, {slot: i for i, slot in enumerate(cols)})
+    table = [tuple(nat(v, "request attribute") for _, v in s["attrs"]) for s in ss]
+    names = [ir["attrs"][slot] for slot in cols]
+    return ir, lean, table, names
+
+
+def request_program(scenarios):
+    """`vllmRequest` from the IR: the route of every scenario must be the
+    same program (only the engine's constants and the requests differ)."""
+    progs = {}
+    for name in scenarios:
+        ir, lean, _, names = load_ir(name)
+        progs[name] = (lean.block(ir["route"], 1), names, ir["observes"], [p["name"] for p in ir["pools"]],
+                       [s["name"] for s in ir["stages"]])
+    first = next(iter(progs.values()))
+    for name, p in progs.items():
+        if p != first:
+            raise Fragment(f"{name}: its route differs from the other scenarios'")
+    body, names, obs, pools, stages = first
+    attrs = ", ".join(f"{i} = {n}" for i, n in enumerate(names))
+    observes = ", ".join(f"{i} = {n}" for i, n in enumerate(obs))
+    return f"""/-- The vLLM request program, translated from the IR of the oracle
+scenarios (seQ `programs/vllm_request.seq`, `tools/oracle/*.ir.json`).
+Attributes: {attrs}. Observations: {observes}. Pools: {", ".join(f"{i} = {n}" for i, n in enumerate(pools))}.
+Stages: {", ".join(f"{i} = {n}" for i, n in enumerate(stages))}. -/
+def vllmRequest : Prog := [route|
+{body}]
+
+theorem vllmRequest_wf : vllmRequest.wf = true := by decide
+"""
+
 
 HEAD = '''/-
 # vLLM scheduler scenarios as theorems about seQ programs
 
-Generated by `scripts/gen_seq_oracle.py` from seQ `tools/oracle/*.json`
-(the scenarios) and `*.out.json` (what the real vLLM v1 scheduler does:
-seQ `tools/vllm_oracle.py`, upstream `ref/vllm` at 0c87a197). Do not edit.
+Generated by `scripts/gen_seq_oracle.py` from the IR of seQ's oracle
+scenarios (`tools/oracle/*.ir.json`: `programs/vllm_request.seq` compiled
+with each scenario's engine, the requests as explicit sessions) and
+`*.out.json` (what the real vLLM v1 scheduler does: seQ
+`tools/vllm_oracle.py`, upstream `ref/vllm` at 0c87a197). Do not edit.
+The program, the deployments and the request tables below are
+translations of that IR, the same IR the seQ tests run.
 
 Each scenario is a deployment (a request-slot pool served by the engine, a
 KV pool of blocks, the engine's budget and chunk cap) and a set of requests
@@ -42,23 +256,7 @@ namespace Oracle
 
 open Exec
 
-/-- Attribute slots: 0 = prompt tokens, 1 = output tokens, 2 = arrival
-step. Observations: 0 = first-token step, 1 = last-token step. Pools:
-0 = request slots (served by the engine), 1 = KV blocks. Stages: 0 = the
-engine, 1 = a delay. -/
-def vllmRequest : Prog := [route|
-  run 1 (x.attr 2);
-  hold 0 (1), 1 (min (x.attr 0) x.budgetLeft) fits (x.attr 0) {
-    run 0 prefill (x.attr 0) growing 1;
-    observe 0 = x.now;
-    run 0 decode (x.attr 1 - 1) growing 1;
-    done
-  };
-  observe 1 = x.now;
-  stop]
-
-theorem vllmRequest_wf : vllmRequest.wf = true := by decide
-
+{REQUEST}
 /-- A vLLM engine: `max_num_seqs` slots, `num_blocks` blocks of `bs` tokens
 (one is the null block), `max_num_batched_tokens`, chunk cap. -/
 def engine (maxSeqs blocks bs budget chunk : ℕ) : Deployment :=
@@ -80,8 +278,13 @@ def outcome (D : Deployment) (ticks : ℕ) (t : List (ℕ × ℕ × ℕ)) :
 '''
 
 
+def scenario_names():
+    return sorted(f[:-8] for f in os.listdir(ODIR) if f.endswith(".ir.json"))
+
+
 def gen():
-    out = [HEAD]
+    names = scenario_names()
+    out = [HEAD.replace("{REQUEST}", request_program(names))]
     for f in sorted(os.listdir(ODIR)):
         if not f.endswith(".json") or f.endswith(".out.json"):
             continue
@@ -94,13 +297,19 @@ def gen():
         first = sorted((int(k), v) for k, v in ans["first"].items())
         done = sorted((int(k), v) for k, v in ans["done"].items())
         ticks = max([v for _, v in done] + [0]) + 5
-        tbl = ", ".join(f"({r['prompt']}, {r['out']}, {r.get('arrive', 0)})" for r in sc["requests"])
+        if name not in names:
+            raise Fragment(f"{name}: no IR file ({name}.ir.json)")
+        ir, lean, table, _ = load_ir(name)
+        if len(table) != n:
+            raise Fragment(f"{name}: {len(table)} sessions in the IR, {n} requests in the scenario")
+        dep = lean.deployment()
+        tbl = ", ".join("(" + ", ".join(map(str, r)) + ")" for r in table)
         fs = ", ".join(f"({k}, {v})" for k, v in first)
         ds = ", ".join(f"({k}, {v})" for k, v in done)
         out.append(f'''
-/-- seQ `tools/oracle/{f}`: {n} requests, {sc["num_blocks"]} blocks of {sc["block_size"]}, budget {sc["budget"]}, {sc["max_seqs"]} slots, chunk {sc.get("chunk", 0)}. -/
+/-- seQ `tools/oracle/{name}.ir.json`: {n} requests, {sc["num_blocks"]} blocks of {sc["block_size"]}, budget {sc["budget"]}, {sc["max_seqs"]} slots, chunk {sc.get("chunk", 0)}; the deployment and the request table are the IR's. -/
 theorem vllm_{name} :
-    outcome (engine {sc["max_seqs"]} {sc["num_blocks"]} {sc["block_size"]} {sc["budget"]} {sc.get("chunk", 0)}) {ticks}
+    outcome {dep} {ticks}
       [{tbl}] =
     ([{fs}], [{ds}], {ans["preemptions"]}) := by
   decide +kernel
@@ -175,7 +384,11 @@ theorem vllm_cache_trace :
 
 
 if __name__ == "__main__":
-    txt = gen()
+    try:
+        txt = gen()
+    except Fragment as e:
+        print("FAIL: outside the Lean fragment:", e)
+        sys.exit(1)
     if "--check" in sys.argv:
         if open(OUT).read() != txt:
             print("STALE: lean/ServingQueueTheory/SeqOracle.lean; run scripts/gen_seq_oracle.py")

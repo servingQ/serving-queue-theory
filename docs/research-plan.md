@@ -22,14 +22,25 @@ fresh session can continue without the chat history. Keep this section
 current at the end of every work block.
 
 **Done.**
+- **IR first (2026-09-27, seQ v0.1.0-dev2).** A seQ program is defined by
+  its IR (seQ `docs/ir.md`): versioned JSON, validated on load, with the
+  workload instance (explicit sessions) as data. The vLLM request program
+  had three hand-kept copies (a Rust test string, the Lean `vllmRequest`,
+  `vllm.seq`); now `programs/vllm_request.seq` compiles per scenario to
+  `tools/oracle/*.ir.json`, the seQ test runs those files, and
+  `SeqOracle.lean`'s program, deployments and request tables are
+  translated from them (same six theorems). Experiment scripts pass traces
+  with `--trace` and record `program.ir.json`. Next: trace-driven
+  attributes in the Lean fragment, so `vllmTurn` is generated from
+  `vllm_replay.seq`'s IR too.
 - **The language is seQ, a separate project (2026-09-27).** The serving-
   deployment language, its interpreter and CLI
   (`seq-lang`), the example programs and the vLLM oracle with its test
-  vectors are https://github.com/vrvrv/seQ (release v0.1.0-dev1); this
+  vectors are https://github.com/vrvrv/seQ (release v0.1.0-dev2); this
   repository uses the pinned release as a Cargo git dependency and through
   `.seq/` (`docs/seq.md`). The Lean model of the language stays here
   (`lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean`, the oracle
-  theorems generated from seQ's vectors by `scripts/gen_seq_oracle.py`),
+  theorems generated from seQ's IR files by `scripts/gen_seq_oracle.py`),
   as do the paper's replica programs (`Deployments.lean`). CI reads seQ
   with a read-only deploy key (secret `SEQ_DEPLOY_KEY`, `docs/seq.md`).
 - **seQ, second pass (2026-09-27).** The vLLM program now reproduces

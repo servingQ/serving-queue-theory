@@ -24,9 +24,10 @@ mkdir -p "$D"
 timeout 1200 ~/vllm-rbln-dynkv/.venv/bin/python .seq/src/tools/vllm_replay_oracle.py \
   --trace data/exp/traces/$TRACE.jsonl $FORCED --spacing "$SP" --max-sessions "$N" --blocks "$BLOCKS" \
   $OARGS --out "$D/oracle.csv" 2>&1 | grep -v "^INFO\|WARNING\|Triton\|Model Runner\|SSM" | tail -2
-sed "s|trace \"data/short_base.csv\"|trace \"$PWD/.seq/src/programs/data/$TRACE.csv\"|" .seq/src/programs/vllm_replay.seq > "$D/p.seq"
-.seq/bin/seq-lang run "$D/p.seq" --set N="$N" --set blocks="$BLOCKS" "${RARGS[@]}" \
-  --set spacing="$SP" "$@" --dump "$D/seq" > "$D/seq.txt"
+P=(.seq/src/programs/vllm_replay.seq --set N="$N" --set blocks="$BLOCKS" "${RARGS[@]}"
+   --set spacing="$SP" "$@" --trace .seq/src/programs/data/$TRACE.csv)
+.seq/bin/seq-lang ir "${P[@]}" > "$D/program.ir.json"      # what ran, as IR
+.seq/bin/seq-lang run "${P[@]}" --dump "$D/seq" > "$D/seq.txt"
 python3 - "$D" <<'EOF'
 import sys
 D = sys.argv[1]
