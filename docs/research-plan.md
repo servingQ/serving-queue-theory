@@ -79,9 +79,40 @@ current at the end of every work block.
   quoted numbers move under vLLM's rules (block tail eviction makes misses
   partial: TTFT 1.3–3.7× lower, mixture share of variance much lower; a
   priced key that keeps finished sessions' blocks loses hit rate, so the
-  §3 scheduler needs the program's end). Paper decision pending: scope
-  §4.2 to whole-session eviction, move it to the vLLM-rule program, or
-  report both (the doc's options a–c).
+  §3 scheduler needs the program's end). **User decision: (b), done the
+  same day:** §4.2 runs `programs/replay_vllm.seq` through
+  `libqueuingsim::seq_replay` in `paper_tables.rs` (tables, Reuse column,
+  macros, prose of `simulation.tex` and the intro sentence regenerated;
+  `replay_twostage.seq` removed). Open for the paper: §3 could state that
+  the price key needs the program's end under vLLM (the `keep=0`
+  ablation), and the LRU-vs-priced margin on the trace is small (up to
+  1.65× in TTFT) next to the synthetic `tab:sim-evict-dyn`.
+  **Follow-up the same day (items 1–4, user request):** (1) the
+  eviction/admission experiment (`tab:sim-evict-dyn`, `tab:sim-admission`,
+  `fig:sim-admission`) runs `programs/open_vllm.seq` (vLLM rules, testbed
+  cost, rates 0.03/0.05) through `libqueuingsim::seq_open`: priced orders
+  ≈ shortest-first, LRU 1.7–3.0× TTFT, the cap decides thrashing, and with
+  the end unknown the byte-second price loses its lead (text of §4.2 and
+  §3.1); thrashing is now "reuse below half" (partial misses); seQ dev4
+  made the interpreter 5–15× faster (identical results). (2) §3.1: the
+  block problem is not a fractional knapsack (tail recompute concave,
+  `tailRecompute_marginal_antitone`, `tailRecompute_subadditive`); the
+  threshold results are stated with programs as units; `prop:blind` (i)
+  holds for tail blocks (`price_blind_rule_unbounded_cost`), (ii) is about
+  whole programs. (3) `TwoStage` documented as the §2.2 model. (4) The old
+  libqueuingsim replay and open-session evidence paths and their examples
+  are gone; the check `trace_replay_variance_sources` runs the vLLM-rule
+  replay and expects a positive mixture share (it was > 0.3 under
+  whole-session eviction; 0.06–0.23 now).
+  **Then `TwoStage` removed (user request):** it was used by no in-model
+  check (`miss_price_bracket` runs on a plain M/G/1); its one check,
+  where a miss is paid, runs `programs/price_vllm.seq` through
+  `libqueuingsim::seq_price` (check `prefill_pays_the_miss`, `tab:sim-ps`
+  rows 8–9): ΔL_P inside the bracket at its upper end; the decode batch
+  changes by 0.3 % (not 0: a miss's prefill lengthens shared iterations),
+  so the check bounds it by 1 % and §4.2 says so. Gone with it: the
+  `open_session_cfg` scenario, the seQ-vs-TwoStage cross-check, the
+  `trace_html` example and the TwoStage unit tests.
   **Next for seQ** (in order): (1) keep a growing hold's position integral
   (fractional chunks lose a block when rounded, found in the replay port);
   (2) identify the served overhead constants

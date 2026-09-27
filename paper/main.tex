@@ -171,8 +171,9 @@ workload side: the append alone has a prefill-work $\mathrm{CV}^2$ of
 \wkCvN, resume probabilities vary little and pause times vary
 widely. In simulation the admission cap, not the eviction order,
 decides whether a replica thrashes (the priced order beats
-shortest-first only within seed noise), and on replayed sessions the
-open price overstates the rise from forced misses by \simPriceOverMin{}
+shortest-first only within seed noise), and on replayed sessions under
+vLLM's engine rules the open price overstates the rise from forced
+misses by \simPriceOverMin{}
 to \simPriceOverMax{} times. On an NPU testbed
 (\S\ref{sec:exp-testbed}) the fitted prefill cost is quadratic past
 \eOneKc k tokens; a replay of a coding-agent trace at 50k-token
@@ -588,18 +589,27 @@ least price,
 \end{equation}
 a covering knapsack, NP-hard in general and approximable within a
 constant factor \citep{csirik1991,carnes2008}. Engines evict blocks
-rather than programs, so the problem is nearly fractional, and the
-fractional knapsack is solved by price per byte \citep{dantzig1957}:
-for any $\theta\ge0$ the states with $v_i\le\theta$ cost no more than
-any other set that frees as much memory, and taking blocks in
-increasing $v_i$ until the target is reached costs at most any
-feasible set plus one block.\provedby{\leanref{threshold\_rule\_optimal}, \leanref{density\_prefix\_plus\_one}}
+rather than programs, but from the tail of a context, and by
+\eqref{eq:prefill} recomputing the last $m$ tokens of a context of $K$
+costs $am+bm(K-m/2)$, concave in $m$: a context's deeper blocks cost
+less per byte than its tail, and freeing tokens from one context costs
+no more than freeing as many from two.\provedby{\leanref{tailRecompute\_marginal\_antitone}, \leanref{tailRecompute\_subadditive}}
+The block problem is therefore no fractional knapsack, and choosing
+programs remains its core. Its fractional relaxation, in which a program
+can be given up in part at its average price per byte, is solved by
+price per byte \citep{dantzig1957}: for any $\theta\ge0$ the states with
+$v_i\le\theta$ cost no more than any other set that frees as much
+memory, and taking programs in increasing $v_i$ until the target is
+reached costs at most any feasible set plus one
+program.\provedby{\leanref{threshold\_rule\_optimal}, \leanref{density\_prefix\_plus\_one}}
 The same holds per byte-second, with $c_i\tau_i$ in place of $c_i$
 and a target in byte-seconds,\provedby{\leanref{threshold\_rule\_optimal\_byte\_seconds}}
 which is the order Algorithm~\ref{alg:cps} uses; its target is the
 bytes to free now, so ordering by $u_i$ against a byte target is a
 heuristic mapping of that rule, and the simulation tests it
-(\S\ref{sec:sim}). Where programs must be evicted whole,
+(\S\ref{sec:sim}). The price needs the end of a program: a finished
+program resumes with $p_i=0$, but an engine that keeps its blocks, as
+vLLM's does, prices them as those of a paused one (\S\ref{sec:sim}). Where programs must be evicted whole,
 price-per-byte order can fail by any factor; the standard repair, a
 greedy guarded by a guess of the dearest evicted program, costs at most
 twice the optimum \citep{csirik1991} for any prices $w_i$.\provedby{\leanref{densityFirst\_unbounded}, \leanref{threshold\_prefix\_le}, \leanref{guardedGreedy\_two\_approx}}
@@ -626,6 +636,13 @@ Consider~\eqref{eq:evict-priced} with $w_i=p_i\Phi_i$.
 \end{enumerate}
 \provedby{\leanref{price\_blind\_rule\_unbounded}, \leanref{shortestFirst\_feasible}, \leanref{shortestFirst\_two\_approx}, \leanref{shortestFirst\_two\_approx\_tight}}
 \end{proposition}
+
+The proposition takes programs as the units of eviction. Part~(i) holds
+as well when an engine evicts blocks: its two candidates can be the tail
+blocks of two programs that differ only in $p_i$, since the argument
+needs nothing but a common positive recompute
+cost.\provedby{\leanref{price\_blind\_rule\_unbounded\_cost}} Part~(ii)
+is about whole programs.
 
 Part~(ii) is the regime in which shortest-first is defensible: light
 prefill load, where the price is close to $\Delta S_i$, and programs
@@ -1085,6 +1102,15 @@ and Step~1 bounds the last term by $\mathrm{cost}(S)$.
 Tightness: on $K,K+1$ with $\Delta C=K+1$, SF takes $K$ (leaving $1$), then
 $K+1$, at cost $K^2+(K+1)^2$, while $\{K+1\}$ costs $(K+1)^2$.
 \end{proof}
+
+\paragraph{Block eviction (\S\ref{sec:evict}).} The proof of~(i) uses
+only that the two candidates cost the same positive amount before the
+resume probabilities weigh them, so it applies unchanged to the tail
+blocks of two programs that agree in everything but $p_i$. For the tail
+of one context, let $f(m)=am+bm(K-m/2)$ be the recompute of its last $m$
+tokens. Then $f(m+d)-f(m)=ad+bd(K-m-d/2)$ is nonincreasing in $m$ for
+$b,d\ge0$, so deeper blocks cost no more per byte, and
+$f(m_1+m_2)-f(m_1)-f(m_2)=-bm_1m_2\le0$.
 
 % ===========================================================================
 \section{Simulation Tables}\label{app:sim}

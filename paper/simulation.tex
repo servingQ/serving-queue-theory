@@ -12,10 +12,17 @@
 \subsection{Simulation: Replayed Production Sessions}\label{sec:sim}
 
 The simulator replays the production sessions of \S\ref{sec:exp-traces}
-against a simulated replica: decode is a bandwidth PS with the
-demand~\eqref{eq:decode}, prefill a FIFO server on the compute the
-batch leaves, resident KV a prefix that a turn re-prefills with the
-work~\eqref{eq:prefill} once evicted. The workload side is measured and the cost model is the testbed's
+against a simulated replica that follows the vLLM~v1 engine's rules.
+Every iteration hands a token budget to the running turns in admission
+order, one token to each decoding turn and the rest to the prefill at
+the head, so prefill runs on the compute the batch leaves, as in
+\S\ref{sec:batch}. A waiting turn is admitted at the start of an
+iteration once its whole prompt fits; its KV then grows chunk by chunk,
+and a growth that does not fit preempts the latest admitted turn. KV is
+cached in 16-token blocks and evicted from the tail of a context, so an
+evicted turn re-prefills, with the work~\eqref{eq:prefill}, only the
+part it lost. A finished session's blocks stay cached, since the engine
+cannot tell that the session ended. The workload side is measured and the cost model is the testbed's
 (\S\ref{sec:exp-testbed}): the prefill terms of the cost fit and a
 decode iteration of $\omega=\simCalOmega$\,s, the inter-token latency
 of the lightest long-context replay, which did not vary with the
@@ -24,14 +31,23 @@ no number here is a measurement of a serving system.
 Before the replay, every proposition is checked as a seeded test under
 its own assumptions and with one assumption dropped
 (Appendix~\ref{app:sim}; \simChecksPassed{} of \simChecks{} checks
-pass). Three of those checks matter later: forced misses land at the
-upper end of the bracket of Proposition~\ref{prop:price} and leave the
-decode batch unchanged; the priced eviction orders beat shortest-first
-only within seed noise, least recently used, the order vLLM uses, pays
-several times their time to first token (Table~\ref{tab:sim-evict-dyn}),
-and the admission cap decides whether the replica thrashes; and the load
-at which moving beats affinity follows
-$\rho^*$ of~\eqref{eq:rhostar}.
+pass). Three of those checks matter later. On a replica with vLLM's
+engine rules, forced misses land at the upper end of the bracket of
+Proposition~\ref{prop:price} and change the number in the decode batch
+by at most \simDecodeShiftPct\,\%: a miss's prefill lengthens the
+iterations the decoding turns share. On open sessions at the vLLM-rule replica with
+the testbed's cost model (Table~\ref{tab:sim-evict-dyn}), the priced
+eviction orders beat shortest-first only within seed noise, least
+recently used, the order vLLM uses, pays
+\simEvictLruRatioMin--\simEvictLruRatioMax{} times their time to first
+token, and the admission cap decides whether the replica thrashes
+(Table~\ref{tab:sim-admission}). The price needs the end of a session:
+when a finished session's blocks stay, as vLLM's engine keeps them, the
+byte-second order cannot tell them from a paused session's, and at the
+lower load its hit rate falls from \simEndKnownHit{} to
+\simEndUnknownHit{} and its time to first token rises
+\simEndUnknownTtftRatio{} times. The load at which moving beats
+affinity follows $\rho^*$ of~\eqref{eq:rhostar}.
 
 \paragraph{Replayed production sessions.} Table~\ref{tab:sim-trace}
 (Appendix~\ref{app:sim}) plays each real session's appends, outputs, think times and length on
@@ -43,17 +59,22 @@ $\mathrm{CV}^2=\simTraceOpenCvMin$--$\simTraceOpenCvMax$ from the
 appends alone, while the mean TTFT of
 \simTraceOpenTtftMin--\simTraceOpenTtftMax\,s is set by the cold first
 prompts. Once the pool is finite the cap on live sessions binds and
-the replica is a closed system of $N$ sessions; at the smaller $N$ of
-each pool the hit rate stays at or above \simTraceTightHitMin{} and the
-mixture supplies \simTraceTightMixMin--\simTraceTightMixMax\,\% of the
-variance of follow-up prefill work, at the larger $N$ the replica
-thrashes (hit rate at most \simTraceLooseHitMax, mean TTFT above
+the replica is a closed system of $N$ sessions. At the smaller $N$ of
+each pool a follow-up turn reuses on average at least
+\simTraceTightReusedMin{} of its reusable prefix, although only a share
+of \simTraceTightHitMin{} or more reuses all of it: eviction takes the
+tail of a context, so most misses are partial and cheap, and the
+hit/miss mixture supplies only
+\simTraceTightMixMin--\simTraceTightMixMax\,\% of the variance of
+follow-up prefill work. At the larger $N$ the replica thrashes (hit
+rate at most \simTraceLooseHitMax, mean TTFT above
 \simTraceLooseTtftMin\,s). The PK wait from the measured $\lambda$,
 $\E[S]$ and $\E[S^2]$ is above the observed wait in every cell, by
 \simTracePkRatioMin{} to \simTracePkRatioMax{} times, as
 Proposition~\ref{prop:finite} says it must for exponential work. For
 the price itself, Table~\ref{tab:sim-trace-price} forces a share
-$\delta$ of resident follow-up turns to miss and compares the rise of
+$\delta$ of follow-up turns to reuse nothing, as a nonce at the head of
+the prompt would, and compares the rise of
 the number in the prefill stage with the bracket of
 Proposition~\ref{prop:price} and with the finite-source price of
 Proposition~\ref{prop:finite}. With \simPriceLiveMin{} to

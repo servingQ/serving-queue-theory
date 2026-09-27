@@ -34,7 +34,7 @@ checks!(
     cache_reuse_lowers_delay,
     cv2_ratio,
     miss_price_bracket,
-    two_stage_prefill_price,
+    prefill_pays_the_miss,
     ps_insensitivity,
     bcmp_feedback,
     ps_price_bracket,

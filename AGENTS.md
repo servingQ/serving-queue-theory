@@ -120,8 +120,9 @@ scripts/check_lean.sh          build + sorry + axiom audit
 scripts/check_lean_refs.sh     \leanref ↔ Lean name check
 scripts/check_sim.sh           simulator: cited Lean names exist + cargo fmt/clippy/test
 scripts/fetch_seq.sh           the pinned seQ release into .seq/ (docs/seq.md: pin, upgrading, CI access)
-programs/*.seq                 this repo's seQ programs: §4.2's replay with libqueuingsim's and with vLLM's rules (docs/seq-replay42.md; run by scripts/exp/seq_replay42.py; tables in docs/seq-replay42-tables.md, generated)
+programs/{price,open,replay}_vllm.seq  where a miss is paid (Poisson turns), the eviction/admission experiment (two-class open sessions) and §4.2's replica (the WEKA sessions) on vLLM v1's engine rules and the testbed's cost model (run by libqueuingsim/src/seq_{replay,open}.rs for paper/sim/; replay ablations by scripts/exp/seq_replay42.py, docs/seq-replay42*.md)
 libqueuingsim/src/validation.rs  one named check per proposition (tests + report)
+libqueuingsim/src/seq_{price,open,replay}.rs  where a miss is paid, the eviction/admission experiment and §4.2's replay on vLLM's rules (programs/*_vllm.seq via seQ); libqueuingsim no longer simulates the §2.2 replica itself (`TwoStage` removed 2026-09-27)
 scripts/hooks/post-edit.sh     Claude Code hook: rebuild after edits
 docs/add-proposition.md        step-by-step workflow for a new result
 docs/research-plan.md          status of every result and experiment; read before paper work
@@ -177,7 +178,10 @@ Follow `docs/add-proposition.md`. Short version:
   the least to the most controlled source): §4.1 "Real-World Traces: the
   Workload", §4.2 "Simulation: Replayed Production Sessions"
   (`paper/simulation.tex`: the real sessions are the workload, the
-  replica is simulated, the cost model is calibrated on the testbed;
+  replica is simulated with the vLLM v1 engine's rules (the seQ program
+  `programs/replay_vllm.seq`, run by `libqueuingsim::seq_replay` inside
+  `paper_tables.rs`; decided 2026-09-27, `docs/seq-replay42.md`), the
+  cost model is calibrated on the testbed;
   synthetic in-model/beyond-model checks are one summary paragraph, their
   tables and figures in App. B `simulation-appendix.tex`), §4.3 "Testbed
   Measurements" (cost fit; long-context replay as three short paragraphs

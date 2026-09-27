@@ -35,20 +35,6 @@ cargo run --release --example paper_tables      # regenerate ../paper/sim/*.tex 
 make figs                                       # from the repo root: redraw ../paper/sim/fig-*.pdf
 ```
 
-`examples/trace_html.rs` draws one run as an interactive HTML timeline: x is
-the session, y is time, a rectangle is a prefill (cold / hit / miss), a
-capsule is a decode, and the number inside is the turn within the session;
-token counts (prefilled, reused, decoded) are in the tooltip and the header.
-The default model is the two-resource replica of `models::batch` on the
-open-session scenario of §4.1 (`validation::open_session_cfg`), shown after
-its warm-up; `--model agentic` draws the single-turn replica instead. For
-looking at runs, not for the paper.
-
-```bash
-cargo run --release --example trace_html -- --rate 0.28 --cap 24 \
-    --eviction shortest --from 1000 --window 300 --out trace.html   # --help for all flags
-```
-
 `paper/simulation.tex` (the paper's simulation section) takes every number
 from `paper/sim/*.tex`, which `examples/paper_tables.rs` generates. The
 same run writes `paper/sim/data/*.csv` (one file per figure: the
@@ -77,7 +63,8 @@ rustup user-locally if it is missing.
 | `stats` | Welford moments, time averages, batch-means and replication CIs | |
 | `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `missPrice`, `psNum`, `psPrice`, `stationaryMean`, `expFit`, `pdFullCapacity`, …) | |
 | `models::queue` | open G/G/c FIFO, cross-checked against Lindley's recursion | §2.1–2.2 |
-| `models::batch` | batching replica: open sessions (Poisson `Λ`, closed loop turn → tool → resume w.p. `p` inside, optional cap on live sessions) or a closed population; servers `TwoStage` (the paper's two-resource replica: decode PS on bandwidth, prefill FIFO in the leftover compute), `Ps { φ }` (one PS station), `BlockingPrefill { φ }`, `Fifo`; exact limited PS (batch cap `B`, KV-memory admission, FIFO with head-of-line blocking); KV-dependent decode cost; resident KV as a prefix of the context; SF/LRU/Density/Priced/PricedMemory/PricedMemoryBlocks eviction with the price of the server mode; `fifo_admitted` for the footprint proposition | §2 (batch, sessions), Props. price, decode, memory, footprint |
+| `models::batch` | batching replica: open sessions (Poisson `Λ`, closed loop turn → tool → resume w.p. `p` inside, optional cap on live sessions) or a closed population; servers `Ps { φ }` (one PS station), `BlockingPrefill { φ }`, `Fifo`; exact limited PS (batch cap `B`, KV-memory admission, FIFO with head-of-line blocking); KV-dependent decode cost; resident KV as a prefix of the context; SF/LRU/Density/Priced/PricedMemory/PricedMemoryBlocks eviction with the price of the server mode; `fifo_admitted` for the footprint proposition | §2 (batch, sessions), Props. price, decode, memory, footprint |
+| `seq_price`, `seq_open`, `seq_replay` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: seQ programs `programs/{price,open,replay}_vllm.seq` run in-process by the `seq` crate (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
 | `models::agentic` | programs cycling queue → service → tool on one single-turn replica with finite KV; eviction and offload policies, including the congestion-priced ones (`Priced`, price of a miss from online estimates) | §2.2–2.3, §3.1–3.2 |
 | `models::eviction` | offline eviction instances with an exact DP optimum; SF, density and guarded density greedy, on `p c²` or arbitrary weights | §3.1 |
 | `models::pd` | aggregated pool vs prefill → KV link → decode tandem | App. B |
@@ -89,9 +76,8 @@ rustup user-locally if it is missing.
 - `src/**` unit tests cover the engine, distribution moments, the DP
   optimum against brute force, the batching replica (`Fifo` against
   `agentic`, KV and batch-cap invariants for every server and the block
-  policy, `ps_mean_number` against M/M/1 and M/M/∞, the `TwoStage` decode
-  stage as an infinite server at zero context and its prefill stage as an
-  M/D/1 without decode, block eviction freeing tail blocks only), the
+  policy, `ps_mean_number` against M/M/1 and M/M/∞, block eviction freeing
+  tail blocks only), the
   guarded density greedy's factor 2 against brute force on random
   general-weight instances, the Rust `shortest_first_lean` against the
   Lean definition, and DES against Lindley.
@@ -111,22 +97,13 @@ rustup user-locally if it is missing.
   default `β = 0` reproduces the older context-free term, and the
   open-session scenario uses `β = 2·10⁻⁹` s (the KV of a 100k-token
   context takes as long to read as the weights).
-- **Two-resource replica (`Server::TwoStage`).** One device runs
-  iterations of length `T(n, K_B) = max(ω + β·K_B, n·a)`: memory time
-  (weights once, the batch's KV once) or compute time (one token per
-  batch member, sharing the prefill chunk's matmuls). Every decoding turn
-  advances one token per iteration, so decode is processor sharing on
-  bandwidth with demand `o·(β·K + ω/n)` and demand-proportional shares;
-  hit or miss does not change it. Prefill is a FIFO server for the
-  prefill work, one turn at a time in admission order, at rate
-  `1 - n·a/T` (the compute the decode step leaves idle, `≈ 1 - ρ_D`).
-  A long miss prefill therefore delays every prefill behind it while
-  decode continues. Rates are fluid between events. With the example
-  costs (`a = 2·10⁻⁵`, `ω = 2·10⁻⁴`) a batch of at most 8 is
-  memory-bound and prefill keeps 70–98 % of the device: on this roofline
-  model decode interferes little with prefill, and the price of a miss
-  is paid almost entirely in the prefill queue. TTFT is ready → prefill
-  done; turn response adds the decode time.
+- **The paper's two-resource replica** (decode one token per turn per
+  iteration, prefill FIFO on the compute left, §2.2) is the model of the
+  propositions, whose closed forms the checks use; it is not simulated
+  here. Its time sharing matches vLLM v1's step rule, but a simulator of
+  it would also need a memory model, and the evidence runs vLLM's (block
+  eviction from the tail, chunk-wise growth with preemption, admission by
+  the engine) as seQ programs (`seq_price`, `seq_open`, `seq_replay`).
 - **Resume uncertainty.** Whether a program issues another turn is drawn
   when its tool call returns. A suspended program therefore holds KV that
   may never be reused, which is what gives `p_i` meaning in eviction.
@@ -138,10 +115,9 @@ rustup user-locally if it is missing.
   was resident).
 - **Prices.** `Priced` orders by `q_i Φ_i / c_i` with `Φ_i` the price of a
   miss of the server mode: under `Ps` it is `ΔS·L'(ρ̂)` (the `Density`
-  order, Prop. decode); under `TwoStage`, `BlockingPrefill` and `Fifo`
-  the M/G/1 price of Prop. price with the head-of-line term, from online
-  `λ̂, ρ̂, Ŵ` of the FIFO part (prefill work divided by the stage's mean
-  availability). `PricedMemory` divides by the expected remaining
+  order, Prop. decode); under `BlockingPrefill` and `Fifo` the M/G/1
+  price of Prop. price with the head-of-line term, from online `λ̂, ρ̂, Ŵ`
+  of the FIFO part. `PricedMemory` divides by the expected remaining
   suspension `τ_i` (class mean tool time) so the order is per
   byte-second, the threshold rule of Prop. memory; `PricedMemoryBlocks`
   applies the same price to tail blocks with `ΔP = a·m + b·m·(K - m/2)`.

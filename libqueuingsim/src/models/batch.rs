@@ -23,42 +23,16 @@
 //! a time at rate 1, the single-turn replica of [`super::agentic`], kept
 //! for regression.
 //!
-//! [`Server::TwoStage`] is the two-resource replica of the paper: one
-//! device time-shared by a decode stage and a prefill stage over a common
-//! KV pool. It runs iterations. Each iteration decodes one token for every
-//! turn in the batch and spends the compute the decode step leaves idle on
-//! the head-of-line prefill. The iteration takes
-//!
-//! `T(n, K_B) = max(ω + β·K_B, n·a)`,
-//!
-//! the longer of its memory time (the weights once, `ω =
-//! decode_per_token`, plus the KV of the whole batch once, `β = decode_kv`
-//! per context token) and its compute time (`a = prefill_linear` per decode
-//! token: in a chunked-prefill step the decode tokens share the matmuls of
-//! the prefill chunk). Hence:
-//!
-//! * *Decode* is processor sharing on memory bandwidth. Every batch member
-//!   advances one token per iteration, so a turn with `o` output tokens and
-//!   context `K` demands `D = o·(β·K + ω/n)` bandwidth-seconds and the
-//!   shares are proportional to demand (the batch reads everyone's KV every
-//!   step). Demand does not depend on hit or miss. For `K_B = 0` the stage
-//!   is `φ_D(n) = min(n, ω/a)` in work units, an insensitive PS station in
-//!   the sense of Prop. decode (`stationaryMean`).
-//! * *Prefill* is a FIFO server for the prefill work `P` of
-//!   [`CostModel::prefill`], served at the rate `1 - n·a/T(n, K_B)`
-//!   (availability `≈ 1 - ρ_D`), one turn at a time in admission order:
-//!   chunked but ordered, so a long miss prefill delays every prefill
-//!   behind it while decode continues. Hit/miss differences live here, and
-//!   this is the M/G/1 queue of Prop. price (`missPrice`).
-//!
-//! The rates are fluid between events (iteration granularity is not
-//! simulated). Time to first token (TTFT) is ready → prefill done.
+//! The two-resource replica of the paper's §2.2 (decode one token per
+//! turn per iteration, prefill FIFO on the compute left) is not simulated
+//! here: its closed forms are the propositions, and the paper's evidence
+//! runs vLLM v1's engine rules as seQ programs (`crate::seq_price`,
+//! `crate::seq_open`, `crate::seq_replay`).
 //!
 //! **Exact limited PS.** In the theory the batch cap `B` is modelled by a
 //! `φ` that saturates at `B` ([`Phi::Saturating`] with `cap`). The
 //! simulator also implements the exact rule: at most `B` turns are admitted
-//! ([`BatchConfig::batch_cap`]; under `TwoStage` prefilling and decoding
-//! turns together), admission is further limited by KV memory (resident KV
+//! ([`BatchConfig::batch_cap`]), admission is further limited by KV memory (resident KV
 //! of batch members plus that of suspended sessions must fit in
 //! [`BatchConfig::kv_capacity`], after evicting suspended sessions), and
 //! turns that cannot be admitted wait FIFO with head-of-line blocking.
@@ -78,10 +52,9 @@
 //! a hit iff its whole context was resident. `Priced` uses the price of a
 //! miss of the server mode: under PS `Φ = ΔS·κ̂` with `κ̂ = L'(ρ̂)` for
 //! `φ ≡ C`, a common factor, so its order is the `Density` order (Prop.
-//! decode); under blocking prefill, `Fifo` and `TwoStage` it is the M/G/1
-//! price with the head-of-line term, from online `λ̂, ρ̂, Ŵ` of the FIFO
-//! part (the prefill queue, resp. the whole turn) with service measured in
-//! device seconds at the stage's mean availability.
+//! decode); under blocking prefill and `Fifo` it is the M/G/1 price with
+//! the head-of-line term, from online `λ̂, ρ̂, Ŵ` of the FIFO part (the
+//! prefill queue, resp. the whole turn).
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, VecDeque};
@@ -176,18 +149,12 @@ pub enum Server {
     /// Prefill exclusive at rate `φ(1)`, FIFO, with priority; decode PS at
     /// `φ(n)` while no prefill runs.
     BlockingPrefill { phi: Phi },
-    /// Two-resource replica: decode as bandwidth PS (one token per
-    /// iteration for every batch member), prefill FIFO in the leftover
-    /// compute; iteration time `max(ω + β·K_B, n·a)` from the
-    /// [`CostModel`] (`ω = decode_per_token`, `β = decode_kv`,
-    /// `a = prefill_linear`). See the module doc.
-    TwoStage,
 }
 
 impl Server {
     fn phi(&self) -> Phi {
         match *self {
-            Server::Fifo | Server::TwoStage => Phi::Constant(1.0),
+            Server::Fifo => Phi::Constant(1.0),
             Server::Ps { phi } | Server::BlockingPrefill { phi } => phi,
         }
     }
@@ -202,8 +169,7 @@ pub enum Work {
     /// I.i.d. prefill and decode work per turn, independent of KV state
     /// (for the in-model checks). The work is drawn when the turn becomes
     /// ready, from its own random stream, so two runs that differ only in
-    /// these laws see the same turns (common random numbers). Under
-    /// `TwoStage` the decode work `d` stands for `d/ω` output tokens.
+    /// these laws see the same turns (common random numbers).
     Sampled { prefill: Dist, decode: Dist },
 }
 
@@ -247,8 +213,7 @@ pub struct BatchConfig {
 impl BatchConfig {
     /// Open Poisson turns (`p = 0`, one turn per session) with i.i.d. work
     /// `service`, no memory limit: the M/G/· queue of the in-model checks.
-    /// The cost model keeps `ω = 2·10⁻⁴` and `a = 2·10⁻⁵` so that
-    /// `TwoStage` can convert sampled decode work into tokens.
+    /// The cost model keeps the example's `ω = 2·10⁻⁴` and `a = 2·10⁻⁵`.
     pub fn poisson_turns(
         rate: f64,
         service: Dist,
@@ -311,16 +276,15 @@ pub struct BatchReport {
     /// Batch-means CI of the mean response.
     pub response_ci: Estimate,
     pub p99: f64,
-    /// Time to first token, ready → prefill done (`TwoStage` and blocking
-    /// prefill; empty otherwise).
+    /// Time to first token, ready → prefill done (blocking prefill; empty
+    /// otherwise).
     pub ttft: Welford,
     pub ttfts: Vec<(u64, f64)>,
     pub ttft_ci: Estimate,
     pub ttft_p99: f64,
     /// Ready to admitted.
     pub wait: Welford,
-    /// Work per turn (seconds at rate 1; decode in tokens·ω under
-    /// `TwoStage`).
+    /// Work per turn (seconds at rate 1).
     pub work: Welford,
     /// Time-average number of turns at the replica (waiting + admitted).
     pub mean_number: f64,
@@ -331,8 +295,8 @@ pub struct BatchReport {
     pub mean_prefill_number: f64,
     /// Time-average number in the decode batch.
     pub mean_decode_number: f64,
-    /// Time-average device availability for prefill (`TwoStage`; 1
-    /// otherwise).
+    /// Time-average device availability for prefill (1: every server here
+    /// gives prefill the whole device).
     pub mean_availability: f64,
     /// Fraction of time with at least one admitted turn.
     pub utilization: f64,
@@ -374,8 +338,7 @@ struct Session {
     out: f64,
     sampled: (f64, f64),
     prefill_work: f64,
-    /// Decode work after the prefill: seconds under blocking prefill,
-    /// tokens under `TwoStage`.
+    /// Decode work after the prefill (seconds).
     decode_work: f64,
     /// Arrival serial number and turn index, for [`simulate_traced`].
     serial: u64,
@@ -413,9 +376,6 @@ enum Ev {
     ToolDone(usize),
     /// Blocking prefill finished.
     PrefillDone(usize),
-    /// `TwoStage`: the head-of-line prefill finished, valid only for the
-    /// matching generation.
-    PrefillHead(u64),
     /// Next PS departure, valid only for the matching generation.
     Depart(u64),
     EndWarmup,
@@ -444,12 +404,6 @@ struct Batch {
     dirty: bool,
     // blocking prefill
     prefilling: Option<usize>,
-    // TwoStage prefill FIFO: head is under prefill
-    pq: VecDeque<usize>,
-    p_left: f64,
-    p_rate: f64,
-    p_start: f64,
-    avail_all: TimeAverage,
     next_seq: u64,
     next_serial: u64,
     trace: Option<Vec<TurnSpan>>,
@@ -485,12 +439,6 @@ impl Batch {
         assert!(!cfg.classes.is_empty());
         assert!(cfg.warmup < cfg.horizon);
         assert!(cfg.max_context < cfg.kv_capacity || cfg.kv_capacity.is_infinite());
-        if cfg.server == Server::TwoStage {
-            assert!(
-                cfg.cost.decode_per_token > 0.0 && cfg.cost.prefill_linear > 0.0,
-                "TwoStage needs ω = decode_per_token > 0 and a = prefill_linear > 0"
-            );
-        }
         let seed = cfg.seed;
         Self {
             phi: cfg.server.phi(),
@@ -513,11 +461,6 @@ impl Batch {
             generation: 0,
             dirty: false,
             prefilling: None,
-            pq: VecDeque::new(),
-            p_left: 0.0,
-            p_rate: 0.0,
-            p_start: 0.0,
-            avail_all: TimeAverage::new(0.0, 1.0),
             next_seq: 0,
             next_serial: 0,
             trace: None,
@@ -552,10 +495,6 @@ impl Batch {
         matches!(self.cfg.server, Server::BlockingPrefill { .. })
     }
 
-    fn two_stage(&self) -> bool {
-        self.cfg.server == Server::TwoStage
-    }
-
     fn cap(&self) -> usize {
         match self.cfg.server {
             Server::Fifo => 1,
@@ -564,38 +503,13 @@ impl Batch {
     }
 
     fn admitted(&self) -> usize {
-        self.pool.len() + self.pq.len() + usize::from(self.prefilling.is_some())
+        self.pool.len() + usize::from(self.prefilling.is_some())
     }
 
-    /// `TwoStage` iteration time `max(ω + β·K_B, n·a)` for the current
-    /// batch.
-    fn step_time(&self) -> f64 {
-        let c = &self.cfg.cost;
-        let n = self.pool.len() as f64;
-        (c.decode_per_token + c.decode_kv * self.pool_kv).max(n * c.prefill_linear)
-    }
-
-    /// Compute fraction an iteration leaves to prefill: 1 with an empty
-    /// batch, else `1 - n·a/T`.
-    fn prefill_avail(&self) -> f64 {
-        if !self.two_stage() {
-            return 1.0;
-        }
-        if self.pool.is_empty() {
-            return 1.0;
-        }
-        let n = self.pool.len() as f64;
-        (1.0 - n * self.cfg.cost.prefill_linear / self.step_time()).max(0.0)
-    }
-
-    /// Work per second the replica delivers to the PS pool (tokens per
-    /// second under `TwoStage`).
+    /// Work per second the replica delivers to the PS pool.
     fn pool_total_rate(&self) -> f64 {
         if self.prefilling.is_some() {
             return 0.0;
-        }
-        if self.two_stage() {
-            return self.pool.len() as f64 / self.step_time();
         }
         let r = self.phi.rate(self.pool.len());
         match self.cfg.step_time {
@@ -611,9 +525,6 @@ impl Batch {
     fn advance(&mut self, now: f64) {
         let dt = now - self.v_last;
         self.v += self.rate * dt;
-        if self.two_stage() {
-            self.p_left = (self.p_left - self.p_rate * dt).max(0.0);
-        }
         self.v_last = now;
     }
 
@@ -630,16 +541,6 @@ impl Batch {
         {
             let dt = ((t.0 - self.v) / self.rate).max(0.0);
             s.after(dt, Ev::Depart(self.generation));
-        }
-        if self.two_stage() {
-            self.p_rate = if self.pq.is_empty() {
-                0.0
-            } else {
-                self.prefill_avail()
-            };
-            if self.p_rate > 0.0 {
-                s.after(self.p_left / self.p_rate, Ev::PrefillHead(self.generation));
-            }
         }
         self.dirty = false;
     }
@@ -780,26 +681,16 @@ impl Batch {
         }
     }
 
-    /// Mean device availability for prefill so far (`TwoStage`), used to
-    /// express prefill work in seconds of stage time.
-    fn availability(&self, now: f64) -> f64 {
-        if self.two_stage() {
-            self.avail_all.mean(now).max(0.05)
-        } else {
-            1.0
-        }
-    }
-
     /// Price of a miss that adds `ds` seconds of prefill work to the next
     /// turn of session `id` (see the module doc).
-    fn miss_price(&self, id: usize, ds: f64, now: f64) -> f64 {
+    fn miss_price(&self, id: usize, ds: f64) -> f64 {
         match self.cfg.server {
             Server::Ps { .. } => {
                 // κ̂ = L'(ρ) for φ ≡ C: C/(C-ρ)² = 1/(C(1-u)²), u = ρ̂/C.
                 let (_, u, _) = self.price.estimates();
                 ds / (self.phi.limit() * (1.0 - u).powi(2))
             }
-            Server::BlockingPrefill { .. } | Server::Fifo | Server::TwoStage => {
+            Server::BlockingPrefill { .. } | Server::Fifo => {
                 let p = &self.sessions[id];
                 let cls = &self.cfg.classes[p.class];
                 let cost = &self.cfg.cost;
@@ -807,17 +698,13 @@ impl Batch {
                 if self.cfg.server == Server::Fifo {
                     s_h += cost.decode(cls.output_tokens.mean(), p.kv + cls.new_tokens.mean());
                 }
-                let r = if self.two_stage() {
-                    self.availability(now)
-                } else {
-                    self.prefill_rate()
-                };
+                let r = self.prefill_rate();
                 self.price.price(s_h / r, ds / r)
             }
         }
     }
 
-    fn evict_key(&mut self, id: usize, now: f64) -> f64 {
+    fn evict_key(&mut self, id: usize) -> f64 {
         let p = &self.sessions[id];
         let kv = p.kv;
         match self.cfg.eviction {
@@ -827,10 +714,10 @@ impl Batch {
             EvictionPolicy::Random => self.flow_rng.random(),
             EvictionPolicy::Density => self.resume_prob(id) * self.cfg.cost.miss_penalty(kv) / kv,
             EvictionPolicy::Priced => {
-                self.resume_prob(id) * self.miss_price(id, self.cfg.cost.miss_penalty(kv), now) / kv
+                self.resume_prob(id) * self.miss_price(id, self.cfg.cost.miss_penalty(kv)) / kv
             }
             EvictionPolicy::PricedMemory => {
-                self.resume_prob(id) * self.miss_price(id, self.cfg.cost.miss_penalty(kv), now)
+                self.resume_prob(id) * self.miss_price(id, self.cfg.cost.miss_penalty(kv))
                     / (kv * self.suspension(id))
             }
             EvictionPolicy::PricedMemoryBlocks => unreachable!("handled by evict_blocks"),
@@ -847,10 +734,10 @@ impl Batch {
 
     /// Price per byte-second of dropping the tail block (`m` tokens) of
     /// session `id`: `q Φ(ΔP) / (m τ)`, `ΔP = prefill(m, kv - m)`.
-    fn block_key(&self, id: usize, m: f64, now: f64) -> f64 {
+    fn block_key(&self, id: usize, m: f64) -> f64 {
         let kv = self.sessions[id].kv;
         let dp = self.cfg.cost.prefill(m, kv - m);
-        self.resume_prob(id) * self.miss_price(id, dp, now) / (m * self.suspension(id))
+        self.resume_prob(id) * self.miss_price(id, dp) / (m * self.suspension(id))
     }
 
     fn evictable(&self, exclude: usize) -> f64 {
@@ -864,9 +751,9 @@ impl Batch {
 
     /// Free at least `need` tokens from suspended sessions, tool calls
     /// first, never touching `exclude` or the batch.
-    fn evict(&mut self, need: f64, exclude: usize, now: f64) {
+    fn evict(&mut self, need: f64, exclude: usize) {
         if self.cfg.eviction == EvictionPolicy::PricedMemoryBlocks {
-            return self.evict_blocks(need, exclude, now);
+            return self.evict_blocks(need, exclude);
         }
         let mut freed = 0.0;
         for phase in [Phase::Tool, Phase::Queued] {
@@ -875,10 +762,8 @@ impl Batch {
                     i != exclude && self.sessions[i].phase == phase && self.sessions[i].kv > 0.0
                 })
                 .collect();
-            let mut keyed: Vec<(f64, usize)> = ids
-                .into_iter()
-                .map(|i| (self.evict_key(i, now), i))
-                .collect();
+            let mut keyed: Vec<(f64, usize)> =
+                ids.into_iter().map(|i| (self.evict_key(i), i)).collect();
             keyed.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
             for (_, i) in keyed {
                 if freed >= need {
@@ -896,7 +781,7 @@ impl Batch {
 
     /// Block-level eviction: repeatedly drop the tail block with the lowest
     /// price per byte-second, tool calls first.
-    fn evict_blocks(&mut self, need: f64, exclude: usize, now: f64) {
+    fn evict_blocks(&mut self, need: f64, exclude: usize) {
         let mut freed = 0.0;
         for phase in [Phase::Tool, Phase::Queued] {
             while freed < need {
@@ -907,7 +792,7 @@ impl Batch {
                         continue;
                     }
                     let m = self.tail_block(p.kv);
-                    let key = self.block_key(i, m, now);
+                    let key = self.block_key(i, m);
                     if best.is_none_or(|b| key < b.0) {
                         best = Some((key, i, m));
                     }
@@ -944,7 +829,7 @@ impl Batch {
                 if self.evictable(id) < need {
                     break;
                 }
-                self.evict(need, id, now);
+                self.evict(need, id);
             }
             self.waiting.pop_front();
             self.admit(id, target, s);
@@ -965,21 +850,11 @@ impl Batch {
         let hit = !p.cold && p.kv >= p.context;
         let missing = p.context - p.kv;
         let (prefill, decode) = match self.cfg.work {
-            Work::Sampled { .. } => {
-                if self.two_stage() {
-                    (p.sampled.0, p.sampled.1 / cost.decode_per_token)
-                } else {
-                    p.sampled
-                }
-            }
+            Work::Sampled { .. } => p.sampled,
             Work::Tokens => {
                 // Re-prefill whatever is not resident, then the new tokens.
                 let pre = cost.overhead + cost.prefill(missing + p.new, p.kv);
-                let dec = if self.two_stage() {
-                    p.out
-                } else {
-                    cost.decode(p.out, target)
-                };
+                let dec = cost.decode(p.out, target);
                 (pre, dec)
             }
         };
@@ -987,12 +862,7 @@ impl Batch {
         let counted = self.warm && p.ready_at >= self.cfg.warmup;
         if counted {
             self.wait.push(wait);
-            let dec_work = if self.two_stage() {
-                decode * cost.decode_per_token
-            } else {
-                decode
-            };
-            self.work.push(prefill + dec_work);
+            self.work.push(prefill + decode);
             if !p.cold {
                 self.follow_ups += 1;
                 if hit {
@@ -1039,14 +909,6 @@ impl Batch {
             self.prefilling = Some(id);
             self.prefill_started(id, now);
             s.after(prefill / r, Ev::PrefillDone(id));
-        } else if self.two_stage() {
-            self.sessions[id].phase = Phase::Prefill;
-            self.pq.push_back(id);
-            if self.pq.len() == 1 {
-                self.p_left = prefill;
-                self.p_start = now;
-                self.prefill_started(id, now);
-            }
         } else {
             let c = self.phi.limit();
             let obs_service = if c.is_finite() {
@@ -1136,12 +998,10 @@ impl Batch {
         self.batch.set(now, adm);
         self.pnum.set(
             now,
-            waiting + self.pq.len() as f64 + f64::from(u8::from(self.prefilling.is_some())),
+            waiting + f64::from(u8::from(self.prefilling.is_some())),
         );
         self.dnum.set(now, self.pool.len() as f64);
-        let av = self.prefill_avail();
-        self.avail.set(now, av);
-        self.avail_all.set(now, av);
+        self.avail.set(now, 1.0);
         self.busy.set(now, if adm > 0.0 { 1.0 } else { 0.0 });
         self.resident.set(now, self.used_kv);
         self.live_avg.set(now, self.live as f64);
@@ -1202,23 +1062,6 @@ impl Model for Batch {
                 self.prefilling = None;
                 self.first_token(id, s);
             }
-            Ev::PrefillHead(g) => {
-                if g != self.generation {
-                    return;
-                }
-                let id = self.pq.pop_front().expect("scheduled prefill has a head");
-                let p = &self.sessions[id];
-                self.price
-                    .observe(self.p_start, self.p_start - p.ready_at, now - self.p_start);
-                self.first_token(id, s);
-                if let Some(&next) = self.pq.front() {
-                    self.p_left = self.sessions[next].prefill_work;
-                    self.p_start = now;
-                    self.prefill_started(next, now);
-                } else {
-                    self.p_left = 0.0;
-                }
-            }
             Ev::Depart(g) => {
                 if g != self.generation {
                     return;
@@ -1262,15 +1105,10 @@ pub fn simulate(cfg: &BatchConfig) -> BatchReport {
 
 /// As [`simulate`], also returning every turn completed before the horizon
 /// (warm-up included), in completion order. Only for the servers with a
-/// separate prefill phase, [`Server::TwoStage`] and
-/// [`Server::BlockingPrefill`]; under `TwoStage` a turn's `start` is when it
-/// reaches the head of the prefill FIFO.
+/// separate prefill phase, [`Server::BlockingPrefill`].
 pub fn simulate_traced(cfg: &BatchConfig) -> (BatchReport, Vec<TurnSpan>) {
     assert!(
-        matches!(
-            cfg.server,
-            Server::TwoStage | Server::BlockingPrefill { .. }
-        ),
+        matches!(cfg.server, Server::BlockingPrefill { .. }),
         "tracing needs a server with a separate prefill phase"
     );
     simulate_inner(cfg, true)
@@ -1471,8 +1309,18 @@ mod tests {
                 },
                 EvictionPolicy::ShortestFirst,
             ),
-            (Server::TwoStage, EvictionPolicy::PricedMemory),
-            (Server::TwoStage, EvictionPolicy::PricedMemoryBlocks),
+            (
+                Server::Ps {
+                    phi: Phi::Constant(1.0),
+                },
+                EvictionPolicy::PricedMemory,
+            ),
+            (
+                Server::Ps {
+                    phi: Phi::Constant(1.0),
+                },
+                EvictionPolicy::PricedMemoryBlocks,
+            ),
         ] {
             let mut c = from_agentic(&a, server);
             c.batch_cap = Some(6);
@@ -1517,7 +1365,12 @@ mod tests {
                 [9_216.0, 10_000.0],
             ),
         ] {
-            let mut c = from_agentic(&a, Server::TwoStage);
+            let mut c = from_agentic(
+                &a,
+                Server::Ps {
+                    phi: Phi::Constant(1.0),
+                },
+            );
             c.eviction = ev;
             let mut m = Batch::new(c);
             for _ in 0..2 {
@@ -1531,7 +1384,7 @@ mod tests {
                 p.kv = 10_000.0;
             }
             m.used_kv = 20_000.0;
-            m.evict(600.0, usize::MAX, 0.0);
+            m.evict(600.0, usize::MAX);
             assert!((m.used_kv - (20_000.0 - freed)).abs() < 1e-9, "{ev:?}");
             let mut got: Vec<f64> = m.sessions.iter().map(|p| p.kv).collect();
             got.sort_by(f64::total_cmp);
@@ -1541,59 +1394,17 @@ mod tests {
         // average.
         let mut a = AgenticConfig::example(48, 3.0e5);
         a.horizon = 2_500.0;
-        let mut c = from_agentic(&a, Server::TwoStage);
+        let mut c = from_agentic(
+            &a,
+            Server::Ps {
+                phi: Phi::Constant(1.0),
+            },
+        );
         c.batch_cap = Some(6);
         c.eviction = EvictionPolicy::PricedMemoryBlocks;
         let r = simulate(&c);
         assert!(r.recomputes > 0);
         assert!(r.recomputed_tokens / (r.recomputes as f64) < r.mean_resident_kv);
-    }
-
-    #[test]
-    fn two_stage_decode_is_infinite_server_at_zero_context() {
-        // Poisson turns, no prefill work, decode 0.1 s = 500 tokens each;
-        // with K = 0 and n < ω/a = 10 every turn takes exactly 0.1 s.
-        let lam = 3.0;
-        let mut c = BatchConfig::poisson_turns(
-            lam,
-            Dist::Deterministic(0.0),
-            Server::TwoStage,
-            2.0e5 / lam,
-            7,
-        );
-        c.work = Work::Sampled {
-            prefill: Dist::Deterministic(0.0),
-            decode: Dist::Deterministic(0.1),
-        };
-        let r = simulate(&c);
-        assert!(
-            (r.response.mean() - 0.1).abs() < 1e-3,
-            "{}",
-            r.response.mean()
-        );
-        assert!(
-            (r.mean_decode_number - 0.3).abs() < 0.01,
-            "{}",
-            r.mean_decode_number
-        );
-        assert!(r.ttft.mean() < 1e-9);
-    }
-
-    #[test]
-    fn two_stage_prefill_is_fifo_at_rate_one_without_decode() {
-        // No decode: the prefill stage is an M/D/1 at rate 1.
-        let lam = 0.7;
-        let c = BatchConfig::poisson_turns(
-            lam,
-            Dist::Deterministic(1.0),
-            Server::TwoStage,
-            2.0e5 / lam,
-            8,
-        );
-        let r = simulate(&c);
-        let want = 1.0 + lam / (2.0 * (1.0 - lam));
-        assert!(r.ttft_ci.agrees_with(want, 0.02), "{} vs {want}", r.ttft_ci);
-        assert!((r.mean_availability - 1.0).abs() < 1e-12);
     }
 
     #[test]
@@ -1614,24 +1425,17 @@ mod tests {
     }
 
     #[test]
-    fn kv_dependent_decode_slows_two_stage() {
-        let mut a = AgenticConfig::example(32, 1.0e9);
-        a.max_context = 2.0e5;
-        a.horizon = 2_000.0;
-        let mut c = from_agentic(&a, Server::TwoStage);
-        let fast = simulate(&c);
-        c.cost.decode_kv = 2.0e-8;
-        let slow = simulate(&c);
-        assert!(slow.response.mean() > fast.response.mean());
-        assert!(slow.mean_availability > fast.mean_availability);
-    }
-
-    #[test]
     fn trace_is_consistent_and_does_not_perturb() {
-        let mut cfg =
-            crate::validation::open_session_cfg(0.28, 24, EvictionPolicy::ShortestFirst, 3);
+        let mut a = AgenticConfig::example(48, 3.0e5);
+        a.horizon = 2_000.0;
+        let mut cfg = from_agentic(
+            &a,
+            Server::BlockingPrefill {
+                phi: Phi::Constant(1.0),
+            },
+        );
+        cfg.batch_cap = Some(6);
         cfg.warmup = 0.0;
-        cfg.horizon = 2_000.0;
         let (report, trace) = simulate_traced(&cfg);
         let plain = simulate(&cfg);
         assert_eq!(report.turns, plain.turns);
@@ -1658,16 +1462,12 @@ mod tests {
                 assert_eq!(t.turn, 1);
             }
         }
-        // Prefills are served one at a time, in order; decodes overlap.
+        // Prefills are served one at a time, in order.
         let mut by_start: Vec<&TurnSpan> = trace.iter().collect();
         by_start.sort_by(|a, b| a.start.total_cmp(&b.start));
         for w in by_start.windows(2) {
             assert!(w[0].prefill_end <= w[1].start + 1e-9);
         }
-        assert!(
-            by_start.windows(2).any(|w| w[1].prefill_end < w[0].end),
-            "some decode should overlap the next turn's prefill"
-        );
     }
 
     #[test]
@@ -1677,7 +1477,9 @@ mod tests {
             Server::BlockingPrefill {
                 phi: Phi::Constant(1.0),
             },
-            Server::TwoStage,
+            Server::Ps {
+                phi: Phi::Constant(1.0),
+            },
         ] {
             let c = from_agentic(&a, server);
             let (x, y) = (simulate(&c), simulate(&c));

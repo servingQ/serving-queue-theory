@@ -18,10 +18,9 @@
 use crate::analytic::*;
 use crate::dist::Dist;
 use crate::models::agentic::{
-    self, AgenticConfig, CostModel, EvictionPolicy, FetchMode, OffloadPolicy, Population,
-    ProgramClass,
+    self, AgenticConfig, EvictionPolicy, FetchMode, OffloadPolicy, Population, ProgramClass,
 };
-use crate::models::batch::{self, BatchConfig, BatchReport, Phi, Server, Work, ps_mean_number};
+use crate::models::batch::{self, BatchConfig, BatchReport, Phi, Server, ps_mean_number};
 use crate::models::eviction::{self, Item, ResumeModel};
 use crate::models::pd::{self, Load, Mode, PdConfig};
 use crate::models::queue::{self, QueueConfig};
@@ -60,7 +59,7 @@ pub fn all() -> Vec<Check> {
         cache_reuse_lowers_delay(),
         cv2_ratio(),
         miss_price_bracket(),
-        two_stage_prefill_price(),
+        prefill_pays_the_miss(),
         ps_insensitivity(),
         bcmp_feedback(),
         ps_price_bracket(),
@@ -381,151 +380,47 @@ pub fn miss_price_bracket() -> Check {
     }
 }
 
-/// Decode work per turn of the two-stage price scenario (seconds at an
-/// idle device, i.e. `0.1/ω = 500` output tokens).
-pub const TWO_STAGE_DECODE: f64 = 0.1;
-
-/// Outcome of the two-stage price scenario for one `δ`.
-#[derive(Clone, Debug)]
-pub struct TwoStagePriceRun {
-    /// Mean prefill availability of the baseline run, `r̄`.
-    pub avail: f64,
-    /// Effective prefill load `λE[P]/r̄` of the baseline.
-    pub rho_p: f64,
-    /// Baseline mean number in the prefill stage, `λ·TTFT`, and the M/G/1
-    /// prediction `numInSystem` at service `P/r̄`.
-    pub l_p: Estimate,
-    pub l_p_theory: f64,
-    /// Rise of the prefill-stage number, `λ·ΔTTFT` (paired, CRN).
-    pub dl_p: Estimate,
-    /// Bracket `[λδΦ, (1-ρ)/(1-ρ')·λδΦ]` with `Φ = missPrice` at service
-    /// `P/r̄`.
-    pub lo: f64,
-    pub hi: f64,
-    /// Change of the decode-stage number, `λ·Δ(R - TTFT)` (paired).
-    pub dl_d: Estimate,
-    /// Baseline decode-stage number `λ·E[R - TTFT]` and its PS prediction
-    /// `Σ nπ(n)` for `φ_D(n) = min(n, ω/a)`.
-    pub l_d: Estimate,
-    pub l_d_theory: f64,
-}
-
-/// Poisson turns at a `TwoStage` replica: prefill work hit/miss
-/// (`0.05`/`0.5` s, hit rate 0.8), decode `0.1` s (500 tokens) per turn,
-/// `λ` such that `λE[P] = 0.6`, no memory limit, common random numbers
-/// against hit rate `0.8 - δ`, 1M turns. Contexts are zero, so the decode
-/// stage is `φ_D(n) = min(n, 10)` and the prefill stage runs at
-/// availability `1 - n/10` while `n` turns decode.
-pub fn two_stage_price_scenario(delta: f64) -> TwoStagePriceRun {
-    let (s_h, s_m, p) = (MISS_PRICE_SH, MISS_PRICE_SM, 0.8);
-    let base = Dist::HitMiss {
-        p_hit: p,
-        hit: s_h,
-        miss: s_m,
-    };
-    let lam = 0.6 / base.mean();
-    let d = Dist::HitMiss {
-        p_hit: p - delta,
-        hit: s_h,
-        miss: s_m,
-    };
-    let cfg = |prefill: Dist| {
-        let mut c =
-            BatchConfig::poisson_turns(lam, prefill.clone(), Server::TwoStage, 1.0e6 / lam, 225);
-        c.work = Work::Sampled {
-            prefill,
-            decode: Dist::Deterministic(TWO_STAGE_DECODE),
-        };
-        c
-    };
-    let r0 = batch::simulate(&cfg(base.clone()));
-    let r1 = batch::simulate(&cfg(d.clone()));
-    let scale = |xs: Vec<f64>| xs.into_iter().map(|x| lam * x).collect::<Vec<_>>();
-    let dl_p = batch_means(&scale(batch::paired_differences(&r0.ttfts, &r1.ttfts)), 20);
-    let decode = |r: &BatchReport| -> Vec<(u64, f64)> {
-        r.responses
-            .iter()
-            .zip(&r.ttfts)
-            .map(|(a, b)| {
-                debug_assert_eq!(a.0, b.0);
-                (a.0, a.1 - b.1)
-            })
-            .collect()
-    };
-    let (d0, d1) = (decode(&r0), decode(&r1));
-    let dl_d = batch_means(&scale(batch::paired_differences(&d0, &d1)), 20);
-    let l_d = batch_means(&scale(d0.iter().map(|x| x.1).collect()), 20);
-    // Prefill stage as M/G/1 with service P/r̄.
-    let r = r0.mean_availability;
-    let rho = lam * base.mean() / r;
-    let m2 = base.second_moment() / (r * r);
-    let phi = miss_price(lam, m2, rho, s_h / r, s_m / r);
-    let lo = lam * delta * phi;
-    let rho1 = rho + lam * delta * (s_m - s_h) / r;
-    let omega_over_a = 2.0e-4 / 2.0e-5;
-    TwoStagePriceRun {
-        avail: r,
-        rho_p: rho,
-        l_p: little_number_of(&r0.ttft_ci, lam),
-        l_p_theory: num_in_system(lam, m2, rho),
-        dl_p,
-        lo,
-        hi: (1.0 - rho) / (1.0 - rho1) * lo,
-        dl_d,
-        l_d,
-        l_d_theory: ps_mean_number(
-            &Phi::Saturating {
-                beta: 0.0,
-                cap: Some(omega_over_a as usize),
-            },
-            lam * TWO_STAGE_DECODE,
-        ),
-    }
-}
-
-fn little_number_of(e: &Estimate, lam: f64) -> Estimate {
-    Estimate {
-        mean: lam * e.mean,
-        half_width: lam * e.half_width,
-    }
-}
-
-/// Props. price and decode on the two-resource replica: forcing a fraction
-/// `δ` of turns to miss raises the number in the *prefill* stage by an
-/// amount bracketed by the M/G/1 price at the stage's effective service
-/// `P/r̄` (`r̄` the measured mean availability), while the *decode* stage,
-/// whose demand does not depend on hit or miss, is unchanged. Beyond the
-/// model in one respect: the prefill rate fluctuates with the decode batch
-/// (`1 - n/10`), so the stage is not exactly an M/G/1 at a fixed rate.
-pub fn two_stage_prefill_price() -> Check {
+/// Props. price and decode on a replica with the vLLM v1 engine's rules
+/// (`seq_price`, the seQ program `programs/price_vllm.seq`): forcing a
+/// fraction `δ` of turns to miss raises the number in the *prefill* stage
+/// by an amount bracketed by the M/G/1 price at the stage's effective
+/// service `P/r̄`, and changes the number in the *decode* stage, whose
+/// demand does not depend on hit or miss, by less than 1 % (it is not
+/// exactly zero there: a miss's prefill lengthens the iterations the
+/// decoding turns share). Beyond the model: the prefill rate fluctuates
+/// with the decode batch and the engine works in iterations.
+pub fn prefill_pays_the_miss() -> Check {
     let mut pass = true;
     let mut obs = vec![];
     let mut head = String::new();
     for delta in [0.01, 0.05] {
-        let m = two_stage_price_scenario(delta);
+        let m = crate::seq_price::price_scenario(delta);
         if head.is_empty() {
             head = format!(
-                "r̄={:.3}, ρ_P={:.3}, L_P {} vs M/G/1 {:.3}, L_D {} vs PS {:.3}",
-                m.avail, m.rho_p, m.l_p, m.l_p_theory, m.l_d, m.l_d_theory
+                "r̄={:.3}, ρ_P={:.3}, L_P {} vs M/G/1 {:.3}, L_D {}",
+                m.avail, m.rho_p, m.l_p, m.l_p_theory, m.l_d
             );
-            pass &= m.l_d.agrees_with(m.l_d_theory, 0.02);
         }
         // Prefill: the CI of ΔL_P must overlap the bracket (5% slack for
-        // the fluctuating rate). Decode: the CI of ΔL_D must contain 0.
+        // the fluctuating rate). Decode: |ΔL_D| below 1% of L_D.
         pass &= m.dl_p.lo() <= 1.05 * m.hi && m.dl_p.hi() >= 0.95 * m.lo;
-        pass &= m.dl_d.lo() <= 0.0 && m.dl_d.hi() >= 0.0;
+        pass &= m.dl_d.mean.abs() <= 0.01 * m.l_d.mean;
         obs.push(format!(
-            "δ={delta}: ΔL_P {} vs [{:.4}, {:.4}], ΔL_D {}",
-            m.dl_p, m.lo, m.hi, m.dl_d
+            "δ={delta}: ΔL_P {} vs [{:.4}, {:.4}], ΔL_D {} ({:.2}% of L_D)",
+            m.dl_p,
+            m.lo,
+            m.hi,
+            m.dl_d,
+            100.0 * m.dl_d.mean / m.l_d.mean
         ));
     }
     Check {
-        id: "two_stage_prefill_price",
+        id: "prefill_pays_the_miss",
         paper: "prop:price, prop:decode",
         lean: &["missPrice_lower", "missPrice_upper", "stationaryMean"],
         kind: Kind::BeyondModel,
-        claim: "on the two-resource replica the price of a miss is paid in the prefill queue (FIFO bracket at the stage's effective service) and not in the decode batch",
-        expected: "TwoStage, hit/miss prefill 0.05/0.5, decode 0.1 s, λE[P]=0.6: 95% CI of λΔTTFT overlaps [λδΦ, (1-ρ)/(1-ρ')λδΦ] (5% slack) at service P/r̄; CI of λΔ(R-TTFT) contains 0; baseline decode L within CI (+2%) of Σnπ(n), φ_D(n)=min(n,10)".into(),
+        claim: "on a replica with vLLM's engine rules the price of a miss is paid in the prefill queue (FIFO bracket at the stage's effective service) and hardly in the decode batch",
+        expected: "vLLM rules, testbed cost, hit/miss prefill 512/5120 tokens, λE[P]=0.6: 95% CI of λΔTTFT overlaps [λδΦ, (1-ρ)/(1-ρ')λδΦ] (5% slack) at service P/r̄; |λΔ(R-TTFT)| below 1% of λE[R-TTFT]".into(),
         observed: format!("{head}; {}", obs.join("; ")),
         pass,
     }
@@ -1753,106 +1648,20 @@ pub fn mixed_workload(n: usize, seed: u64, ev: EvictionPolicy) -> AgenticConfig 
     cfg
 }
 
-/// Session arrival rates of the open-session eviction scenario on the
-/// two-resource replica (see [`open_session_cfg`]); about 2.1 and 3.0
-/// offered turns/s (10.7 turns per session). At the default cap of 24
-/// live sessions the first is the onset of eviction (follow-up hit rate
-/// about 0.95) and the second is deep inside the eviction window (about
-/// 0.75); at 32 live sessions seeds start to thrash at the first and most
-/// have thrashed at the second, at 16 neither load evicts much. Below
-/// about 0.12 there are no evictions and the policies coincide.
-pub const OPEN_RATES: [f64; 2] = [0.20, 0.28];
 pub const OPEN_SEEDS: u64 = 20;
 /// Default cap on live sessions of the scenario.
 pub const OPEN_CAP: usize = 24;
 /// Admission caps of the sweep (the default is one of them).
 pub const OPEN_CAPS: [usize; 3] = [16, 24, 32];
-/// All policies, run at the default cap.
-pub const OPEN_POLICIES: [EvictionPolicy; 6] = [
-    EvictionPolicy::ShortestFirst,
-    EvictionPolicy::Density,
-    EvictionPolicy::Priced,
-    EvictionPolicy::PricedMemory,
-    EvictionPolicy::PricedMemoryBlocks,
-    EvictionPolicy::Lru,
-];
-/// Policies run at the other caps of the sweep.
-pub const SWEEP_POLICIES: [EvictionPolicy; 3] = [
-    EvictionPolicy::ShortestFirst,
-    EvictionPolicy::Density,
-    EvictionPolicy::PricedMemory,
-];
-
-/// Cost model of the open-session scenario: the example costs with a
-/// KV-dependent decode term, `β = 2·10⁻⁹` s per output token per context
-/// token (the KV of a 100k-token context takes as long to read as the
-/// weights).
-pub fn open_session_cost() -> CostModel {
-    let mut cost = AgenticConfig::example(0, 1.0e6).cost;
-    cost.decode_kv = 2.0e-9;
-    cost
-}
-
-/// Open sessions on one two-resource replica with finite KV. Two classes
-/// with equal arrival weight: agents (`p = 0.95`, 4–8k initial tokens, 800
-/// new and 300 output per turn, tool calls Exp(6 s)) and one-shot documents
-/// (`p = 0.3`, 15–30k tokens, 500 new, think time Exp(2 s)). The tool times
-/// differ so that the byte-second price (`PricedMemory`) and the per-token
-/// price (`Density`, `Priced`) can order the two classes differently.
-/// 600k-token KV pool, batch cap 8 (prefilling and decoding turns), at most
-/// `cap` live sessions (the rest wait to enter), 512-token blocks.
-pub fn open_session_cfg(rate: f64, cap: usize, ev: EvictionPolicy, seed: u64) -> BatchConfig {
-    let kv = 6.0e5;
-    BatchConfig {
-        population: Population::Open { rate },
-        max_sessions: Some(cap),
-        trace: None,
-        force_miss: 0.0,
-        classes: vec![
-            ProgramClass {
-                weight: 1.0,
-                resume_prob: 0.95,
-                initial_tokens: Dist::Uniform {
-                    lo: 4_000.0,
-                    hi: 8_000.0,
-                },
-                new_tokens: Dist::exp(800.0),
-                output_tokens: Dist::exp(300.0),
-                tool_time: Dist::exp(6.0),
-            },
-            ProgramClass {
-                weight: 1.0,
-                resume_prob: 0.3,
-                initial_tokens: Dist::Uniform {
-                    lo: 15_000.0,
-                    hi: 30_000.0,
-                },
-                new_tokens: Dist::exp(500.0),
-                output_tokens: Dist::exp(300.0),
-                tool_time: Dist::exp(2.0),
-            },
-        ],
-        cost: open_session_cost(),
-        work: Work::Tokens,
-        server: Server::TwoStage,
-        batch_cap: Some(8),
-        kv_capacity: kv,
-        max_context: 0.5 * kv,
-        eviction: ev,
-        block_tokens: 512.0,
-        step_time: None,
-        warmup: 1_000.0,
-        horizon: 21_000.0,
-        seed,
-    }
-}
-
 /// One (cap, load, policy) cell over [`OPEN_SEEDS`] seeds.
 #[derive(Clone, Debug)]
 pub struct OpenEvictRow {
     pub cap: usize,
     pub rate: f64,
     pub policy: EvictionPolicy,
+    /// Whether the scheduler knows that a session ended (its KV is then
+    /// dropped); libqueuingsim always drops it.
+    pub end_known: bool,
     pub throughput: Estimate,
     pub hit_rate: Estimate,
     /// Mean and p99 time to first token (prefill wait + prefill).
@@ -1866,56 +1675,6 @@ pub struct OpenEvictRow {
     pub entry_wait: Estimate,
     /// Seeds whose follow-up hit rate fell below 0.5 (thrashing).
     pub collapsed: usize,
-}
-
-pub fn open_row(cap: usize, rate: f64, policy: EvictionPolicy) -> OpenEvictRow {
-    let rs: Vec<BatchReport> = (1..=OPEN_SEEDS)
-        .map(|s| batch::simulate(&open_session_cfg(rate, cap, policy, s)))
-        .collect();
-    let est = |f: fn(&BatchReport) -> f64| replications(&rs.iter().map(f).collect::<Vec<_>>());
-    OpenEvictRow {
-        cap,
-        rate,
-        policy,
-        throughput: est(|r| r.throughput),
-        hit_rate: est(|r| r.hit_rate),
-        ttft: est(|r| r.ttft.mean()),
-        ttft_p99: est(|r| r.ttft_p99),
-        response: est(|r| r.response.mean()),
-        p99: est(|r| r.p99),
-        availability: est(|r| r.mean_availability),
-        entry_wait: est(|r| r.entry_wait.mean()),
-        collapsed: rs.iter().filter(|r| r.hit_rate < 0.5).count(),
-    }
-}
-
-/// Every cell of the open-session scenario: all policies at the default
-/// cap, [`SWEEP_POLICIES`] at the other caps, both loads. Cells run on
-/// threads; the result is deterministic.
-pub fn eviction_open_scenario() -> Vec<OpenEvictRow> {
-    let mut cells = vec![];
-    for cap in OPEN_CAPS {
-        let pols: &[EvictionPolicy] = if cap == OPEN_CAP {
-            &OPEN_POLICIES
-        } else {
-            &SWEEP_POLICIES
-        };
-        for rate in OPEN_RATES {
-            for &policy in pols {
-                cells.push((cap, rate, policy));
-            }
-        }
-    }
-    std::thread::scope(|s| {
-        let handles: Vec<_> = cells
-            .iter()
-            .map(|&(cap, rate, policy)| s.spawn(move || open_row(cap, rate, policy)))
-            .collect();
-        handles
-            .into_iter()
-            .map(|h| h.join().expect("simulation thread"))
-            .collect()
-    })
 }
 
 /// Results that bear on the paper's open questions (§7) but test no
@@ -1947,35 +1706,6 @@ pub fn observations() -> Vec<Observation> {
         result: lines.join("; "),
     });
 
-    // Eviction with open sessions on the two-resource replica, with an
-    // admission-cap sweep.
-    let lines: Vec<String> = eviction_open_scenario()
-        .iter()
-        .map(|r| {
-            format!(
-                "cap={} Λ={} {:?}: X {} hit {} TTFT {} p99 {} R {} p99 {} avail {} entry wait {} ({} of {OPEN_SEEDS} seeds thrash)",
-                r.cap,
-                r.rate,
-                r.policy,
-                r.throughput,
-                r.hit_rate,
-                r.ttft,
-                r.ttft_p99,
-                r.response,
-                r.p99,
-                r.availability,
-                r.entry_wait,
-                r.collapsed
-            )
-        })
-        .collect();
-    out.push(Observation {
-        id: "eviction_open_sessions",
-        paper: "prop:price, prop:decode, prop:memory, sec:exp-evict",
-        question: "On the two-resource replica misses are paid in the prefill FIFO (Prop. price) while decode is insensitive (Prop. decode), and the memory shadow price is per byte-second (Prop. memory). With open sessions, a session cap, finite KV and a batch cap, how do SF, Density, Priced, PricedMemory, block-level PricedMemory and LRU compare in throughput, hit rate, TTFT and turn response, and does the admission cap move the thrash window? (Turns/s and seconds, mean ± 95% half-width over seeds.)",
-        result: lines.join("; "),
-    });
-
     // Chain check: PK from measured moments vs measured wait, open system.
     let mut lines = vec![];
     for rate in [0.05, 0.08] {
@@ -2000,33 +1730,6 @@ pub fn observations() -> Vec<Observation> {
         id: "pk_on_agentic_turns",
         paper: "sec:congestion, sec:limits",
         question: "Turn arrivals of agent programs are not Poisson and hits are correlated with memory state. How far is PK (fed the measured λ and service moments) from the simulated wait?",
-        result: lines.join("; "),
-    });
-
-    // Prop. price on the replayed workload: forced misses vs the bracket.
-    let corpus = std::sync::Arc::new(crate::workload::TraceCorpus::weka());
-    let mut lines = vec![];
-    for rate in TRACE_RATES {
-        for delta in TRACE_PRICE_DELTAS {
-            let r = trace_price_row(&corpus, rate, delta);
-            lines.push(format!(
-                "Λ={rate} δ={delta}: ρ {:.2} live {:.1} ΔL_P {} vs [{:.2}, {}]",
-                r.rho,
-                r.live,
-                r.dl_p,
-                r.lo,
-                if r.hi.is_finite() {
-                    format!("{:.2}", r.hi)
-                } else {
-                    "∞".into()
-                }
-            ));
-        }
-    }
-    out.push(Observation {
-        id: "trace_replay_miss_price",
-        paper: "prop:price, sec:exp-variance, sec:limits",
-        question: "On replayed production sessions with no eviction, forcing a share δ of resident follow-up turns to miss: does the rise of the time-average number in the prefill stage fall inside the bracket of Prop. price computed from the baseline's measured λ, ρ, W (open M/G/1)? The live sessions are a finite population.",
         result: lines.join("; "),
     });
 
@@ -2082,68 +1785,10 @@ pub const CAL_PREFILL_LINEAR: f64 = 1.94e-4; // a, s per new token
 pub const CAL_PREFILL_QUADRATIC: f64 = 6.51e-9; // b, s per token², K_c = a/b ≈ 30k
 pub const CAL_PREFILL_OVERHEAD: f64 = 0.044; // c0, s per request
 pub const CAL_DECODE_STEP: f64 = 0.057; // ω, s per decode iteration (E2 ITL at cap 8)
-pub fn trace_cost() -> CostModel {
-    CostModel {
-        overhead: CAL_PREFILL_OVERHEAD,
-        prefill_linear: CAL_PREFILL_LINEAR,
-        prefill_quadratic: CAL_PREFILL_QUADRATIC,
-        decode_per_token: CAL_DECODE_STEP,
-        decode_kv: 0.0,
-    }
-}
 pub const TRACE_SEEDS: u64 = 5;
 /// Warm-up and horizon (s) of every replay run.
 pub const TRACE_WARMUP: f64 = 6_000.0;
 pub const TRACE_HORIZON: f64 = 66_000.0;
-
-/// The two-resource replica fed by replayed production sessions
-/// ([`crate::workload::TraceCorpus::weka`]): Poisson session arrivals at
-/// `rate`, each session a real one (its appends, outputs and think times),
-/// the cost model [`trace_cost`] calibrated on the testbed (`a = 1.94·10⁻⁴`,
-/// `b = 6.51·10⁻⁹`, so the attention term overtakes the dense term at
-/// `K_c = a/b ≈ 3·10^4` tokens), KV pool `kv`, batch cap 8, at most 24
-/// live sessions, eviction by price per byte-second. The single
-/// class supplies the scheduler's estimates: `p_i` = the corpus resume
-/// fraction, `τ_i` = the corpus mean think time.
-pub fn trace_replay_cfg(
-    corpus: &std::sync::Arc<crate::workload::TraceCorpus>,
-    rate: f64,
-    kv: f64,
-    cap: usize,
-    ev: EvictionPolicy,
-    seed: u64,
-) -> BatchConfig {
-    BatchConfig {
-        population: Population::Open { rate },
-        max_sessions: Some(cap),
-        classes: vec![ProgramClass {
-            weight: 1.0,
-            resume_prob: corpus.resume_fraction(),
-            initial_tokens: Dist::Deterministic(0.0),
-            new_tokens: Dist::Deterministic(0.0),
-            output_tokens: Dist::Deterministic(0.0),
-            tool_time: Dist::Deterministic(corpus.mean_think()),
-        }],
-        trace: Some(corpus.clone()),
-        force_miss: 0.0,
-        cost: trace_cost(),
-        work: Work::Tokens,
-        server: Server::TwoStage,
-        batch_cap: Some(8),
-        kv_capacity: kv,
-        max_context: if kv.is_finite() {
-            0.9 * kv
-        } else {
-            f64::INFINITY
-        },
-        eviction: ev,
-        block_tokens: 512.0,
-        step_time: None,
-        warmup: TRACE_WARMUP,
-        horizon: TRACE_HORIZON,
-        seed,
-    }
-}
 
 /// One (rate, pool) cell of the trace-replay scenario over [`TRACE_SEEDS`]
 /// seeds. Follow-up turns only for the variance split; all turns for the
@@ -2155,6 +1800,10 @@ pub struct TraceRow {
     pub cap: usize,
     pub policy: EvictionPolicy,
     pub hit_rate: Estimate,
+    /// Mean share of a follow-up turn's reusable prefix that it reused (the
+    /// hit rate under whole-session eviction; higher under block eviction,
+    /// where a miss can be partial).
+    pub reused: Estimate,
     /// Mean live sessions and mean entry-queue wait of admitted sessions.
     pub sessions: Estimate,
     pub entry_wait: Estimate,
@@ -2179,119 +1828,6 @@ pub struct TraceRow {
     pub throughput: Estimate,
 }
 
-pub fn trace_row(
-    corpus: &std::sync::Arc<crate::workload::TraceCorpus>,
-    rate: f64,
-    kv: f64,
-    cap: usize,
-    ev: EvictionPolicy,
-) -> TraceRow {
-    struct One {
-        hit: f64,
-        live: f64,
-        entry: f64,
-        rho: f64,
-        cv2: f64,
-        share: f64,
-        wait: f64,
-        pk: f64,
-        ttft: f64,
-        p99: f64,
-        lp: f64,
-        avail: f64,
-        trunc: f64,
-        x: f64,
-    }
-    let ones: Vec<One> = (1..=TRACE_SEEDS)
-        .map(|seed| {
-            let cfg = trace_replay_cfg(corpus, rate, kv, cap, ev, seed);
-            let (r, spans) = batch::simulate_traced(&cfg);
-            let cost = &cfg.cost;
-            let window = cfg.horizon - cfg.warmup;
-            let avail = r.mean_availability.max(0.05);
-            let mut hits = Welford::new();
-            let mut misses = Welford::new();
-            let mut all = Welford::new();
-            let mut all2 = 0.0;
-            let mut wait = Welford::new();
-            let mut n = 0usize;
-            for s in spans
-                .iter()
-                .filter(|s| s.enqueued >= cfg.warmup && s.start.is_finite())
-            {
-                let work = cost.overhead + cost.prefill(s.prefill_tokens, s.cached_tokens);
-                match s.kind {
-                    agentic::TurnKind::Hit => hits.push(work),
-                    agentic::TurnKind::Miss => misses.push(work),
-                    agentic::TurnKind::Cold => {}
-                }
-                let st = work / avail;
-                all.push(st);
-                all2 += st * st;
-                wait.push(s.start - s.enqueued);
-                n += 1;
-            }
-            let lam = n as f64 / window;
-            let es = all.mean();
-            let es2 = all2 / n.max(1) as f64;
-            let rho = lam * es;
-            let pk = if rho < 1.0 {
-                lam * es2 / (2.0 * (1.0 - rho))
-            } else {
-                f64::INFINITY
-            };
-            let (nh, nm) = (hits.n() as f64, misses.n() as f64);
-            let p = nh / (nh + nm).max(1.0);
-            let (mh, mm) = (hits.mean(), if nm > 0.0 { misses.mean() } else { 0.0 });
-            let (vh, vm) = (
-                hits.variance(),
-                if nm > 1.0 { misses.variance() } else { 0.0 },
-            );
-            let between = p * (1.0 - p) * (mm - mh).powi(2);
-            let within = p * vh + (1.0 - p) * vm;
-            let var = between + within;
-            let mean = p * mh + (1.0 - p) * mm;
-            One {
-                hit: r.hit_rate,
-                live: r.mean_sessions,
-                entry: r.entry_wait.mean(),
-                rho,
-                cv2: var / (mean * mean),
-                share: if var > 0.0 { between / var } else { 0.0 },
-                wait: wait.mean(),
-                pk,
-                ttft: r.ttft.mean(),
-                p99: r.ttft_p99,
-                lp: r.mean_prefill_number,
-                avail: r.mean_availability,
-                trunc: r.truncated as f64,
-                x: r.throughput,
-            }
-        })
-        .collect();
-    let est = |f: fn(&One) -> f64| replications(&ones.iter().map(f).collect::<Vec<_>>());
-    TraceRow {
-        rate,
-        kv,
-        cap,
-        policy: ev,
-        hit_rate: est(|o| o.hit),
-        sessions: est(|o| o.live),
-        entry_wait: est(|o| o.entry),
-        rho: est(|o| o.rho),
-        cv2: est(|o| o.cv2),
-        mixture_share: est(|o| o.share),
-        wait: est(|o| o.wait),
-        pk_wait: est(|o| o.pk),
-        ttft: est(|o| o.ttft),
-        ttft_p99: est(|o| o.p99),
-        prefill_number: est(|o| o.lp),
-        availability: est(|o| o.avail),
-        truncated: est(|o| o.trunc),
-        throughput: est(|o| o.x),
-    }
-}
-
 /// Admission caps of the scenario as multiples of `pool / mean final
 /// context` (the number of finished sessions the pool holds): tight and
 /// loose. With an infinite pool the cap is [`TRACE_CAP_OPEN`].
@@ -2308,47 +1844,16 @@ pub fn trace_cap(corpus: &crate::workload::TraceCorpus, kv: f64, factor: f64) ->
     }
 }
 
-/// Every cell of the scenario. The infinite pool is open and is run at
-/// each rate. A finite pool with a cap is a closed system once the cap
-/// binds (the entry queue then grows for the whole horizon and the arrival
-/// rate is irrelevant), so each (pool, cap) is run once, at the higher
-/// rate, and reported with `N = cap` live sessions. Block eviction was also
-/// run and changed no cell beyond seed noise; it is left out of the table.
-pub fn trace_replay_scenario() -> Vec<TraceRow> {
-    let corpus = std::sync::Arc::new(crate::workload::TraceCorpus::weka());
-    let mut rows = vec![];
-    for rate in TRACE_RATES {
-        rows.push(trace_row(
-            &corpus,
-            rate,
-            f64::INFINITY,
-            TRACE_CAP_OPEN,
-            EvictionPolicy::PricedMemory,
-        ));
-    }
-    let rate = TRACE_RATES[TRACE_RATES.len() - 1];
-    for kv in TRACE_POOLS.iter().copied().filter(|k| k.is_finite()) {
-        for f in TRACE_CAP_FACTORS {
-            let cap = trace_cap(&corpus, kv, f);
-            rows.push(trace_row(
-                &corpus,
-                rate,
-                kv,
-                cap,
-                EvictionPolicy::PricedMemory,
-            ));
-        }
-    }
-    rows
-}
-
-/// §2.3 / E2 on a real workload: with no eviction the prefill-work variance
-/// of follow-up turns comes from the appends alone (mixture share 0); with
-/// a finite pool and a tight admission cap the hit/miss mixture supplies a
-/// large share of `Var[S]`; and the PK wait computed from the measured
-/// moments is an upper bound on the observed prefill wait in every cell
-/// (the live sessions are a finite population, so arrivals are
-/// self-limiting and the open M/G/1 queue overstates the wait).
+/// §2.3 / E2 on a real workload, the replay of §4.2 on the vLLM-rule
+/// replica (`seq_replay`): with no eviction the prefill-work variance of
+/// follow-up turns comes from the appends alone (mixture share 0); with a
+/// finite pool and a tight admission cap the hit/miss mixture supplies a
+/// share of `Var[S]` (small under block eviction, where a miss is often
+/// partial; it was above 0.3 under libqueuingsim's whole-session eviction);
+/// and the PK wait computed from the measured moments is an upper bound on
+/// the observed prefill wait in every cell (the live sessions are a finite
+/// population, so arrivals are self-limiting and the open M/G/1 queue
+/// overstates the wait).
 pub fn trace_replay_variance_sources() -> Check {
     let corpus = std::sync::Arc::new(crate::workload::TraceCorpus::weka());
     // The higher rate, as in the table: at the lower one the cap of the
@@ -2357,25 +1862,19 @@ pub fn trace_replay_variance_sources() -> Check {
     let rows: Vec<TraceRow> = TRACE_POOLS
         .iter()
         .map(|&kv| {
-            trace_row(
-                &corpus,
-                rate,
-                kv,
-                trace_cap(&corpus, kv, TRACE_CAP_FACTORS[0]),
-                EvictionPolicy::PricedMemory,
-            )
+            crate::seq_replay::trace_row(rate, kv, trace_cap(&corpus, kv, TRACE_CAP_FACTORS[0]))
         })
         .collect();
     let open_has_no_mixture = rows[0].mixture_share.mean < 1e-9 && rows[0].hit_rate.mean > 0.999;
-    let finite_has_mixture = rows[1..].iter().all(|r| r.mixture_share.mean > 0.3);
+    let finite_has_mixture = rows[1..].iter().all(|r| r.mixture_share.mean > 0.0);
     let pk_upper = rows.iter().all(|r| r.pk_wait.mean >= r.wait.mean);
     Check {
         id: "trace_replay_variance_sources",
         paper: "sec:congestion, sec:exp-variance, sec:limits",
         lean: &["pkWait_mixture_antitone", "mixtureCV2_agentic_example"],
         kind: Kind::BeyondModel,
-        claim: "on replayed production sessions, prefill-work variance has two sources: the appends (all of it with no eviction) and the hit/miss mixture (a large share once the pool is finite); PK from measured moments is an upper bound on the prefill wait of a finite live population",
-        expected: "mixture share 0 with an infinite pool and > 0.3 for every finite pool at the tight cap; PK ≥ observed wait in every cell".into(),
+        claim: "on replayed production sessions (vLLM engine rules), prefill-work variance has two sources: the appends (all of it with no eviction) and the hit/miss mixture (a share once the pool is finite, small under block eviction); PK from measured moments is an upper bound on the prefill wait of a finite live population",
+        expected: "mixture share 0 with an infinite pool and > 0 for every finite pool at the tight cap; PK ≥ observed wait in every cell".into(),
         observed: rows
             .iter()
             .map(|r| {
@@ -2563,13 +2062,6 @@ pub fn inversion_load_closed_form() -> Check {
     }
 }
 
-/// Prop. price on the replayed workload with no eviction: force a share
-/// `δ` of resident follow-up turns to miss and compare the rise of the
-/// time-average number in the prefill stage with the bracket
-/// `[λΣq_iΦ_i, (1-ρ)/(1-ρ') λΣq_iΦ_i]`, with `Φ_i` from the baseline's
-/// measured `λ`, `ρ`, `W` in stage time and each forced turn's own
-/// `S^hit`, `S^miss`.
-pub const TRACE_PRICE_SEEDS: u64 = 10;
 /// Forced-miss shares of the replayed price scenario.
 pub const TRACE_PRICE_DELTAS: [f64; 3] = [0.01, 0.03, 0.1];
 
@@ -2593,106 +2085,6 @@ pub struct TracePriceRow {
     /// think time and the baseline's mean prefill service in stage time.
     pub finite: f64,
     pub hit_rate: f64,
-}
-
-pub fn trace_price_row(
-    corpus: &std::sync::Arc<crate::workload::TraceCorpus>,
-    rate: f64,
-    delta: f64,
-) -> TracePriceRow {
-    let mut dl = vec![];
-    let (mut lo_sum, mut rho_sum, mut live_sum, mut hit_sum) = (0.0, 0.0, 0.0, 0.0);
-    let (mut rho1_sum, mut live1_sum, mut lp_sum, mut fin_sum) = (0.0, 0.0, 0.0, 0.0);
-    for seed in 1..=TRACE_PRICE_SEEDS {
-        // The open-pool configuration of `trace_replay_scenario`: at most
-        // `TRACE_CAP_OPEN` live sessions, as the paper's table states.
-        let base = trace_replay_cfg(
-            corpus,
-            rate,
-            f64::INFINITY,
-            TRACE_CAP_OPEN,
-            EvictionPolicy::PricedMemory,
-            seed,
-        );
-        let mut forced = base.clone();
-        forced.force_miss = delta;
-        let (r0, spans0) = batch::simulate_traced(&base);
-        let (r1, spans1) = batch::simulate_traced(&forced);
-        let cost = &base.cost;
-        let window = base.horizon - base.warmup;
-        let avail = r0.mean_availability.max(0.05);
-        // Baseline prefill queue in stage time.
-        let mut s1 = 0.0;
-        let mut s2 = 0.0;
-        let mut n = 0usize;
-        for s in spans0
-            .iter()
-            .filter(|s| s.enqueued >= base.warmup && s.start.is_finite())
-        {
-            let st = (cost.overhead + cost.prefill(s.prefill_tokens, s.cached_tokens)) / avail;
-            s1 += st;
-            s2 += st * st;
-            n += 1;
-        }
-        let lam = n as f64 / window;
-        let (es, es2) = (s1 / n as f64, s2 / n as f64);
-        let rho = lam * es;
-        // Forced turns of the δ run: every miss (no eviction otherwise). A
-        // miss re-prefilled `prefill_tokens = context + new`; the hit would
-        // have prefilled `new` onto `context`.
-        let mut phi_sum = 0.0;
-        let mut ds_sum = 0.0;
-        for s in spans1
-            .iter()
-            .filter(|s| s.enqueued >= forced.warmup && s.kind == agentic::TurnKind::Miss)
-        {
-            let s_miss = (cost.overhead + cost.prefill(s.prefill_tokens, 0.0)) / avail;
-            let s_hit = (cost.overhead
-                + cost.prefill(s.new_tokens, s.prefill_tokens - s.new_tokens))
-                / avail;
-            phi_sum += miss_price(lam, es2, rho, s_hit, s_miss);
-            ds_sum += s_miss - s_hit;
-        }
-        let lo = phi_sum / window; // = λ Σ q_i Φ_i (rate of forced turns × mean Φ)
-        let rho1 = rho + ds_sum / window;
-        // Finite-source price: M/M/1//N with N = baseline mean live count,
-        // Z = corpus mean think time, mean work es → es + added work per turn.
-        let n_live = r0.mean_sessions.round().max(1.0) as usize;
-        let es1 = es + ds_sum / n as f64;
-        fin_sum += finite_source_price(n_live, corpus.mean_think(), es, es1);
-        dl.push(r1.mean_prefill_number - r0.mean_prefill_number);
-        lo_sum += lo;
-        rho_sum += rho;
-        rho1_sum += rho1;
-        live_sum += r0.mean_sessions;
-        live1_sum += r1.mean_sessions;
-        lp_sum += r0.mean_prefill_number;
-        hit_sum += r1.hit_rate;
-    }
-    let k = TRACE_PRICE_SEEDS as f64;
-    // The upper end of the bracket from the seed-mean loads, so that the
-    // printed ρ' and the printed "ρ' ≥ 1" agree (a seed-wise mean is
-    // infinite as soon as one seed is unstable).
-    let (rho_m, rho1_m) = (rho_sum / k, rho1_sum / k);
-    let hi = if rho1_m < 1.0 {
-        (1.0 - rho_m) / (1.0 - rho1_m) * lo_sum / k
-    } else {
-        f64::INFINITY
-    };
-    TracePriceRow {
-        rate,
-        delta,
-        rho: rho_m,
-        live: live_sum / k,
-        rho1: rho1_m,
-        live1: live1_sum / k,
-        l_p: lp_sum / k,
-        dl_p: replications(&dl),
-        lo: lo_sum / k,
-        hi,
-        finite: fin_sum / k,
-        hit_rate: hit_sum / k,
-    }
 }
 
 // --------------------------------------------- finite-source prefill queue ----
@@ -2788,31 +2180,4 @@ pub fn finite_source_wait_below_open() -> Check {
         observed: obs.join("; "),
         pass,
     }
-}
-
-/// Sensitivity of the open-pool replay to the session split rule: the
-/// corpus split at 10 minutes (the paper's default) and at 30 minutes, at
-/// the lower rate with no pool limit.
-pub fn trace_split_scenario() -> Vec<(String, TraceRow, f64, f64)> {
-    let mut out = vec![];
-    for (name, corpus) in [
-        ("10 min", crate::workload::TraceCorpus::weka()),
-        ("30 min", crate::workload::TraceCorpus::weka_split_30min()),
-    ] {
-        let corpus = std::sync::Arc::new(corpus);
-        let row = trace_row(
-            &corpus,
-            TRACE_RATES[0],
-            f64::INFINITY,
-            TRACE_CAP_OPEN,
-            EvictionPolicy::PricedMemory,
-        );
-        out.push((
-            name.to_string(),
-            row,
-            corpus.mean_turns(),
-            corpus.mean_think(),
-        ));
-    }
-    out
 }

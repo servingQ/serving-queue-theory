@@ -33,6 +33,11 @@ Key theorems:
   the shortest-first choice can be worse by any factor `R`.
 * `price_blind_rule_unbounded`: the same for every rule that decides
   from anything but the resume probabilities (`prop:blind` (i)).
+* `price_blind_rule_unbounded_cost`: (i) for any common positive cost,
+  e.g. the tail blocks of two programs (block eviction).
+* `tailRecompute_marginal_antitone`, `tailRecompute_subadditive`: evicting
+  from a context's tail costs `P(m, K - m)`, concave in `m`, so the block
+  problem is not a fractional knapsack (§3.1).
 -/
 import Mathlib.Tactic
 import Mathlib.Data.List.Sort
@@ -287,5 +292,64 @@ theorem price_blind_rule_unbounded {α : Type*} (rule : α → Fin 2) (obs : α)
       rw [mul_one_div, div_lt_one (by positivity)]
       linarith [le_abs_self R]
     nlinarith [mul_lt_mul_of_pos_right hlt hcpos]
+
+/-! ### Block eviction
+
+Engines evict blocks from the tail of a context rather than whole
+programs.  Part (i) of `prop:blind` needs nothing about the candidates but
+a common positive recompute cost, so it holds for the tail blocks of two
+programs that differ only in their resume probabilities
+(`price_blind_rule_unbounded_cost`).  The recompute of the last `m` tokens
+of a context of `K` tokens is the prefill `P(m, K - m) = a m + b m (K - m +
+m/2)` of `eq:prefill` (`tailRecompute`); it is concave in `m`, so a
+context's deeper blocks cost less per byte than its tail
+(`tailRecompute_marginal_antitone`) and freeing tokens from one context
+costs no more than freeing as many from two (`tailRecompute_subadditive`):
+the block problem is not a fractional knapsack. -/
+
+/-- `prop:blind` (i) for any common positive cost `X` of the two
+candidates, e.g. the recompute work of the tail blocks of two programs that
+differ only in their resume probabilities: a rule that does not see them
+evicts the dearer one by any factor `R`. -/
+theorem price_blind_rule_unbounded_cost {α : Type*} (rule : α → Fin 2) (obs : α)
+    (X : ℚ) (hX : 0 < X) (R : ℚ) :
+    ∃ p : Fin 2 → ℚ, (∀ i, 0 < p i ∧ p i ≤ 1) ∧
+      R * (p (rule obs + 1) * X) < p (rule obs) * X := by
+  have hne : ∀ x : Fin 2, x + 1 ≠ x := by decide
+  refine ⟨fun i => if i = rule obs then 1 else 1 / (|R| + 2), ?_, ?_⟩
+  · intro i
+    dsimp only
+    split_ifs
+    · norm_num
+    · refine ⟨by positivity, ?_⟩
+      rw [div_le_one (by positivity)]
+      linarith [abs_nonneg R]
+  · dsimp only
+    rw [ite_eq_right (hne _), ite_eq_left rfl]
+    have hlt : R * (1 / (|R| + 2)) < 1 := by
+      rw [mul_one_div, div_lt_one (by positivity)]
+      linarith [le_abs_self R]
+    nlinarith [mul_lt_mul_of_pos_right hlt hX]
+
+/-- Recompute of the last `m` tokens of a context of `K` tokens: the prefill
+`P(m, K - m) = a m + b m ((K - m) + m/2)` of `eq:prefill`. -/
+noncomputable def tailRecompute (a b K m : ℝ) : ℝ := a * m + b * m * ((K - m) + m / 2)
+
+/-- The marginal recompute of `d` more tokens of the tail does not increase
+with the depth `m` already evicted: deeper blocks cost no more per byte. -/
+theorem tailRecompute_marginal_antitone (a b K d : ℝ) (hb : 0 ≤ b) (hd : 0 ≤ d)
+    {m₁ m₂ : ℝ} (hm : m₁ ≤ m₂) :
+    tailRecompute a b K (m₂ + d) - tailRecompute a b K m₂ ≤
+      tailRecompute a b K (m₁ + d) - tailRecompute a b K m₁ := by
+  unfold tailRecompute
+  nlinarith [mul_nonneg hb hd, mul_nonneg (mul_nonneg hb hd) (sub_nonneg.2 hm)]
+
+/-- Freeing `m₁ + m₂` tokens from one context costs no more than freeing
+`m₁` and `m₂` from two contexts of the same length. -/
+theorem tailRecompute_subadditive (a b K : ℝ) (hb : 0 ≤ b) {m₁ m₂ : ℝ}
+    (h₁ : 0 ≤ m₁) (h₂ : 0 ≤ m₂) :
+    tailRecompute a b K (m₁ + m₂) ≤ tailRecompute a b K m₁ + tailRecompute a b K m₂ := by
+  unfold tailRecompute
+  nlinarith [mul_nonneg (mul_nonneg hb h₁) h₂]
 
 end ServingQueueTheory

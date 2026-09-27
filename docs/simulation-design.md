@@ -4,6 +4,15 @@ Design and status of the discrete-event simulator. Read
 `docs/research-plan.md` first: the simulator is the first validation
 phase, and the empirical programme (E1–E6) follows it.
 
+Status (2026-09-27, later): libqueuingsim's `TwoStage` server (the §2.2
+replica with its own memory model: whole-turn KV reservation,
+whole-session eviction, no preemption) is removed. The paper's evidence
+on where a miss is paid, on eviction and admission, and the trace replay
+runs vLLM v1's engine rules as seQ programs
+(`programs/{price,open,replay}_vllm.seq`, `libqueuingsim::seq_{price,open,replay}`)
+with the testbed's cost model; the propositions' in-model checks use
+their own closed-form queues (M/G/1, PS).
+
 Status (2026-09-27): since this date the scenarios can be written as
 seQ programs (seQ, a pinned release: `docs/seq.md`; spec seQ
 `docs/language.md`); `libqueuingsim` depends on seQ's crate `seq-lang` and `make sim` runs the programs next to

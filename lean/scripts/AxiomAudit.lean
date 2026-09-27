@@ -48,6 +48,9 @@ open ServingQueueTheory
 #print axioms shortestFirst_two_approx_tight
 #print axioms shortestFirst_unbounded_with_resume_prob
 #print axioms price_blind_rule_unbounded
+#print axioms price_blind_rule_unbounded_cost
+#print axioms tailRecompute_marginal_antitone
+#print axioms tailRecompute_subadditive
 -- prop:routing, prop:append (§3.3, App. B): routing
 #print axioms lookahead_prefers_iff
 #print axioms affinity_example

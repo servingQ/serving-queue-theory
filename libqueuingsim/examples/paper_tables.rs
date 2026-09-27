@@ -22,6 +22,9 @@ use libqueuingsim::models::batch::Phi;
 use libqueuingsim::models::eviction::{self, ResumeModel};
 use libqueuingsim::models::pd::{self, Load, Mode, PdConfig};
 use libqueuingsim::models::queue::{self, QueueConfig};
+use libqueuingsim::seq_open;
+use libqueuingsim::seq_price;
+use libqueuingsim::seq_replay;
 use libqueuingsim::stats::Estimate;
 use libqueuingsim::validation::{self, OpenEvictRow, offload_cfg, pd_cfg};
 
@@ -498,15 +501,15 @@ fn ps_table() -> String {
         m.hi,
         pm(m.dl, 3)
     ));
-    let t = validation::two_stage_price_scenario(0.05);
+    let t = seq_price::price_scenario(0.05);
     rows.push(format!(
-        "2-stage $\\Delta L_P$, $\\delta{{=}}0.05$ & Prop.~\\ref{{prop:price}} & $[{:.2},{:.2}]$ & {}",
+        "vLLM $\\Delta L_P$, $\\delta{{=}}0.05$ & Prop.~\\ref{{prop:price}} & $[{:.2},{:.2}]$ & {}",
         t.lo,
         t.hi,
         pm(t.dl_p, 3)
     ));
     rows.push(format!(
-        "2-stage $\\Delta L_D$, $\\delta{{=}}0.05$ & Prop.~\\ref{{prop:decode}} & 0 & {}",
+        "vLLM $\\Delta L_D$, $\\delta{{=}}0.05$ & Prop.~\\ref{{prop:decode}} & 0 & {}",
         pm(t.dl_d, 3)
     ));
     table(
@@ -523,13 +526,15 @@ fn ps_table() -> String {
          server when a fraction $\\delta$ of turns becomes misses, hit rate \
          $0.8$, $\\rho=0.6$, against $[\\lambda\\delta\\Phi_{{\\mathrm{{PS}}}},\\ \
          \\tfrac{{C-\\rho}}{{C-\\rho'}}\\lambda\\delta\\Phi_{{\\mathrm{{PS}}}}]$. \
-         Rows 8--9: the same misses on the two-resource replica (prefill \
-         FIFO in the compute left by a decode batch of $0.1$\\,s per turn, \
-         mean availability $\\bar r={:.2}$): rise of the number in the \
-         prefill stage $L_P=\\lambda\\,\\mathrm{{TTFT}}$ against the FIFO \
-         bracket at service $P/\\bar r$, and of the number in the decode \
-         stage $L_D$, whose demand does not depend on hit or miss. $\\pm$ is \
-         a 95\\,\\% batch-means half-width.",
+         Rows 8--9 (beyond the model): the same misses on a replica with the \
+         vLLM~v1 engine's rules and the testbed's cost model (prefill of \
+         512 or 5120 tokens in the budget a decode batch of 8 tokens per turn \
+         leaves, mean availability $\\bar r={:.3}$, $\\lambda\\E[P]=0.6$): rise \
+         of the number in the prefill stage $L_P=\\lambda\\,\\mathrm{{TTFT}}$ \
+         against the FIFO bracket at service $P/\\bar r$, and of the number in \
+         the decode stage $L_D$, whose demand does not depend on hit or miss \
+         but whose iterations a miss's prefill lengthens. $\\pm$ is a \
+         95\\,\\% batch-means half-width.",
             t.avail
         ),
         "tab:sim-ps",
@@ -649,12 +654,30 @@ const OPEN_CSV_HEADER: &str = "rate,cap,policy,throughput,throughput_hw,hit,hit_
                                ttft,ttft_hw,ttft_p99,ttft_p99_hw,response,response_hw,\
                                entry_wait,entry_wait_hw,thrashed,seeds";
 
+/// Policy label of a row: the name, and whether the end of a session is
+/// unknown (vLLM's engine: a finished session's blocks stay).
+fn open_policy_label(r: &OpenEvictRow) -> String {
+    if r.end_known {
+        policy_name(r.policy).to_string()
+    } else {
+        format!("{}$^*$", policy_name(r.policy))
+    }
+}
+
+fn open_policy_id(r: &OpenEvictRow) -> String {
+    if r.end_known {
+        policy_id(r.policy).to_string()
+    } else {
+        format!("{}-end-unknown", policy_id(r.policy))
+    }
+}
+
 fn open_csv_line(r: &OpenEvictRow) -> String {
     let e = |e: Estimate| [format!("{:.4}", e.mean), format!("{:.4}", e.half_width)];
     let mut f = vec![
         format!("{:.2}", r.rate),
         r.cap.to_string(),
-        policy_id(r.policy).to_string(),
+        open_policy_id(r),
     ];
     for est in [
         r.throughput,
@@ -723,17 +746,17 @@ fn open_group_rows(
 fn evict_open(open: &[OpenEvictRow], data: &mut Data) -> String {
     let mut rows = vec![];
     let mut csv = vec![];
-    for rate in validation::OPEN_RATES {
+    for rate in seq_open::RATES {
         let group: Vec<&OpenEvictRow> = open
             .iter()
             .filter(|r| r.cap == validation::OPEN_CAP && r.rate == rate)
             .collect();
         rows.extend(open_group_rows(&group, |r, [x, hit, ttft, _, p99]| {
             format!(
-                "{:.2} & {} & {x} & {hit} & {ttft} & {p99} & {} & {}",
+                "{:.2} & {} & {x} & {hit} & {ttft} & {p99} & {:.1} & {}",
                 r.rate,
-                policy_name(r.policy),
-                pm(r.response, 2),
+                open_policy_label(r),
+                r.response.mean,
                 r.collapsed
             )
         }));
@@ -742,20 +765,26 @@ fn evict_open(open: &[OpenEvictRow], data: &mut Data) -> String {
     data.push("evict-dyn.csv", OPEN_CSV_HEADER, &csv);
     table_sep(
         &format!(
-            "Eviction with open sessions on the two-resource replica (decode \
-             PS on bandwidth, prefill FIFO in the leftover compute). \
-             {OPEN_WORKLOAD}, at most {} live sessions. Throughput (turns/s), \
-             follow-up hit rate, mean and p99 time to first token (s), mean turn \
-             response (s), and the number of the {} seeds that thrashed (hit \
-             rate below $0.5$); $\\pm$ is a 95\\,\\% half-width over seeds; \
-             the best throughput, hit rate, TTFT and p99 per load in bold. \
-             Priced: $p_i\\Phi_i/c_i$ with the FIFO price of \
-             Prop.~\\ref{{prop:price}} from online estimates of the prefill \
-             queue; Priced/$\\tau$: per byte-second, $p_i\\Phi_i/(c_i\\tau_i)$ \
-             (the threshold rule of \\S\\ref{{sec:evict}}); Blocks: the same price \
-             on 512-token tail blocks, a partial miss re-prefilling only the \
-             evicted suffix. The priced rules take $p_i$ and $\\tau_i$ from the \
-             generating class (an oracle); the fixed keys see neither.",
+            "Eviction with open sessions on a replica with the vLLM~v1 engine's \
+             rules (those of Table~\\ref{{tab:sim-trace}}) and the testbed's cost \
+             model. {OPEN_WORKLOAD}, at most {} live sessions. Every policy evicts \
+             16-token blocks from the tail of a context, sessions in a tool call \
+             before waiting ones (except LRU), and drops a finished session's \
+             blocks; rows marked $^*$ keep them, as vLLM's engine does, which \
+             cannot tell a finished session from one in a tool call. Throughput \
+             (turns/s), follow-up hit rate (the whole reusable prefix reused), \
+             mean and p99 time to first token (s), mean turn response (s; its \
+             half-width is in the data file), and \
+             the number of the {} seeds that thrashed (follow-up turns reusing less \
+             than half of their reusable prefix); \
+             $\\pm$ is a 95\\,\\% half-width over seeds; the best throughput, hit \
+             rate, TTFT and p99 per load in bold. Priced: $p_i\\Phi_i/c_i$ with \
+             the FIFO price of Prop.~\\ref{{prop:price}} from online estimates at \
+             the engine; Priced/$\\tau$: per byte-second, \
+             $p_i\\Phi_i/(c_i\\tau_i)$ (the threshold rule of \
+             \\S\\ref{{sec:evict}}); Blocks: the same price of the tail block. The \
+             priced rules take $p_i$ and $\\tau_i$ from the generating class (an \
+             oracle); the fixed keys see neither.",
             validation::OPEN_CAP,
             validation::OPEN_SEEDS
         ),
@@ -771,12 +800,12 @@ fn admission_table(open: &[OpenEvictRow], data: &mut Data) -> String {
     let mut rows = vec![];
     let mut csv = vec![];
     for cap in validation::OPEN_CAPS {
-        for rate in validation::OPEN_RATES {
-            let group: Vec<&OpenEvictRow> = validation::SWEEP_POLICIES
+        for rate in seq_open::RATES {
+            let group: Vec<&OpenEvictRow> = seq_open::SWEEP
                 .iter()
                 .map(|&pol| {
                     open.iter()
-                        .find(|r| r.cap == cap && r.rate == rate && r.policy == pol)
+                        .find(|r| r.cap == cap && r.rate == rate && r.policy == pol && r.end_known)
                         .expect("cell in scenario")
                 })
                 .collect();
@@ -798,7 +827,7 @@ fn admission_table(open: &[OpenEvictRow], data: &mut Data) -> String {
     data.push("admission.csv", OPEN_CSV_HEADER, &csv);
     table_sep(
         &format!(
-            "Admission-cap sweep on the two-resource replica: the scenario of \
+            "Admission-cap sweep on the vLLM-rule replica: the scenario of \
              Table~\\ref{{tab:sim-evict-dyn}} with at most 16, 24 or 32 live \
              sessions; later arrivals wait in an entry queue. Throughput \
              (turns/s), follow-up hit rate, mean and p99 time to first token \
@@ -811,7 +840,8 @@ fn admission_table(open: &[OpenEvictRow], data: &mut Data) -> String {
              shares. An entry wait of hundreds of \
              seconds means the replica does not carry the offered turn rate \
              and the entry queue grows over the run; such values depend on \
-             the horizon (20\\,000\\,s).",
+             the horizon (20\\,000\\,s). Every policy drops a finished session's \
+             blocks.",
             validation::OPEN_SEEDS
         ),
         "tab:sim-admission",
@@ -966,8 +996,8 @@ fn pd_latency() -> String {
     )
 }
 
-const TRACE_CSV_HEADER: &str = "rate,pool,cap,hit,hit_hw,sessions,entry_wait,rho,cv2,mixture_share,\
-                                mixture_share_hw,wait,pk_wait,ttft,ttft_hw,ttft_p99,prefill_number,seeds";
+const TRACE_CSV_HEADER: &str = "rate,pool,cap,hit,hit_hw,reused,reused_hw,sessions,entry_wait,rho,cv2,\
+                                mixture_share,mixture_share_hw,wait,pk_wait,ttft,ttft_hw,ttft_p99,prefill_number,seeds";
 
 /// §4.1: the two-resource replica fed by replayed production sessions.
 fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
@@ -986,10 +1016,11 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             format!("$\\Lambda{{=}}{}$", r.rate)
         };
         rows.push(format!(
-            "{pool} & {regime} & {:.1} & {:.3} & {:.2} & {:.2} & {:.1} & {:.2} & {:.0} & {:.0} & {:.0}",
+            "{pool} & {regime} & {:.1} & {:.3} & {:.2} & {:.2} & {:.2} & {:.1} & {:.2} & {:.0} & {:.0} & {:.0}",
             r.sessions.mean,
             r.throughput.mean,
             r.hit_rate.mean,
+            r.reused.mean,
             r.mixture_share.mean,
             r.cv2.mean,
             r.rho.mean,
@@ -998,12 +1029,14 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             r.ttft.mean
         ));
         csv.push(format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             r.rate,
             r.kv,
             r.cap,
             r.hit_rate.mean,
             r.hit_rate.half_width,
+            r.reused.mean,
+            r.reused.half_width,
             r.sessions.mean,
             r.entry_wait.mean,
             r.rho.mean,
@@ -1016,26 +1049,32 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             r.ttft.half_width,
             r.ttft_p99.mean,
             r.prefill_number.mean,
-            validation::TRACE_SEEDS
+            seq_replay::SEEDS
         ));
     }
     data.push("trace.csv", TRACE_CSV_HEADER, &csv);
     table_sized(
         &format!(
-            "Replayed production sessions on the two-resource replica: {} Claude Code \
-             sessions ({} turns, mean final context {:.0}k tokens, mean think time \
-             {:.0}\\,s; a gap above 10\\,min starts a new session) from the corpus of \
-             \\S\\ref{{sec:exp-traces}}, each played turn by turn; cost model with \
-             $K_c=a/b\\approx{:.0}$k tokens (calibrated on the testbed), batch cap 8, eviction by price per byte-second \
-             where the pool is finite. \
+            "Replayed production sessions on a replica with the vLLM~v1 engine's \
+             rules: {} Claude Code sessions ({} turns, mean final context {:.0}k tokens, \
+             mean think time {:.0}\\,s; a gap above 10\\,min starts a new session) from the \
+             corpus of \\S\\ref{{sec:exp-traces}}, each played turn by turn. The engine \
+             admits a waiting turn at the start of an iteration with the token budget its \
+             residents leave, once its whole prompt fits, and grows its KV chunk by chunk (a \
+             growth that does not fit preempts the latest admitted turn); KV is cached in \
+             16-token blocks, evicted from the tail of a context by price per byte-second \
+             where the pool is finite; a finished session's blocks stay. Cost model with \
+             $K_c=a/b\\approx{:.0}$k tokens (calibrated on the testbed), batch cap 8. \
              With no pool limit the replica is open (Poisson sessions at rate \
              $\\Lambda$ per s, at most 24 live; the regime column gives $\\Lambda$). With a finite pool the cap on live \
              sessions binds throughout the run, so the replica is a closed system of \
              $N$ sessions and the arrival rate is immaterial; the entry queue grows \
              for the whole horizon. Mean live sessions $\\bar N$ and throughput $X$ \
-             (turns/s); follow-up hit rate; \
+             (turns/s); follow-up hit rate (the whole reusable prefix reused) and the \
+             mean share of the reusable prefix reused (Reuse); \
              the share of $\\mathrm{{Var}}[S]$ of follow-up prefill work due to the \
-             hit/miss mixture (the rest is the spread of the appends) and the \
+             hit/miss mixture (the rest is the spread of the appends and of partial \
+             misses) and the \
              $\\mathrm{{CV}}^2$ of that work; prefill load $\\rho$ in stage time; observed \
              mean prefill wait $W_q$ and the PK wait from the measured $\\lambda$, \
              $\\E[S]$, $\\E[S^2]$ (s); mean TTFT (s). Means over {} seeds; the \
@@ -1045,11 +1084,11 @@ fn trace_table(rows_all: &[validation::TraceRow], data: &mut Data) -> String {
             corpus.mean_final_context() / 1e3,
             corpus.mean_think(),
             validation::CAL_PREFILL_LINEAR / validation::CAL_PREFILL_QUADRATIC / 1e3,
-            validation::TRACE_SEEDS
+            seq_replay::SEEDS
         ),
         "tab:sim-trace",
-        "clccccccccc",
-        "Pool & Regime & $\\bar N$ & $X$ & Hit & Mix & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
+        "clcccccccccc",
+        "Pool & Regime & $\\bar N$ & $X$ & Hit & Reuse & Mix & $\\mathrm{{CV}}^2$ & $\\rho$ & $W_q$ & PK & TTFT",
         &rows,
         "1.5pt",
         "scriptsize",
@@ -1155,7 +1194,7 @@ fn trace_price_table(rows_all: &[validation::TracePriceRow], data: &mut Data) ->
             r.lo,
             r.hi,
             r.finite,
-            validation::TRACE_PRICE_SEEDS
+            seq_replay::PRICE_SEEDS
         ));
     }
     data.push("trace-price.csv", TRACE_PRICE_CSV_HEADER, &csv);
@@ -1165,7 +1204,8 @@ fn trace_price_table(rows_all: &[validation::TracePriceRow], data: &mut Data) ->
              (open, Poisson sessions at rate $\\Lambda$ per s, at most 24 live, \
              {:.0}\\,s of measurement after {:.0}\\,s of warm-up: the configuration of \
              the first rows of Table~\\ref{{tab:sim-trace}}). A share $\\delta$ of \
-             follow-up turns whose context is resident is forced to miss. $\\bar N$, \
+             follow-up turns is forced to miss: the turn reuses nothing, as a nonce at the \
+             head of its prompt would make it, and its old blocks stay cached. $\\bar N$, \
              $\\bar N'$: mean live sessions in the baseline and in the forced run; \
              $\\rho$: prefill load of the baseline; $\\rho'$: the load the added work \
              implies; $L_P$: baseline mean number in the prefill stage; $\\Delta L_P$: \
@@ -1179,7 +1219,7 @@ fn trace_price_table(rows_all: &[validation::TracePriceRow], data: &mut Data) ->
              Fin.: that finite-source rise; cap: $\\bar N'-L_P$.",
             validation::TRACE_HORIZON - validation::TRACE_WARMUP,
             validation::TRACE_WARMUP,
-            validation::TRACE_PRICE_SEEDS
+            seq_replay::PRICE_SEEDS
         ),
         "tab:sim-trace-price",
         "cccccccccccc",
@@ -1192,7 +1232,7 @@ fn trace_price_table(rows_all: &[validation::TracePriceRow], data: &mut Data) ->
 
 /// Sensitivity of the open-pool replay to the split rule.
 fn trace_split_table() -> String {
-    let rows_all = validation::trace_split_scenario();
+    let rows_all = seq_replay::trace_split_scenario();
     let corpus10 = libqueuingsim::workload::TraceCorpus::weka();
     let corpus30 = libqueuingsim::workload::TraceCorpus::weka_split_30min();
     let mut rows = vec![];
@@ -1259,7 +1299,7 @@ fn main() {
     let (t, ok, cells) = offload();
     write("tab-offload.tex", &t);
     write("tab-evict.tex", &evict_offline(&mut data));
-    let open = validation::eviction_open_scenario();
+    let open = seq_open::eviction_open_scenario();
     write("tab-evict-dyn.tex", &evict_open(&open, &mut data));
     write("tab-admission.tex", &admission_table(&open, &mut data));
     write("tab-ps.tex", &ps_table());
@@ -1267,7 +1307,6 @@ fn main() {
     write("tab-lps.tex", &lps_table(&mut data));
     write("tab-inversion.tex", &inversion_table(&mut data));
     write("tab-finite.tex", &finite_source_table(&mut data));
-    let corpus_price = std::sync::Arc::new(libqueuingsim::workload::TraceCorpus::weka());
     let price_rows: Vec<validation::TracePriceRow> = validation::TRACE_RATES
         .iter()
         .flat_map(|&rate| {
@@ -1275,7 +1314,7 @@ fn main() {
                 .iter()
                 .map(move |&d| (rate, d))
         })
-        .map(|(rate, d)| validation::trace_price_row(&corpus_price, rate, d))
+        .map(|(rate, d)| seq_replay::trace_price_row(rate, d))
         .collect();
     write(
         "tab-trace-price.tex",
@@ -1283,7 +1322,7 @@ fn main() {
     );
     write("tab-trace-split.tex", &trace_split_table());
     write("tab-pd.tex", &pd_latency());
-    let trace_rows = validation::trace_replay_scenario();
+    let trace_rows = seq_replay::trace_replay_scenario();
     write("tab-trace.tex", &trace_table(&trace_rows, &mut data));
     write("tab-pd-inmodel.tex", &pd_in_model());
 
@@ -1309,6 +1348,69 @@ fn main() {
     )
     .unwrap();
     writeln!(m, "\\newcommand{{\\simChecksPassed}}{{{passed}}}").unwrap();
+    // Forced misses on the vLLM-rule replica: the largest change of the
+    // decode-stage number, in % of its level.
+    {
+        let pct = [0.01, 0.05]
+            .iter()
+            .map(|&d| {
+                let r = seq_price::price_scenario(d);
+                100.0 * r.dl_d.mean.abs() / r.l_d.mean
+            })
+            .fold(0.0f64, f64::max);
+        writeln!(m, "\\newcommand{{\\simDecodeShiftPct}}{{{pct:.1}}}").unwrap();
+    }
+    // Eviction on the vLLM-rule replica at the default cap: LRU's TTFT over
+    // the best of the other orders, per load (end known); the byte-second
+    // price with the end unknown against the end known, at the lower load.
+    {
+        let at = |rate: f64, pol: EvictionPolicy, end: bool| {
+            open.iter()
+                .find(|r| {
+                    r.cap == validation::OPEN_CAP
+                        && r.rate == rate
+                        && r.policy == pol
+                        && r.end_known == end
+                })
+                .expect("cell")
+        };
+        let ratios: Vec<f64> = seq_open::RATES
+            .iter()
+            .map(|&rate| {
+                let best = seq_open::POLICIES
+                    .iter()
+                    .filter(|&&p| p != EvictionPolicy::Lru)
+                    .map(|&p| at(rate, p, true).ttft.mean)
+                    .fold(f64::INFINITY, f64::min);
+                at(rate, EvictionPolicy::Lru, true).ttft.mean / best
+            })
+            .collect();
+        let lo = ratios.iter().cloned().fold(f64::INFINITY, f64::min);
+        let hi = ratios.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        writeln!(m, "\\newcommand{{\\simEvictLruRatioMin}}{{{lo:.1}}}").unwrap();
+        writeln!(m, "\\newcommand{{\\simEvictLruRatioMax}}{{{hi:.1}}}").unwrap();
+        let r0 = seq_open::RATES[0];
+        let known = at(r0, EvictionPolicy::PricedMemory, true);
+        let unknown = at(r0, EvictionPolicy::PricedMemory, false);
+        writeln!(
+            m,
+            "\\newcommand{{\\simEndUnknownHit}}{{{:.2}}}",
+            unknown.hit_rate.mean
+        )
+        .unwrap();
+        writeln!(
+            m,
+            "\\newcommand{{\\simEndKnownHit}}{{{:.2}}}",
+            known.hit_rate.mean
+        )
+        .unwrap();
+        writeln!(
+            m,
+            "\\newcommand{{\\simEndUnknownTtftRatio}}{{{:.1}}}",
+            unknown.ttft.mean / known.ttft.mean
+        )
+        .unwrap();
+    }
     writeln!(m, "\\newcommand{{\\simPdAgree}}{{{agree}}}").unwrap();
     writeln!(m, "\\newcommand{{\\simPdCells}}{{{total}}}").unwrap();
     writeln!(m, "\\newcommand{{\\simOffloadOk}}{{{ok}}}").unwrap();
@@ -1378,6 +1480,12 @@ fn main() {
         m,
         "\\newcommand{{\\simTraceTightHitMin}}{{{:.2}}}",
         fmin(&tight.iter().map(|r| r.hit_rate.mean).collect::<Vec<_>>())
+    )
+    .unwrap();
+    writeln!(
+        m,
+        "\\newcommand{{\\simTraceTightReusedMin}}{{{:.2}}}",
+        fmin(&tight.iter().map(|r| r.reused.mean).collect::<Vec<_>>())
     )
     .unwrap();
     writeln!(
