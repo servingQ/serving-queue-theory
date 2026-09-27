@@ -38,3 +38,9 @@ predictions.txt`, recorded before the traced runs finished) are the test
 of the calibrated model: 3.0 s vLLM predicted 0.605 s / 0.775, measured
 0.441 s / 0.832. The H-pin runs decide whether the one-line change of the
 admission rule moves the cliff on the real engine.
+
+Outcome (2026-09-27): the pinned runs measured 0.413 s / 0.838 (3.0 s) and
+0.878 s / 0.784 (2.5 s) against the predicted 0.483 s / 0.792 and
+0.888 s / 0.752; the one-line change removes the 2.5 s collapse on the real
+engine (unpinned: 34.6 s / 0.216). R2-3 closed; a same-day unpinned 2.5 s
+control with the tracer remains open.

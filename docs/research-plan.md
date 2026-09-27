@@ -41,8 +41,14 @@ current at the end of every work block.
   trace at 3.0 s spacing the full-hit rate is 0.24 under the vLLM rule and
   0.80 with pinning. Test: patch vLLM to touch a waiting request's cached
   blocks at `add_request` (and untouch on abort), replay 3.0 s and 2.5 s
-  (`scripts/exp/lambda/steptrace/pinpatch.py`, run 2026-09-27, results in
-  `docs/route-language.md` §8).
+  (`scripts/exp/lambda/steptrace/pinpatch.py`). **Result (A100, served,
+  2026-09-27, one run per point):** at 2.5 s the vLLM rule collapses (TTFT
+  34.6 s, full-hit 0.22) and the pinned engine does not (0.88 s, 0.78;
+  ROUTE pre-registered 0.89 s, 0.75); at 3.0 s both are off the cliff
+  (0.44 → 0.41 s). Data `data/exp/gpu_route/trace/`, table in
+  `docs/route-language.md` §8. The Lambda instance was terminated after
+  the runs. Candidate for the paper's §3.3 admission step (needs a same-day
+  unpinned 2.5 s rerun with the tracer and seeds before it goes in).
   **Next for ROUTE** (in order): (1) port the paper's §4.2 replay
   (libqueuingsim `TwoStage`, calibrated on RBLN) to a ROUTE program with the
   engine rules that the vLLM diff established (engine-served admission,

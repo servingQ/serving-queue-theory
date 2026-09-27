@@ -370,9 +370,18 @@ program without `admit via engine`):
 | run | predicted TTFT / full-hit | measured TTFT / full-hit |
 |---|---|---|
 | 3.0 s, vLLM rule | 0.605 s / 0.775 | 0.441 s / 0.832 |
-| 3.0 s, pinned | 0.483 s / 0.792 | (running) |
-| 2.5 s, pinned | 0.888 s / 0.752 | (running) |
+| 3.0 s, pinned | 0.483 s / 0.792 | 0.413 s / 0.838 |
+| 2.5 s, pinned | 0.888 s / 0.752 | 0.878 s / 0.784 |
 | 2.5 s, vLLM rule | 39.1 s / 0.192 | 34.6 s / 0.216 (2026-09-26) |
+
+**H-pin holds on the served A100 engine.** With the waiting request's
+prefix pinned the 2.5 s replay does not collapse: mean TTFT 34.6 s → 0.88 s,
+full-hit 0.22 → 0.78; ROUTE predicted 0.89 s / 0.75 before the run. At
+3.0 s, where the vLLM rule does not collapse under the light tracer,
+pinning changes little (0.441 → 0.413 s, 0.832 → 0.838), as predicted
+(0.605 → 0.483 s). Caveat: the unpinned 2.5 s run is from 2026-09-26
+without the step tracer; the tracer adds per-step cost, which works against
+the pinned run, so the comparison is conservative. One run per point.
 
 ## 9. Known limitations
 
