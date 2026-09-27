@@ -95,9 +95,9 @@ its recompute, a miss delays every prefill queued behind it, a
 quadratic term that chunked prefill does not remove; the decode batch
 sees only mean work. One shadow price of memory decides eviction,
 offloading, placement and admission. With few sessions live the
-open-queue wait is an upper bound. On an NPU testbed a miss at
-50k-token contexts waits \eTwoMissOverHitLo{} to \eTwoMissOverHitHi{}
-times longer than a hit, mostly for KV blocks; at short contexts
+open-queue wait is an upper bound. On an NPU testbed at 50k-token
+contexts turns wait for KV blocks, not prefill compute, and the turns
+that miss are those that queued; at short contexts
 forced misses raise the prefill queue by an amount inside the price's
 bracket, over half of it the head-of-line term.
 \end{abstract}
@@ -124,7 +124,7 @@ the \emph{program}, a session with persistent KV state
 tool.
 
 Every KV decision in such a system asks what it costs to lose a
-suspended program's state. The obvious answer is the time to recompute
+paused program's state. The obvious answer is the time to recompute
 it. In a queue that answer is incomplete: a miss is long work added to
 a shared server, every other request pays for it, and how much depends
 on the load and on whether the miss shares the batch or blocks it.
@@ -132,7 +132,7 @@ Queueing models of LLM serving have so far asked when a server is
 stable and which schedulers are throughput-optimal, with output length
 as the source of variability
 \citep{yang2024mg1,dai2025workconserving,ao2025fluid,nie2026stability};
-agentic serving systems keep or evict the KV of suspended programs by
+agentic serving systems keep or evict the KV of paused programs by
 rules of thumb such as recency, time-to-live or idleness
 \citep{li2025continuum,xia2026mori,thunderagent}. We connect the two.
 The variability that matters here is in the prefill work, and it has
@@ -157,18 +157,18 @@ that the usual open-queue wait at the same utilisation overstates the
 true wait
 (Proposition~\ref{prop:finite}).
 \item \textbf{Congestion-priced scheduling} (\S\ref{sec:sched}). The
-scheduler compares one number per suspended program, its expected price
+scheduler compares one number per paused program, its expected price
 per byte of memory per second held, with one shadow price of memory.
 That comparison drives eviction, offloading, placement and admission.
 Eviction is a covering knapsack whose standard solutions we cite. Any
 eviction rule that ignores resume probabilities can be made arbitrarily
 bad, and shortest-first is the special case in which the price is the
 recompute alone (Proposition~\ref{prop:blind}); in the traces we
-measured it is the suspension time, not the resume probability, that
+measured it is the pause time, not the resume probability, that
 separates programs.
 \item \textbf{Results} (\S\ref{sec:exp}). Production traces give the
 workload side: the append alone has a prefill-work $\mathrm{CV}^2$ of
-\wkCvN, resume probabilities vary little and suspension times vary
+\wkCvN, resume probabilities vary little and pause times vary
 widely. In simulation the admission cap, not the eviction order,
 decides whether a replica thrashes (the priced order beats
 shortest-first only within seed noise), and on replayed sessions the
@@ -176,9 +176,8 @@ open price overstates the rise from forced misses by \simPriceOverMin{}
 to \simPriceOverMax{} times. On an NPU testbed
 (\S\ref{sec:exp-testbed}) the fitted prefill cost is quadratic past
 \eOneKc k tokens; a replay of a coding-agent trace at 50k-token
-contexts shows a follow-up miss waiting \eTwoMissOverHitLo{} to
-\eTwoMissOverHitHi{} times longer than a hit for its first token, a
-wait for KV blocks that the cap on live sessions controls; and a
+contexts shows turns waiting for KV blocks, which the cap on live
+sessions controls, and the misses among the turns that queued; and a
 short-context replay, where the prefill queue binds, puts both wait
 formulas within a factor of two of the observed wait and the rise from
 forced misses inside the bracket of Proposition~\ref{prop:price}, over
@@ -207,7 +206,7 @@ feeds pending prefills into those steps in fixed-size chunks
 \citep{sarathi2024}. An agent program is a session of many requests,
 each appending a tool result to the previous prompt, so nearly every
 request could be a hit if its state survived the tool call. The memory
-held by suspended sessions is what the KV policy manages.
+held by paused sessions is what the KV policy manages.
 
 Table~\ref{tab:model} is the model on one page: sessions arrive and
 loop through turns and tool calls (\S\ref{sec:sessions}); each turn is
@@ -225,7 +224,7 @@ quantity every decision in it needs.
 System & $J$ replicas, each with a memory pool of $M$ bytes; optionally
   a slower shared KV store that any replica can read. \\
 Sessions & Poisson arrivals at rate $\Lambda$; a session loops
-  prefill $\to$ decode $\to$ tool; a suspended program~$i$ resumes with
+  prefill $\to$ decode $\to$ tool; a paused program~$i$ resumes with
   probability $p_i$ after an expected $\tau_i$ seconds; turns reach the
   replicas at rate $\lambda$. \\
 Turn $i$ & context $K_i$, $n_i$ new tokens, $o_i$ output tokens.
@@ -237,7 +236,7 @@ Prefill & FIFO queue served from the token budget the decode batch
   $\Delta S_i$ to the work. \\
 Decode & processor sharing with capacity $\varphi(m)$ for $m$ turns in
   the batch; occupancy depends on the work only through its mean. \\
-Decisions & keep, offload or drop each suspended state (a dropped or
+Decisions & keep, offload or drop each paused state (a dropped or
   remote state makes the next turn a miss or a transfer); place each
   resuming turn; admit sessions. \\
 Objective & $L=L_P+L_D$, the mean number of turns in the prefill stage
@@ -290,7 +289,7 @@ makes three demands on its replica.
   term dominates depends on the hardware (on our testbed $\beta\approx0$,
   \S\ref{sec:sim}); neither differs between a hit and a miss.
 \item \emph{Memory.} $c_i=\kappa K_i$ bytes for as long as the state is
-  resident, running or suspended, with $\kappa$ the KV bytes per token.
+  resident, running or paused, with $\kappa$ the KV bytes per token.
 \end{itemize}
 The hit/miss distinction lives entirely in the first demand.
 
@@ -310,7 +309,12 @@ the decode batch, then spends the tokens left in its budget on pending
 prefills \citep{sarathi2024}. Chunking protects the decoding turns from
 a long prefill; it does not let one prefill overtake another, and by
 default the schedulers we know of serve pending prefills in arrival
-order. We therefore model the prefill
+order. vLLM serves its running requests in admission order rather than
+decode first; the two orders coincide as long as no per-request cap
+limits a prefill's tokens in a step, because a prefill that does not
+finish leaves no budget for the requests behind
+it.\provedby{\leanref{serve\_preserves\_shape}, \leanref{serve\_eq\_decode\_first}, \leanref{chunk\_cap\_breaks\_shape}}
+We therefore model the prefill
 stage as a FIFO queue whose server is available a fraction $1-\rho_D$
 of the time; we write $S_i$ for the work $P_i$ of turn~$i$ measured in
 that server's own time and $\rho=\lambda\E[S]$ for the prefill load.
@@ -330,7 +334,7 @@ from the cache: the decode stage needs only mean demands, which the
 cache does not change; the prefill stage needs the second moment of its
 work, which the cache sets.
 
-\paragraph{Memory pool.} The batch and the suspended states share one
+\paragraph{Memory pool.} The batch and the paused states share one
 pool of $M$ bytes, so a replica admits turns into the batch until the
 next one does not fit. The batch that fits is a property of the
 footprint law and the admission rule, not of the mean footprint (a
@@ -391,7 +395,7 @@ more miss causes.
 
 \subsection{The Price of a Miss}\label{sec:problem}\label{sec:price}
 
-At a decision epoch each replica holds a set of suspended programs.
+At a decision epoch each replica holds a set of paused programs.
 Program~$i$ holds $c_i$ bytes, resumes with probability~$p_i$ after an
 expected further $\tau_i$ seconds, and its next turn needs prefill
 $S_i^{\mathrm{hit}}$ if the state is resident on the replica that
@@ -532,7 +536,7 @@ its price per byte-second held as
 \section{Congestion-Priced Scheduling}\label{sec:sched}
 % ===========================================================================
 
-The formulation leaves the scheduler two numbers. Each suspended program
+The formulation leaves the scheduler two numbers. Each paused program
 has a price per byte-second $u_i$ from~\eqref{eq:utility}, and each
 replica has a shadow price $\theta$ for a byte-second of its memory.
 Every KV decision compares the two. Algorithm~\ref{alg:cps} states the
@@ -544,7 +548,7 @@ scheduler; this section derives its steps.
 \begin{algorithmic}[1]
 \STATE \textbf{Observe} the prefill arrival rate $\lambda$, load $\rho$
   and mean wait $W$, and the memory $\Delta C$ that must be freed.
-\STATE \textbf{Price} each suspended program: $\Phi_i$
+\STATE \textbf{Price} each paused program: $\Phi_i$
   from~\eqref{eq:price} with $\Delta S_i$ from~\eqref{eq:prefill},
   $w_i=p_i\Phi_i$, $u_i=w_i/(c_i\tau_i)$.
 \STATE \textbf{Set} $\theta$ to the smallest value at which the blocks
@@ -673,12 +677,13 @@ alternatives rather than complements.
 
 \subsection{Admission and Offloading}\label{sec:admission}
 
-The pool holds both the batch's working set and the suspended states,
-and the two compete unstably: a miss holds its turn in the prefill
-queue and then in the batch for longer, which holds more bytes, which
-evicts more suspended state, which causes more misses. \citet{ao2026congestion} show the same instability without reuse;
-\S\ref{sec:sim} and \S\ref{sec:exp-testbed} show it with reuse.
-Admission keeps the pool out of that regime. Let a session live for a time $T_s$ and hold $K(t)$ tokens at
+The pool holds both the batch's working set and the paused states,
+and the two feed each other: a miss stays longer and re-inserts its
+context, which evicts paused state and causes more misses. The loop
+amplifies misses at moderate load (\S\ref{sec:exp-testbed}) and
+thrashes the replica at high load (\S\ref{sec:sim}), as
+\citet{ao2026congestion} find without reuse. Admission keeps the pool
+out of that regime. Let a session live for a time $T_s$ and hold $K(t)$ tokens at
 age~$t$. Treating live sessions as an M/G/$\infty$ system (each session
 its own server, none queues), Campbell's theorem \citep{kingman1993}
 gives the mean resident KV as $\Lambda\,\E[\int_0^{T_s}K(t)\,dt]$,
@@ -784,21 +789,25 @@ ten turns each (median context $50$k tokens, mean output $1.1$k tokens,
 gaps capped at $30$\,s, mean \eTwoThink\,s), one session every
 $20$\,s, with the admission cap of Algorithm~\ref{alg:cps} at
 $\infty$, $16$ and $8$ live sessions, and once more at $8$ with a
-session every $10$\,s. A rank's pool holds $52$ blocks of $4096$
-tokens, two to four such contexts; the batch cap never binds.
+session every $10$\,s. A rank's pool holds $51$ allocatable blocks of
+$4096$ tokens, two to four such contexts; the batch cap never binds.
 
-\emph{A resident prefix does not queue.} A follow-up turn whose prefix
+\emph{Misses are the turns that queued.} A follow-up turn whose prefix
 is resident has a TTFT of \eTwoHitTtftLo--\eTwoHitTtftHi\,s at every
 cap, the service time of its append. A turn whose prefix was partly
 evicted waits \eTwoPartialTtftLo--\eTwoPartialTtftHi\,s, one whose
 prefix is gone \eTwoMissTtftLo--\eTwoMissTtftHi\,s, \eTwoMissOverHitLo{}
-to \eTwoMissOverHitHi{} times longer than a hit. The hit rate falls from
-\eTwoHitHi\,\% at the cap of $8$ to \eTwoHitLo\,\% with none, when
-the pool evicts suspended prefixes and every resume re-prefills its
-context.
+to \eTwoMissOverHitHi{} times longer than a hit. That ratio is not the
+price of a miss: \eTwoMissQueueLo--\eTwoMissQueueHi\,\% of the misses
+but \eTwoHitQueueLo--\eTwoHitQueueHi\,\% of the hits arrived to a queue
+on their rank, after the same think times
+(\eTwoMissThinkLo--\eTwoMissThinkHi\,s and
+\eTwoHitThinkLo--\eTwoHitThinkHi\,s): admissions ahead of a waiting
+turn, in arrival order, evict the least recently used prefixes,
+possibly its own.
 
 \emph{The wait is for KV blocks, not prefill compute.} The per-rank
-utilisation stays at \eTwoRhoRankLo--\eTwoRhoRankHi, the server's
+prefill utilisation stays at \eTwoRhoRankLo--\eTwoRhoRankHi, the server's
 prefill time is \eTwoPfOverEsLo--\eTwoPfOverEsHi{} times the $\E[S]$
 of the fitted cost model, and the PK wait it implies is
 \eTwoPkLo--\eTwoPkHi\,s. The server's mean queueing time is
@@ -810,7 +819,9 @@ as $Z$, is \eTwoFinLo--\eTwoFinHi\,s. The queueing time is
 \eTwoWqOverPkLo{} to \eTwoWqOverPkHi{} times the PK wait and
 \eTwoWqOverFinLo{} to \eTwoWqOverFinHi{} times the finite-source wait:
 it is the block wait $W_q^M$ of \S\ref{sec:batch}, which neither
-prices.
+prices. Running turns hold their blocks through decodes that are
+slower than on an idle server; the ranks step in lockstep, and some
+rank prefills \eTwoAnyPfLo--\eTwoAnyPfHi\,\% of the time.
 
 \emph{The cap decides, and it moves the wait rather than removing it.}
 At $8$ live sessions p99 TTFT falls from \eTwoTailHi\,s to
@@ -840,8 +851,7 @@ beyond the model's service (prefill
 \eTwobPkOverWobsLo--\eTwobPkOverWobsHi{}. Forcing $10\,\%$ of follow-up
 turns to miss adds \eTwobForcedLo{} to \eTwobForcedHi{} misses in the
 window and, at the higher load, \eTwobExtraMissHi{} more through the
-pool (LRU evicts the sessions parked at the 30\,s gap): the feedback
-of \S\ref{sec:admission} at small amplitude. Priced together from the baseline's $\lambda$, $\rho$
+pool, after the 30\,s gap: the feedback of \S\ref{sec:admission}. Priced together from the baseline's $\lambda$, $\rho$
 and PK wait (Table~\ref{tab:e2b-price}, Figure~\ref{fig:e2}e), the
 misses the change caused give a bracket containing the observed rise
 of $L_P$ in all \eTwobPriceRows{} tests (two loads, two seeds),
@@ -852,13 +862,12 @@ price, the queue's part of the rise is \eTwobQueueOverServiceLo{} to
 \eTwobBystanderLo--\eTwobBystanderHi\,\% of the rise is borne by turns
 that did not miss. The finite-source price, with no second moment,
 understates the rise \eTwobDlOverFinLo{} to \eTwobDlOverFinHi{} times.
-One session every \eTwobSatSpacing\,s saturates the replica by two
-routes: the batch cap of eight binds in \eTwobSatCapShare\,\% of the
-samples because on this stack a prefill step is exclusive and takes
-priority over decode (inter-token latency \eTwobSatItl\,s), and LRU
-evicts the prefixes parked at the
-30\,s gap (\eTwobSatMissShare\,\% of follow-ups miss), so the misses
-feed the load, the instability of \S\ref{sec:admission} on hardware.
+One session every \eTwobSatSpacing\,s saturates the replica: the batch
+cap of eight binds in \eTwobSatCapShare\,\% of the samples, and
+\eTwobSatMissShare\,\% of
+follow-ups miss, about half after the 30\,s gap and most after waiting
+in a queue, so the misses feed the load, the instability of
+\S\ref{sec:admission} on hardware.
 
 % ===========================================================================
 \section{Related Work}\label{sec:related}
@@ -869,8 +878,8 @@ economics of queues \citep{naor1969,mendelson1990}; the size-squared
 term of~\eqref{eq:price} is the PK second moment of that externality.
 We claim the application (a job whose size changes with a cache
 decision), the two-stage separation, the finite-population bound and
-the one price across four decisions, not the formula. Existing LLM
-queueing analyses take the variability from output length
+the one price across four decisions, not the formula. LLM queueing
+analyses take the variability from output length
 \citep{mitzenmacher2025queueing,yang2024mg1,ozbas2026reasoning,shahout2024trail},
 and \citet{ao2026congestion} show the equilibrium of a
 memory-constrained replica unstable; none models KV reuse across the turns of a session, so
@@ -881,15 +890,14 @@ hardness results
 Among systems that keep the KV of paused programs
 \citep{thunderagent,infercept}, Continuum \citep{li2025continuum} sets
 a time-to-live from the reload cost and the queueing delay an eviction
-would induce, the price of a miss without its head-of-line term and
-load factor; MORI \citep{xia2026mori} offloads by idleness; others
-predict reuse from the workflow or trade a retained prefix against batch memory
+would induce, our price without its head-of-line term and load factor;
+MORI \citep{xia2026mori} offloads by idleness; others predict reuse or
+trade a retained prefix against batch memory
 \citep{bian2025tokencake,pan2025kvflow,zhang2026cachescout,ni2026topas};
-KVLearn \citep{kvlearn2026} learns a retention score from recompute,
-transfer and storage costs, the inputs of $u_i$ and $\theta$. The
-head-of-line blocking among prefills that chunked prefill
-\citep{sarathi2024} leaves
-\citep{hsieh2026flowprefill,liu2026chunkedfair,lyu2025fairbatching} is
+KVLearn \citep{kvlearn2026} learns retention from the inputs of $u_i$
+and $\theta$. Chunked prefill \citep{sarathi2024} leaves
+head-of-line blocking among prefills
+\citep{hsieh2026flowprefill,liu2026chunkedfair,lyu2025fairbatching},
 the term our price keeps.
 
 % ===========================================================================
@@ -899,14 +907,13 @@ the term our price keeps.
 The propositions are about the model, not the world, and of the
 measurements of Appendix~\ref{app:design} only the cost fit and the
 two replays have been run
-(one stack, one derived workload, one forced share; the replicates are
-four ranks and two seeds). \eqref{eq:pk} is an approximation: the decode budget fluctuates and
-session feedback makes arrivals non-Poisson. On our stack the roles are
-reversed: a prefill step is exclusive and takes priority, and the
-expert-parallel ranks step in lockstep, so decode gets what prefill
-leaves. The propositions concern means and a stationary fraction of misses,
-not tails or one eviction.
-What would falsify it: a prefill wait off \eqref{eq:pk} with the pool
+(one stack, one derived workload, one forced share, four ranks, two
+seeds). \eqref{eq:pk} is an approximation: session
+feedback makes arrivals non-Poisson, and on our stack a prefill step is
+exclusive and the ranks step in lockstep, so decode gets what prefill
+leaves. The propositions concern means and a stationary fraction of
+misses, not tails, one eviction or block waits.
+It is falsified by a prefill wait off \eqref{eq:pk} with the pool
 slack, or a blind key beating the price.
 
 \section*{Impact Statement}
@@ -1091,7 +1098,7 @@ Tables~\ref{tab:traces}, \ref{tab:ttft} and~\ref{tab:resume} give the
 workload statistics of the production Claude Code traces that
 \S\ref{sec:exp-traces} summarises: the per-request workload, the
 proxy's TTFT against the append and the context, and the resume
-probabilities and suspension times behind the eviction key.
+probabilities and pause times behind the eviction key.
 
 \begin{table}[t]
 \caption{Production Claude Code traces \citep{cc-traces-weka}: main-agent
@@ -1113,12 +1120,12 @@ on. The serving stack and load behind the proxy are unknown.}
 \end{table}
 
 \begin{table}[t]
-\caption{Resume probability and suspension time as a scheduler could
+\caption{Resume probability and pause time as a scheduler could
 estimate them, production Claude Code traces \citep{cc-traces-weka}:
 $p$ is the probability that a turn is followed by another within ten
 minutes and $\tau$ the gap before that next turn, by turn index and by
 the gap that preceded the turn. The scheduler uses such conditional
-means as its estimate of the remaining suspension.}
+means as its estimate of the remaining pause.}
 \label{tab:resume}
 \centering\footnotesize
 \input{traces/tab-weka-resume}
@@ -1178,7 +1185,7 @@ compare the rise in summed TTFT with Proposition~\ref{prop:price}. The
 is never below never-offload while always-offload falls below it once
 the tier saturates. The \emph{eviction replay} replays eviction events:
 shortest-first within a factor~2 of the optimum when resume
-probabilities are uniform, the byte-second key ahead when suspension
+probabilities are uniform, the byte-second key ahead when pause
 times differ, and the admission cap swept end to end, since the
 simulation says it decides whether eviction matters at all. The
 \emph{placement test} measures the move cost and the load at which

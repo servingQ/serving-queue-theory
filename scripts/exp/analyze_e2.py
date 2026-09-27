@@ -219,6 +219,37 @@ def analyze(path, fit, args):
                 ttft_miss.append(r["ttft_s"])  # nothing resident: a full recompute
         else:
             ttft_first.append(r["ttft_s"])
+        r["_cls"] = "first" if first else ("hit" if is_hit else ("partial" if cached > 0 else "miss"))
+        r["_start"] = r["first_token_monotonic_s"] - work
+        r["_think"] = None if first else r["sent_monotonic_s"] - prev["done_monotonic_s"]
+    # Who waits: for each follow-up class, the share of turns that arrived while
+    # another request of their rank was sent and not yet started (a queue), and
+    # the mean think time before the turn; and the share of the run during which
+    # some rank was prefilling (the ranks step in lockstep, so a prefill on any
+    # rank stalls every rank's decode).
+    queue_at, think_of = {}, {}
+    for rk_ in {r.get("dp_rank_requested") for r in ok}:
+        lst = sorted((r for r in ok if r.get("dp_rank_requested") == rk_), key=lambda r: r["sent_monotonic_s"])
+        for j, r in enumerate(lst):
+            if r["_cls"] == "first":
+                continue
+            qd = any(x["sent_monotonic_s"] < r["sent_monotonic_s"] < x["_start"] for x in lst[:j])
+            queue_at.setdefault(r["_cls"], []).append(qd)
+            think_of.setdefault(r["_cls"], []).append(r["_think"])
+    iv = sorted((r["_start"], r["first_token_monotonic_s"]) for r in ok)
+    busy, (cs, ce) = 0.0, iv[0]
+    for s_, e_ in iv[1:]:
+        if s_ > ce:
+            busy += ce - cs
+            cs, ce = s_, e_
+        else:
+            ce = max(ce, e_)
+    busy += ce - cs
+    t_end = max(r["done_monotonic_s"] for r in ok if r.get("done_monotonic_s"))
+    any_prefill = busy / (t_end - iv[0][0])
+    who_waits = {c: dict(queue=st.fmean(v), think=st.fmean(think_of[c])) for c, v in queue_at.items()}
+    print(f"  arrived to a queue / think before: " + "  ".join(f"{c} {w['queue']:.2f} / {w['think']:.1f}s" for c, w in who_waits.items())
+          + f"   some rank prefilling {any_prefill:.2f} of the run")
     # Each DP rank has its own prefill queue and KV pool: compute λ, ρ, the PK
     # wait and the finite-source wait per rank, then average over ranks
     # weighted by requests. Sessions are pinned to a rank by the replayer.
@@ -323,7 +354,7 @@ def analyze(path, fit, args):
                 hits=len(hits), misses=len(misses), ttft_hit=mh, ttft_miss=mm, ttft_first=mf, n_first=len(ttft_first),
                 ttft_partial=mp, n_partial=len(ttft_partial), n_miss=len(ttft_miss),
                 think=think, door=door_mean, sojourn=sojourn_mean, itl=itl_mean, itl_all=itl_all, running_max=running_max, cap_share=cap_share,
-                kv_when_waiting=kv_when_waiting[0], pf_over_es=pf_over_es)
+                kv_when_waiting=kv_when_waiting[0], pf_over_es=pf_over_es, who_waits=who_waits, any_prefill=any_prefill)
 
 
 def main():

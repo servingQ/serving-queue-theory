@@ -1,0 +1,469 @@
+\chapter{Putting It Together: A Queueing Model of Disaggregated Serving}\label{sec:L5}
+
+The first four lectures built tools. This lecture assembles them into a model of a
+disaggregated deployment and derives what a scheduler for it needs: what a miss costs
+at each place where it can happen, what each instance should keep in memory and for how
+long, how many sessions to admit, and when misses feed
+themselves. Every step names the result of Lectures 1--4 that carries it.
+
+\section{The model on one page}\label{L5:sec:model}
+
+\Cref{fig:deployment} in \cref{L1:sec:model} shows the deployment, and
+\cref{L1:def:workload,L1:def:costs} and the program of \cref{L1:ex:program} define the system exactly. We
+recall the notation.
+
+\begin{definition}[Disaggregated replica]\label{L5:def:replica}
+A \term{disaggregated replica} consists of the following stations, visited in this
+order by every turn.
+\begin{enumerate}[label=(\alph*)]
+\item A \emph{prefill instance} with a memory pool of $M_P$ bytes: a waiting turn is
+  admitted, in arrival order, only when its whole context fits; the part of the pool not
+  held by admitted turns keeps a \emph{prefix cache} of paused sessions, evicted least
+  recently used first; admitted turns are prefilled one at a time, in arrival order, by
+  a server of full capacity.
+\item A \emph{link} that carries the turn's KV to a decode instance, shared equally by
+  concurrent transfers: a processor-sharing station of capacity 1 (\cref{def:ps}).
+\item A \emph{decode instance} with a pool of $M_D$ bytes, the same whole-context
+  admission, and a processor-sharing batch of capacity $\varphi(m)$ for $m$ running turns.
+\item The \emph{tool call}, a delay station (\cref{L4:def:delay}) with mean think time
+  $Z$, after which the paused session sends its next turn with probability $p$.
+\end{enumerate}
+\end{definition}
+
+\paragraph{Costs.} Prefilling $n$ new tokens on a cached prefix of $K$ tokens takes
+\begin{equation}\label{L5:eq:prefill}
+  P(n,K)=a\,n+b\,n\,(K+n/2)
+\end{equation}
+seconds. A \term{hit} (the session's prefix is cached) costs $S^{\mathrm{hit}}=P(n,K)$; a
+\term{miss} costs $S^{\mathrm{miss}}=P(K+n,0)$, so the extra work of a miss is
+$\Delta S=aK+bK^2/2$ (\cref{cor:price-mono}). We write $S$ for the prefill work of a turn,
+$h$ for the hit rate and $\rho_P=\lambda\E[S]$ for the prefill load, with $\lambda$ the turn
+rate. A transfer of $T_i$ tokens needs
+\begin{equation}\label{L5:eq:transfer}
+  X_i=x_0+\frac{\kappa\,T_i}{B}
+\end{equation}
+seconds of the link, with $x_0$ a fixed overhead, $\kappa$ the KV bytes per token and $B$
+the bandwidth; the link load is $\rho_L=\lambda\E[X]$. Decoding $o_i$ tokens is a demand
+$D_i$ at the decode batch. If every context needs about $c$ bytes, instance
+$j\in\{P,D\}$ has $m_j=\lfloor M_j/c\rfloor$ memory slots, and its admission station is the
+multi-server queue of \cref{prop:mmm} with service time equal to the holding time
+(prefill plus transfer at the prefill instance, decode at the decode instance).
+
+\paragraph{What the time to first token contains.} The first token is produced by the
+prefill instance, so
+\[
+  \mathrm{TTFT}=W^M_P+W_P+S,
+\]
+the wait for a memory slot at the prefill instance, the wait for the prefill server,
+and the prefill itself. The transfer and the decode do not enter it: they delay the
+second token and every later one. They matter for the TTFT only through memory, since a
+slot at the prefill instance stays held until the transfer has finished.
+
+\section{Where the variance of prefill work comes from}\label{L5:sec:variance}
+
+The Pollaczek--Khinchine formula makes the second moment of $S$ a first-class quantity
+(\cref{cor:variance}). The law of total variance splits it into a part the scheduler
+does not control and a part it does.
+
+\begin{lemma}[Variance split of the hit/miss mixture]\label{L5:lem:split}
+Let $S_h$ be the mixture of \cref{L3:def:mixture}: $S^{\mathrm{hit}}$ with
+probability $h$ and $S^{\mathrm{miss}}$ with probability $1-h$, with means
+$\mu_{\mathrm{hit}},\mu_{\mathrm{miss}}$ and variances
+$\sigma^2_{\mathrm{hit}},\sigma^2_{\mathrm{miss}}$. Then
+\[
+  \Var[S_h]=\underbrace{h\,\sigma^2_{\mathrm{hit}}+(1-h)\,\sigma^2_{\mathrm{miss}}}_{\text{spread of the appends}}
+  +\underbrace{h(1-h)\,(\mu_{\mathrm{miss}}-\mu_{\mathrm{hit}})^2}_{\text{hit/miss mixture}} .
+\]
+\end{lemma}
+
+\begin{proof}
+Let $I$ be the indicator of a hit. By the law of total variance,
+$\Var[S_h]=\E[\Var(S_h\mid I)]+\Var(\E[S_h\mid I])$. The first term is
+$h\sigma^2_{\mathrm{hit}}+(1-h)\sigma^2_{\mathrm{miss}}$. The conditional
+mean $\E[S_h\mid I]$ takes the value $\mu_{\mathrm{hit}}$ with probability
+$h$ and $\mu_{\mathrm{miss}}$ with probability $1-h$, a two-point
+variable whose variance is $h(1-h)(\mu_{\mathrm{miss}}-\mu_{\mathrm{hit}})^2$.
+\end{proof}
+
+The first term comes from the spread of tool outputs (a line or a whole file) and is
+not the scheduler's to change. The second is the KV policy's lever: it vanishes at
+$h\in\{0,1\}$ and grows with the squared gap between miss and hit work, which by
+\eqref{L5:eq:prefill} grows like $K^4$ once attention dominates. What a scheduler
+must price is therefore not a ratio of variances but the rise of
+$\lambda\E[S^2]/(2(1-\rho_P))$ that one more miss causes.
+
+\section{Three prices}\label{L5:sec:prices}
+
+A decision that changes where a paused session's KV lives changes the work of its next
+turn at one of three stations.
+
+\paragraph{(a) A miss at the prefill instance.} The prefill instance is an M/G/1 FIFO
+queue with the whole server available to prefill, so \cref{thm:price} applies as it
+stands: turning a fraction $q_i$ of arrivals from hits into misses raises the mean number
+at the prefill instance by an amount in
+$[\lambda\sum_iq_i\Phi_i,\ \frac{1-\rho_P}{1-\rho_P'}\lambda\sum_iq_i\Phi_i]$, with
+\[
+  \Phi_i=\Delta S_i
+   +\frac{\lambda\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr)}{2(1-\rho_P)}
+   +\frac{\lambda W_P\,\Delta S_i}{1-\rho_P}.
+\]
+The middle term is the head-of-line term: every turn that arrives while the miss is
+prefilled waits for all of it.
+
+\paragraph{(b) A miss at the decode instance.} If the decode instance still holds the
+session's KV from its previous turn, the next turn transfers only its new tokens,
+$T_i=n_i$; if not, it transfers the whole context, $T_i=K_i+n_i$. A decode-side miss
+therefore adds $\Delta X_i=\kappa K_i/B$ of link work.
+
+\begin{proposition}[The price of a transfer miss]\label{L5:prop:link-price}
+Let the link be a processor-sharing station of capacity 1 with load $\rho_L<1$, and
+turn a fraction $q_i$ of arrivals into decode-side misses, raising the load to
+$\rho_L'=\rho_L+\lambda\sum_iq_i\Delta X_i<1$. Then the mean number of transfers in
+progress rises exactly by
+\[
+  \Delta L_L=\frac{1-\rho_L}{1-\rho_L'}\;\lambda\sum_iq_i\,\Phi^X_i,\qquad
+  \Phi^X_i=\frac{\Delta X_i}{(1-\rho_L)^2},
+\]
+whatever the distribution of the transfer times.
+\end{proposition}
+
+\begin{proof}
+By insensitivity (\cref{thm:insens}) the number of transfers in progress has the
+geometric law of \cref{prop:decode-price} with capacity $C=1$, for every transfer-time
+distribution with the given mean. \Cref{prop:decode-price} with $C=1$ and $\Delta D_i$
+replaced by $\Delta X_i$ gives the formula.
+\end{proof}
+
+\paragraph{(c) Decode demand.} A decision that adds decode demand, such as admitting a
+session, pays the load factor of \cref{prop:decode-price} at the decode batch; a miss at
+either instance adds none (\cref{L2:cor:decode-hit}).
+
+\paragraph{Comparison.} The same context of $K$ tokens costs the prefill instance a
+miss whose work is quadratic in $K$ and whose price has a head-of-line term, set by the
+second moment of the prefill work; it costs the link a transfer linear in $K$ whose
+price depends on its mean only, because under processor sharing a long transfer does not
+block the short ones. The prefix cache of the prefill instance is where memory buys the
+most.
+
+\section{The decision problem with two pools}\label{L5:sec:decision}
+
+At a decision epoch each instance holds KV for a set of paused sessions. Session $i$
+holds $c_i$ bytes, resumes with probability $p_i$ after an expected further $\tau_i$
+seconds, and its next turn pays $\Phi_i$ if its prefix is not in the prefill instance's
+cache and $\Phi^X_i$ if its KV is not at the decode instance. With indicators
+$x^P_i,x^D_i\in\{0,1\}$ of ``keep'' at each instance and byte-second budgets $B_P$ and
+$B_D$, the keep-or-drop problem is
+\begin{equation}\label{L5:eq:primal}
+  \mathrm{OPT}=\min_{x^P,x^D}\ \sum_i\bigl[(1-x^P_i)\,p_i\Phi_i+(1-x^D_i)\,p_i\Phi^X_i\bigr]
+  \quad\text{s.t.}\quad \sum_ic_i\tau_ix^P_i\le B_P,\ \ \sum_ic_i\tau_ix^D_i\le B_D .
+\end{equation}
+Relaxing the two constraints with multipliers $\theta_P,\theta_D\ge0$, the
+\term{shadow prices} of a byte-second at each instance, gives the Lagrangian
+$\mathcal{L}=\sum_i[(1-x^P_i)p_i\Phi_i+(1-x^D_i)p_i\Phi^X_i]
++\theta_P(\sum_ic_i\tau_ix^P_i-B_P)+\theta_D(\sum_ic_i\tau_ix^D_i-B_D)$.
+
+\begin{proposition}[One price per pool]\label{L5:prop:shadow}
+Let $u^P_i=p_i\Phi_i/(c_i\tau_i)$ and $u^X_i=p_i\Phi^X_i/(c_i\tau_i)$.
+\begin{enumerate}[label=(\roman*)]
+\item For all $\theta_P,\theta_D\ge0$, $\mathcal{L}$ is minimised by keeping session $i$ at
+  the prefill instance iff $u^P_i>\theta_P$ and at the decode instance iff
+  $u^X_i>\theta_D$, and the minimum $g(\theta_P,\theta_D)$ is at most $\mathrm{OPT}$.
+\item If the multipliers are such that these choices use both budgets exactly, the
+  choices are optimal for \eqref{L5:eq:primal}.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) $\mathcal{L}=\sum_ip_i(\Phi_i+\Phi^X_i)-\theta_PB_P-\theta_DB_D
++\sum_ix^P_i(\theta_Pc_i\tau_i-p_i\Phi_i)+\sum_ix^D_i(\theta_Dc_i\tau_i-p_i\Phi^X_i)$ is
+separable: each $x^P_i$ is best set to 1 exactly when $\theta_Pc_i\tau_i<p_i\Phi_i$, that
+is $u^P_i>\theta_P$, and likewise each $x^D_i$. For a feasible $(x^P,x^D)$ both brackets
+multiplying $\theta_P$ and $\theta_D$ are nonpositive, so its objective is at least its
+Lagrangian, which is at least $g$; minimising over feasible choices gives
+$\mathrm{OPT}\ge g$ (weak duality). (ii) The choices of (i) are then feasible and their
+constraint terms vanish, so their objective equals $g\le\mathrm{OPT}$.
+\end{proof}
+
+This is the threshold rule of \cref{thm:threshold}, once per pool: each instance keeps
+what is worth more per byte-second than its own memory.
+
+\begin{corollary}[Free transfer]\label{L5:cor:free-transfer}
+As $B\to\infty$, $\Phi^X_i\to0$ for every session, so for any $\theta_D>0$ the decode
+instance keeps nothing for paused sessions, and all of $M_D$ serves running decodes.
+\end{corollary}
+
+\begin{proof}
+$\Delta X_i=\kappa K_i/B\to0$, and $\rho_L\to\lambda x_0$ stays below 1 when $\lambda x_0<1$,
+so $\Phi^X_i=\Delta X_i/(1-\rho_L)^2\to0$ and $u^X_i\to0<\theta_D$.
+\end{proof}
+
+A decode instance's cache is worth exactly the transfers it saves; the prefill
+instance's cache is worth the recomputation it saves and the queueing that recomputation
+would cause.
+
+\section{How long to keep}\label{L5:sec:hold}
+
+\Cref{L5:prop:shadow} decides at one instant. Because the Lagrangian is separable, once
+the multiplier of an instance is fixed each paused session can also be treated on its own
+over time, at each instance separately, with that instance's price $\Phi$ (prefill:
+$\Phi_i$; decode: $\Phi^X_i$) and multiplier $\theta$ ($\theta_P$ or $\theta_D$): keep its state until some time $T$ and drop it then if the
+program has not resumed. Let the program resume with probability $p\in(0,1]$, and, given
+that it resumes, after a time with a continuous distribution function $G$ and density
+$g$ on $[0,\infty)$. Holding the state costs $\theta c$ per second; dropping it costs
+$\Phi$ if the program resumes later. The expected cost of the rule ``hold until $T$'' is
+\begin{equation}\label{L5:eq:hold-cost}
+  C(T)=\theta c\int_0^T\bigl(1-pG(t)\bigr)\dd t+\Phi\,p\,\bigl(1-G(T)\bigr),
+\end{equation}
+since the state is held at time $t$ exactly when the program has not resumed by $t$,
+and a miss occurs exactly when it resumes after $T$. The quantity that decides is the
+\term{resume hazard}
+\[
+  \eta(t)=\frac{p\,g(t)}{1-pG(t)},
+\]
+the rate at which a program that has not resumed by $t$ resumes at $t$.
+
+\begin{proposition}[Optimal holding time]\label{L5:prop:hold}
+Let $r=\theta c/\Phi$ with $\Phi>0$, and suppose $g$ is continuous.
+\begin{enumerate}[label=(\roman*)]
+\item $C'(T)=\bigl(1-pG(T)\bigr)\bigl(\theta c-\Phi\,\eta(T)\bigr)$ for every $T\ge0$.
+  Holding a little longer lowers the cost exactly when $\Phi\,\eta(T)>\theta c$.
+\item If $\eta$ is nonincreasing, let $T^*=\inf\{T\ge0:\eta(T)\le r\}$. If
+  $T^*<\infty$ it minimises $C$ over $[0,\infty)$; if $T^*=\infty$, $C$ is nonincreasing
+  and the state should be held until the program resumes. In particular $T^*=0$, drop at
+  once, if and only if $\eta(0)\le r$.
+\item If $G$ is exponential with mean $\tau$, then $\eta$ is nonincreasing and
+  $\eta(0)=p/\tau$, so the state should be kept at all if and only if
+  \[
+    u=\frac{p\,\Phi}{c\,\tau}>\theta ,
+  \]
+  the price per byte-second of \cref{L5:prop:shadow}. If $p=1$ and $u>\theta$, the
+  state is held until the program resumes. If $p<1$ and $u>\theta$, the optimal holding
+  time is
+  \[
+    T^*=\tau\,\ln\Bigl[\frac{p}{1-p}\Bigl(\frac{\Phi}{\theta c\tau}-1\Bigr)\Bigr].
+  \]
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The integrand in \eqref{L5:eq:hold-cost} is continuous, so by the fundamental
+theorem of calculus the first term has derivative $\theta c(1-pG(T))$, and the second
+has derivative $-\Phi p\,g(T)$. Factoring out $1-pG(T)$ gives the formula when
+$pG(T)<1$; when $pG(T)=1$ (possible only if $p=1$) both sides vanish, because
+$g(T)=0$ wherever $G$ has reached $1$ and $g$ is continuous. The factor $1-pG(T)$ is
+nonnegative, so the sign of $C'(T)$ is the sign of $\theta c-\Phi\eta(T)$.
+
+(ii) For $T<T^*$, $\eta(T)>r$, so $C'(T)\le0$ by (i). For $T>T^*$, $\eta(T)\le r$
+because $\eta$ is nonincreasing, so $C'(T)\ge0$. Hence $C$ is nonincreasing on
+$[0,T^*]$ and nondecreasing on $[T^*,\infty)$, and $T^*$ is a minimiser. If
+$T^*=\infty$, then $C'\le0$ everywhere. The last claim is the definition of $T^*$ at
+$T=0$, using that $\eta$ is nonincreasing.
+
+(iii) With $x=e^{-T/\tau}$, $g(T)=x/\tau$ and $1-pG(T)=1-p+px$, so
+\[
+  \eta(T)=\frac{p}{\tau}\cdot\frac{x}{1-p+px}.
+\]
+The map $x\mapsto x/(1-p+px)$ is nondecreasing on $(0,1]$, and $x$ decreases in $T$,
+so $\eta$ is nonincreasing; it is the constant $1/\tau$ when $p=1$. At $T=0$,
+$\eta(0)=p/\tau$, and $\eta(0)>r$ is $p\Phi/(c\tau)>\theta$. If $p=1$, $\eta\equiv1/\tau>r$,
+so $T^*=\infty$ by (ii). If $p<1$, $\eta(T)\to0$ as $T\to\infty$, so $T^*$ is finite and
+solves $\eta(T^*)=r$ by continuity:
+$px/\tau=r(1-p+px)$, that is $x=r(1-p)/\bigl(p(1/\tau-r)\bigr)$, and
+$T^*=-\tau\ln x=\tau\ln\bigl[\frac{p}{1-p}\bigl(\frac{1}{r\tau}-1\bigr)\bigr]$ with
+$1/(r\tau)=\Phi/(\theta c\tau)$.
+\end{proof}
+
+So the instantaneous test $u_i>\theta$ of \cref{L5:prop:shadow} is exactly the optimal
+decision to keep a state for exponential resume times, and part~(iii) adds how long to keep it.
+For example, with $p=0.5$, $\tau=10$\,s, $\Phi=20$\,s, $c=1$ and $\theta=0.3$, $u=1>\theta$,
+the optimal holding time is $T^*\approx17.3$\,s, and it lowers the expected cost from
+$C(0)=p\Phi=10$ to $C(T^*)\approx5.6$. When the gap distribution has a decreasing hazard, as
+heavy-tailed gaps typically do, part~(ii) gives a program-specific time-to-live.
+
+\begin{remark}[Unknown resume times and the oracle]\label{L5:rem:ski}
+If nothing is known about $G$, holding the state is the classical \emph{ski rental}
+problem: pay rent $\theta c$ per second or buy once at price $\Phi$
+\cite{karlin1988}. The rule ``hold for $\Phi/(\theta c)$ seconds'' costs at most twice
+the cost in hindsight for any resume time: if the program resumes at
+$\tau\le\Phi/(\theta c)$ it pays $\theta c\tau$, which is optimal; otherwise it pays
+$2\Phi$ against a hindsight optimum of $\Phi$. The hindsight optimum, which knows
+whether and when each program resumes, is called the \term{oracle}; it keeps a state
+exactly when the program resumes and $\theta c\tau<\Phi$. It cannot be run online, but
+it is the benchmark against which a policy's cost is reported as cost/OPT. The factor
+two needs the program to resume: against a program that never does, the oracle pays
+nothing, and no rule that holds the state for a positive time has a bounded ratio.
+\end{remark}
+
+\Cref{L5:prop:hold} holds $\theta$ and $\Phi$ fixed. In the real system both move with
+the policy: what is dropped changes the load, and the load changes every $\Phi_i$ and
+the value of $\theta$ that fills the pool. The joint optimum is a Markov decision problem
+over the whole state, with no closed form; \cref{L5:prop:hold} is its solution at a
+fixed point of $(\theta,\Phi)$.
+
+\section{How many sessions to admit}\label{L5:sec:admit}
+
+Two memory quantities decide admission. The running turns at each instance occupy slots:
+with exponential holding times the wait for a slot is the Erlang C wait of
+\cref{prop:mmm}, and it grows without bound as the offered load of slots approaches
+$m_j$. The paused sessions occupy the prefix cache: with sessions arriving as a Poisson
+process of rate $\Lambda$, living for $T_s$ and holding $K(t)$ tokens at age $t$, the mean
+resident KV is $\kappa\Lambda\E[\int_0^{T_s}K(t)\dd t]$ (\cref{cor:resident-kv}), which
+exceeds the naive product whenever long contexts belong to long sessions. The admission
+step caps the live sessions near the number at which this estimate fills the prefix
+cache, and holds the rest in an entry queue. The cap has a price of its own, the wait at
+the entry queue: a session is worth admitting while the memory it will hold, priced at
+$\theta_P$ per byte-second, costs less than that wait.
+
+\section{Misses that feed themselves}\label{L5:sec:feedback}
+
+So far the hit rate was an input. It is also an output. A miss re-inserts a whole
+context into the prefill instance's pool, which evicts other paused prefixes sooner
+(\emph{pool channel}); and a turn that waits longer is absent longer, which exposes its
+own prefix to eviction (\emph{wait channel}). Let $W(h)$ be the mean wait at the prefill
+instance at hit rate $h$, nonincreasing in $h$ (\cref{cor:mixture}), and let $G(T;h)$ be
+the probability that a paused prefix survives an absence $T$ when the instance runs at
+hit rate $h$, nonincreasing in $T$ and nondecreasing in $h$.
+
+\begin{definition}[Feedback map]\label{L5:def:feedback}
+The \term{feedback map} is $H(h)=\E_Z[\,G(Z+W(h);h)\,]$ on $[0,1]$, and an
+\term{equilibrium} is a hit rate with $H(h)=h$.
+\end{definition}
+
+\paragraph{The wait channel is an admission rule.} Whether a waiting turn's prefix
+can be evicted is decided by the engine, not by the workload. An engine that
+takes the prefix out of the cache only when it schedules the turn (vLLM admits a
+waiting request at the start of an iteration with the budget left, and until then
+its cached blocks stay evictable) has the wait channel. An engine that pins the
+prefix when the turn arrives has survival $G(Z;h)$ instead of $G(Z+W(h);h)$, a larger
+value for every $h$, but it holds the pinned bytes and so lowers $G$ for the other
+paused prefixes; the comparison of \cref{L5:prop:tarski}(ii) applies only when the
+first effect dominates. In a simulation of the vLLM engine replaying the
+short-context agent trace on the A100 pool of 128k tokens, pinning moved the cliff:
+at one session every 3\,s the vLLM rule collapsed (full-hit rate 0.24) and the pinning
+rule did not (0.80); at 3.5\,s and above the two differed by less than two points.
+
+$H$ is nondecreasing: if $h\le h'$ then $W(h)\ge W(h')$, so
+$G(Z+W(h);h)\le G(Z+W(h');h)\le G(Z+W(h');h')$ for every $Z$, and taking expectations
+preserves the order. No continuity is needed for what follows.
+
+\begin{proposition}[Extremal equilibria]\label{L5:prop:tarski}
+Let $H:[0,1]\to[0,1]$ be nondecreasing.
+\begin{enumerate}[label=(\roman*)]
+\item $\bar h=\sup\{x:x\le H(x)\}$ is an equilibrium, and every equilibrium is at most
+  $\bar h$; $\underline h=\inf\{x:H(x)\le x\}$ is an equilibrium, and every
+  equilibrium is at least $\underline h$.
+\item If $K:[0,1]\to[0,1]$ is nondecreasing and $H\le K$ pointwise, then
+  $\bar h_H\le\bar h_K$ and $\underline h_H\le\underline h_K$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Let $A=\{x\in[0,1]:x\le H(x)\}$; $0\in A$, so $\bar h=\sup A$ exists. For $x\in A$,
+$x\le H(x)\le H(\bar h)$ because $x\le\bar h$ and $H$ is nondecreasing; so $H(\bar h)$ is
+an upper bound of $A$ and $\bar h\le H(\bar h)$. Then $H(\bar h)\le H(H(\bar h))$, so
+$H(\bar h)\in A$ and $H(\bar h)\le\bar h$. Hence $H(\bar h)=\bar h$. Every equilibrium lies
+in $A$, so it is at most $\bar h$. The argument for $\underline h$ is the mirror image
+with $B=\{x:H(x)\le x\}\ni1$ and infima.
+(ii) $\bar h_H=H(\bar h_H)\le K(\bar h_H)$, so $\bar h_H$ lies in the set $A$ of $K$, and
+$\bar h_H\le\bar h_K$. Likewise $H(\underline h_K)\le K(\underline h_K)=\underline h_K$
+puts $\underline h_K$ in the set $B$ of $H$, so $\underline h_H\le\underline h_K$.
+\end{proof}
+
+A larger prefix cache raises $G$ and so $H$, and by (ii) it raises both extremal
+equilibria. Other changes need care in a closed loop: a shorter think time or a faster
+decode also raises the turn rate, and the net effect on $H$ has no sign in general.
+
+\begin{proposition}[Collapse]\label{L5:prop:collapse}
+In the open prefill instance take the wait of \cref{thm:pk}, $W(h)=\infty$ where
+$\lambda\E[S_h]\ge1$, and $G(\infty;h)=0$.
+\begin{enumerate}[label=(\roman*)]
+\item If $\lambda\,\E[S^{\mathrm{miss}}]\ge1$, then $H(0)=0$, and every $h$ at which the
+  instance is overloaded is mapped to 0, which is mapped to itself: all-miss attracts
+  the overloaded hit rates.
+\item If moreover $H(a)\ge a$ for some $a>0$, the least equilibrium is 0 and the
+  greatest is at least $a$: the instance has two distinct extremal equilibria.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) At $h=0$ every turn misses, the load is $\lambda\E[S^{\mathrm{miss}}]\ge1$, so
+$W(0)=\infty$ and $H(0)=G(\infty;0)=0$. At an overloaded $h$, $H(h)=0$ in the same way,
+and $H(0)=0$. (ii) 0 is an equilibrium, so $\underline h\le0$; and $a\in A$, so
+$\bar h\ge a$ by \cref{L5:prop:tarski}.
+\end{proof}
+
+In a closed system the population bounds the wait and removes this route to $H(0)=0$,
+but not the pool channel: if re-inserted contexts evict every paused prefix within a
+think time, $H(0)=0$ still. Thrashing, a collapse of this kind cured by limiting the
+load, is classical in paging systems; the admission cap of \cref{L5:sec:admit} is its
+cure here.
+
+\begin{example}[Two equilibria and a cap]\label{L5:ex:bistable}
+Take deterministic $S^{\mathrm{hit}}=0.5$\,s, $S^{\mathrm{miss}}=5$\,s, $Z=7$\,s and the
+wait channel alone, $G(T)=e^{-T/60\,\mathrm{s}}$, with the Pollaczek--Khinchine wait. At
+$\lambda=0.25$/s the all-miss load is $1.25$, $H=0$ on $[0,2/9)$, and a grid search finds
+three equilibria: 0 (stable), about 0.250 (unstable, slope $H'\approx12$) and about
+0.882 (stable, slope 0.07). At $\lambda=0.18$/s the all-miss load is $0.9$ and the only
+equilibrium is about 0.885. Lowering the load removes the collapse without moving the
+good equilibrium much.
+\end{example}
+
+\begin{proposition}[The forced-miss multiplier]\label{L5:prop:multiplier}
+Let $H(h)=c+kh$ near an equilibrium, with $c\ge0$ and $0\le k<1$, so $h_0=c/(1-k)$, and
+force a fraction $\delta\in[0,1]$ of turns to miss, so the realised hit rate is
+$(1-\delta)H(h)$. The new equilibrium is $h_\delta=(1-\delta)c/(1-(1-\delta)k)$, and
+\[
+  h_0-h_\delta=\frac{\delta\,c}{(1-k)(1-(1-\delta)k)}\ \ge\ \delta\,h_0 .
+\]
+\end{proposition}
+
+\begin{proof}
+$h_\delta(1-(1-\delta)k)=(1-\delta)c$ is the equation $h=(1-\delta)(c+kh)$. Over the
+common denominator $(1-k)(1-(1-\delta)k)$ the numerator of $h_0-h_\delta$ is
+$c(1-(1-\delta)k)-(1-\delta)(1-k)c=\delta c$. The inequality is
+$1/(1-(1-\delta)k)\ge1$, true since $(1-\delta)k\ge0$.
+\end{proof}
+
+To first order in $\delta$ a forced miss converts a would-be hit with probability $h_0$
+and induces $h_0k/(1-k)$ further misses on other turns, each with its own price, so its
+marginal price is $h_0[\Phi_{\mathrm{forced}}+\tfrac{k}{1-k}\bar\Phi_{\mathrm{induced}}]$.
+This cache multiplier multiplies the queue factor $(1-\rho_P)/(1-\rho_P')$ of
+\cref{thm:price}; it does not replace it. A multiplier common to all sessions scales
+every $u^P_i$ by the same factor: it leaves the eviction order unchanged and moves only
+the comparisons with $\theta_P$ (keep or drop, admit).
+
+\section{What is exact and what is approximate}\label{L5:sec:honest}
+
+\begin{itemize}
+\item \emph{Exact, given the model:} the price bracket (\cref{thm:price}), the prices at
+  processor-sharing stations (\cref{prop:decode-price,L5:prop:link-price}), the
+  monotonicity of the decode batch (\cref{thm:L-mono}), the finite-population
+  inequalities (\cref{prop:finite}), the price-blind bounds (\cref{prop:blind}), and
+  \cref{L5:prop:shadow,L5:prop:hold,L5:prop:tarski,L5:prop:collapse,L5:prop:multiplier}.
+\item \emph{Modelling choices:} the Poisson reading of turn arrivals, which the session
+  loop makes non-Poisson (\cref{prop:finite} shows the open formula overstates the wait
+  for exponential work); equal slot sizes (with unequal contexts a turn needs several
+  slots and the memory station has no closed form); the link as fair bandwidth sharing
+  (a transfer engine that sends in arrival order would add a head-of-line term to
+  \cref{L5:prop:link-price}); a single survival law and the mean wait in the feedback
+  map; and the pricing of one eviction, a transient event, by a stationary comparison.
+\item \emph{Estimates:} $p_i$, $\tau_i$ and $G$ must be predicted from a session's phase,
+  tool and history; $a$, $b$, $x_0$, $\kappa$, $B$ and $\varphi$ must be measured on the
+  instances.
+\end{itemize}
+
+\section{Exercises}
+
+\begin{exercise}\label{L5:ex:split}
+In \cref{L5:lem:split} let $\sigma_{\mathrm{hit}}=\sigma_{\mathrm{miss}}=\sigma$. Find the
+hit rate that maximises the mixture term, and show that the mixture term exceeds the
+append term exactly when $h(1-h)(\mu_{\mathrm{miss}}-\mu_{\mathrm{hit}})^2>\sigma^2$.
+\emph{Hint:} $h(1-h)$ is maximised at $h=1/2$.
+\end{exercise}
+
+\begin{exercise}\label{L5:ex:compare}
+A session with context $K$ is paused at both instances. Using \cref{L5:prop:shadow},
+show that for $K$ large enough it is kept at the prefill instance whenever it is kept at
+the decode instance, if $\theta_P=\theta_D$ and $b>0$.
+\emph{Hint:} $\Phi_i\ge\Delta S_i\ge bK^2/2$ grows quadratically, $\Phi^X_i$ linearly in $K$.
+\end{exercise}

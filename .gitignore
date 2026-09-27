@@ -3,7 +3,16 @@ lean/.lake/
 lean/build.log
 lean/axioms.log
 # LaTeX
-paper/*.aux paper/*.log paper/*.out paper/*.bbl paper/*.blg paper/*.fls paper/*.fdb_latexmk paper/*.toc paper/*.synctex.gz
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.toc
+paper/*.synctex.gz
+*.log
 paper/main.pdf
 paper/_build/
 .claude/settings.local.json

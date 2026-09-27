@@ -1,0 +1,59 @@
+\chapter*{About These Notes}
+\addcontentsline{toc}{chapter}{About These Notes}
+
+\paragraph{Goal.} These notes accompany a four-hour course for readers who
+know real analysis and mathematical statistics but have not met queueing
+theory. The goal is narrow: to be able to prove, unaided, the four results
+our research uses to model and analyse agentic LLM serving with queues.
+Each lecture takes about an hour, and every concept is defined before it is
+used. Measure-theoretic probability is not needed; we use random variables,
+expectation, conditional expectation, the strong law of large numbers
+(SLLN) and power series freely.
+
+\paragraph{Background: why LLM serving is a queue.} An LLM request is
+served in two phases. \emph{Prefill} reads the whole prompt in one pass and
+produces the first token; the time from the request's arrival to its first
+token is the \emph{time to first token} (TTFT). \emph{Decode} then produces
+one token per step. Both phases keep the attention state of every prompt
+token, the \emph{KV cache}, in device memory. When a later request starts
+with the same tokens, the stored state can be reused (a \emph{hit}); if it
+has been evicted from memory, it must be recomputed (a \emph{miss}). An
+agent program is a \emph{session} that loops through
+prefill $\to$ decode $\to$ tool call $\to$ prefill $\to\cdots$, and each
+request (a \emph{turn}) is the previous prompt with a tool result appended.
+Requests arrive at random, wait for a server (the accelerator), receive
+service and leave. This is exactly the object of queueing theory.
+
+\paragraph{Map.} The four results of our research, and what these notes
+provide to prove them:
+
+\begin{center}\small
+\begin{tabular}{@{}p{0.3\linewidth}p{0.64\linewidth}@{}}
+\toprule
+Research result & Needed from these notes \\
+\midrule
+The decode stage prices only work &
+  Little's law (\cref{thm:little}), birth--death processes
+  (\cref{thm:birthdeath}), processor sharing and insensitivity
+  (\cref{thm:insens}), \cref{thm:L-mono}, \cref{prop:decode-price} \\
+The price of a miss &
+  PASTA (\cref{thm:pasta}), residual service time (\cref{lem:residual}),
+  the Pollaczek--Khinchine formula (\cref{thm:pk}), \cref{thm:price} \\
+Finite population &
+  closed systems, the arrival theorem (\cref{thm:arrival}), mean value
+  analysis (\cref{thm:mva}), \cref{prop:finite} \\
+Price-blind eviction keys &
+  the covering knapsack, the threshold rule (\cref{thm:threshold}),
+  \cref{prop:blind}; Campbell's theorem (\cref{thm:campbell}) for the
+  memory estimate \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Plan.} \Cref{sec:L1} covers arrival processes and Little's law;
+\cref{sec:L2} Markovian queues and processor sharing; \cref{sec:L3} the
+M/G/1 queue, the Pollaczek--Khinchine formula and the price of a miss;
+\cref{sec:L4} closed systems and memory; and \cref{sec:L5} assembles these tools into the theory of the paper, step by step. The exercises at the end of each
+lecture are meant to be solved before the next one. Good introductory
+textbooks are \cite{kleinrock1975,harchol2013}; \cite{asmussen2003} is the
+rigorous reference.

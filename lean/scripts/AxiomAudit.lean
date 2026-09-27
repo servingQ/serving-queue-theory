@@ -95,3 +95,50 @@ open ServingQueueTheory
 #print axioms threshold_rule_optimal
 #print axioms threshold_rule_optimal_byte_seconds
 #print axioms density_prefix_plus_one
+-- docs/analytic-memory.md: miss feedback (not yet in the paper)
+#print axioms feedback_map_monotone
+#print axioms feedback_equilibrium_above
+#print axioms feedback_equilibrium_exists
+#print axioms feedback_comparative_statics
+#print axioms forced_miss_equilibrium
+#print axioms forced_miss_amplified
+#print axioms feedback_extremal
+#print axioms feedback_gfp_mono
+#print axioms feedback_lfp_mono
+#print axioms feedback_bistable
+#print axioms unit_feedback_extremal
+#print axioms unit_feedback_greatest_mono
+#print axioms unit_feedback_bistable
+#print axioms pkFeedback_monotoneOn
+#print axioms pkFeedback_zero_of_overload
+#print axioms pkFeedback_collapse
+#print axioms feedback_map_monotone_two_channel
+#print axioms pkFeedback_absorbing
+-- ROUTE (docs/route-language.md): the deployment language and its pool semantics
+#print axioms RouteLang.Step.invariant
+#print axioms RouteLang.Step.nonneg
+#print axioms RouteLang.total_evictUntil_le
+#print axioms RouteLang.sharedRate_sum
+#print axioms RouteLang.serialRate_sum
+#print axioms RouteLang.disaggregatedReplica_wf
+#print axioms RouteLang.colocatedReplica_wf
+#print axioms RouteLang.colocatedReplica'_eq
+#print axioms RouteLang.admit_guard_units_only
+
+-- ROUTE executable semantics: the vLLM scheduler scenarios (RouteOracle.lean, generated)
+#print axioms RouteLang.Exec.makeRoom_used
+#print axioms RouteLang.Exec.makeRoom_room
+#print axioms RouteLang.Exec.evictOne_lt
+#print axioms RouteLang.Oracle.vllmRequest_wf
+#print axioms RouteLang.Oracle.vllm_chunked
+#print axioms RouteLang.Oracle.vllm_hol
+#print axioms RouteLang.Oracle.vllm_longchunk
+#print axioms RouteLang.Oracle.vllm_mixed
+#print axioms RouteLang.Oracle.vllm_preempt
+#print axioms RouteLang.Oracle.vllm_seqcap
+#print axioms RouteLang.Oracle.vllm_cache_trace
+-- ROUTE: serving order of a step engine (admission order is decode-first without a chunk cap)
+#print axioms RouteLang.Serve.serve_preserves_shape
+#print axioms RouteLang.Serve.serve_eq_decode_first
+#print axioms RouteLang.Serve.shape_append_prefill
+#print axioms RouteLang.Serve.chunk_cap_breaks_shape

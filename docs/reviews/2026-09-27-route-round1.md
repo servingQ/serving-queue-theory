@@ -1,0 +1,115 @@
+# Review round 1 with ROUTE: research, simulation, lectures (2026-09-27)
+
+Reviewer's method: every model statement of the paper, the simulator and
+the lecture notes that describes a serving system was written as a ROUTE
+program or a Lean statement about ROUTE, and checked against three
+references: the closed forms (in-model), the real vLLM v1 scheduler (the
+CPU oracle on upstream `ref/vllm`, and the real A100 engine), and the A100
+measurements. Findings are ranked by consequence. The response and the
+changes are in `2026-09-27-route-round1-response.md`.
+
+## A. The simulator (ROUTE's vLLM program) under-predicted misses
+
+A1. **Six semantic gaps between the vLLM program and vLLM.** At the
+A100's pool the program predicted 117 misses where the testbed saw 426
+(3.5 s spacing). Replaying the same trace through the real scheduler and
+KV-cache manager on ROUTE's clock showed the scheduler losing *more*
+prefixes than the program (630 lost at 3.5 s, and collapse at 3.0 s), so
+the gap was semantics, not timing. A step-exact search for the first
+differing step found, in order: (i) waiting requests were admitted with a
+zero budget, which pinned their cached prefixes; vLLM admits only at the
+start of a step with budget left, so a waiting request's prefix stays
+evictable; (ii) blocks holding generated tokens are cached by vLLM and sit
+in the LRU order; the program cached the prompt only; (iii) a finished
+session's blocks stay cached in vLLM; the interpreter dropped them at
+`end`; (iv) residents were ordered by a "keep your place" rule that
+reversed two requests finishing a prefill in the same step; vLLM's order is
+admission order; (v) vLLM admits a waiting request only if its *whole
+prompt* fits (`scheduler_reserve_full_isl`, default on), though it
+allocates only the first chunk; (vi) ties in the LRU order are broken by
+release order, not by session number. Each is a rule of the engine, not a
+tuning constant.
+
+A2. **The time model is not identified by light-load data alone.** With
+the semantics exact, the model's hit rates depend on two overhead
+constants (per step, per request). A fit on the two light-load runs is
+flat along a ridge (c_it from 0 to 13 ms trade against c0), and the
+held-out runs discriminate. The served engine's stats log cannot give
+step lengths (it merges iterations under asynchronous scheduling).
+
+A3. **The measured A100 replica is itself on the cliff at 3 s.** The
+3.0 s run of 2026-09-26 did not collapse (full-hit 0.83); the rerun of
+2026-09-27, with per-iteration logging on, did (77–86 waiting, 1 running).
+The paper does not report the 3.0 s run; any use of it must say that it
+is bistable at this load, or that the logging overhead moved it.
+
+## B. The simulator (libqueuingsim) and its claims
+
+B1. **"Bistable at 24 live sessions" (docs/route-language.md, v1) is
+false.** Over 20 seeds neither the fluid `TwoStage` engine nor the ROUTE
+replica has a seed below a 0.5 hit rate at 24 sessions. What is true: at
+24 the iteration-level replica has 10 % lower throughput and twice the
+mean TTFT (Mann–Whitney p = 0.017, 0.047), and agrees at 16 and 20. The
+paper's 24-session numbers are therefore engine-dependent at that level;
+its thrash counts (0 of 20 at 24 sessions) are not.
+
+B2. **The simulation summary omits LRU.** `tab:sim-evict-dyn` (not cited
+in the text) shows least-recently-used, the order vLLM uses, with several
+times the TTFT of shortest-first at the default cap. ROUTE confirms it
+independently (cap 24: TTFT 15.5 s vs 3.0 s, throughput 1.37 vs 2.50 over
+10 seeds; the hand-written model 4.4 s vs 1.15 s). The sentence "the priced
+orders beat shortest-first only within seed noise, while the admission cap
+decides" is true for the size- and price-aware keys and silent on the
+deployed default.
+
+B3. **The paper's replica in ROUTE served prefills ahead of decodes**
+(`replica.route` used admission order). It made no difference on the
+open-session scenario (identical runs), but the program now says
+`decode first`, which is the paper's rule.
+
+## C. Research (paper)
+
+C1. **Table 1 / §2.2: "prefill from the token budget the decode batch
+leaves".** vLLM serves its running requests in admission order, not decode
+first. Checked: the two orders give identical runs on the whole trace
+(3 321 of 3 321 requests), and the reason is a theorem: a greedy step
+keeps decoding requests ahead of prefilling ones whenever a prefill may
+take all the budget left, and a per-request cap on a prefill's tokens
+breaks it (a two-request counterexample). The paper should say so in one
+sentence; otherwise a reader of the vLLM code will object.
+
+C2. **§2.2 memory pool: "admits turns into the batch until the next one
+does not fit".** In vLLM the admission test is the whole prompt, the
+allocation is the first chunk, and the waiting turn's prefix is not
+protected while it waits. The sentence is right as a model of the gate;
+the wait channel it implies (a waiting turn can lose its prefix) is what
+A1(i) found, and a design lever follows: pinning a queued turn's prefix
+removes the wait channel. In simulation of the A100 trace this moved the
+cliff (3.0 s: full-hit 0.24 under the vLLM rule, 0.80 with pinning). That
+is a hypothesis for the testbed, not a claim for the paper yet.
+
+## D. Lectures
+
+D1. **Lecture 1's ROUTE could not express the systems the notes study.**
+No colocated engine (the lecture's own Exercise colocated admits it), no
+growth or preemption ("ROUTE has no instruction for" preemption), and no
+account of how a production scheduler admits (served by the engine, a gate
+larger than the allocation, partial reuse).
+
+D2. **Lecture 5's wait channel is presented as a property of the
+workload.** It is a property of the admission rule (C2); the notes should
+say which engines have it.
+
+D3. The exercise on the colocated replica should ask for the result of C1
+(it is short, and it answers the objection a reader will raise).
+
+## E. Formal side
+
+E1. The oracle scenarios were tested but not proved; the Lean model had no
+executable semantics. The first-token and last-token steps of each
+scenario should be theorems about the ROUTE program, checked by the
+kernel, so that the Lean model, the Rust interpreter and vLLM are tied by
+the same test vectors.
+
+E2. `syntax "done" : route` and its siblings made `done`, `run`, `set`
+reserved words in every module importing `Route.lean`.

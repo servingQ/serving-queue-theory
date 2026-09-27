@@ -198,6 +198,8 @@ def main():
         ub = acc.get(("b", "unforced"), [0] * 6)
         # forced turns only (what the change asked for)
         lo_forced = (fo[2] + fo[3] + fo[4]) / window_f
+        rho1_forced = b["rho"] + fo[1] / window_f
+        hi_forced = (1 - b["rho"]) / (1 - rho1_forced) * lo_forced if rho1_forced < 1 else float("inf")
         # every miss the change caused: forced plus the unforced misses net of the baseline's own
         net = [fo[i] + uf[i] - ub[i] for i in range(1, 6)]
         lo = sum(net[1:4]) / window_f
@@ -214,12 +216,13 @@ def main():
         n_live = max(1, round(b["n_bar"]))
         es1 = b["es"] + net[0] / max(1, f["requests"])
         fin = (mva_q(b["z"] / es1, n_live) - mva_q(b["z"] / b["es"], n_live)) if b["z"] == b["z"] else float("nan")
-        per.append(dict(rank=rk, n_forced=fo[0], n_unforced_f=uf[0], n_unforced_b=ub[0], lo=lo, lo_forced=lo_forced, lo_srv=lo_srv, hi=hi,
+        per.append(dict(rank=rk, n_forced=fo[0], n_unforced_f=uf[0], n_unforced_b=ub[0], lo=lo, lo_forced=lo_forced, hi_forced=hi_forced, lo_srv=lo_srv, hi=hi,
                         own=own, hol=hol, load=load, rho=b["rho"], rho1=rho1, l_p=b["l_p"], l_p1=f["l_p"], dl_p=dl, bystander=bystander,
                         fin=fin, cap=f["n_bar"] - b["l_p"],
                         base={k: v for k, v in b.items() if k != "rows"}, forced={k: v for k, v in f.items() if k != "rows"}))
     tot = dict(
-        lo=sum(p["lo"] for p in per), lo_forced=sum(p["lo_forced"] for p in per), lo_srv=sum(p["lo_srv"] for p in per),
+        lo=sum(p["lo"] for p in per), lo_forced=sum(p["lo_forced"] for p in per), hi_forced=sum(p["hi_forced"] for p in per),
+        lo_srv=sum(p["lo_srv"] for p in per),
         hi=sum(p["hi"] for p in per), dl_p=sum(p["dl_p"] for p in per),
         own=sum(p["own"] for p in per), hol=sum(p["hol"] for p in per), load=sum(p["load"] for p in per),
         bystander=sum(p["bystander"] for p in per),
@@ -234,7 +237,7 @@ def main():
         print(f"  rank {p['rank']}: λ {b['lam']:.2f}/s ρ {b['rho']:.2f}→{p['rho1']:.2f}  W_obs {b['w_obs']:.2f} W_srv {b['w_srv']:.2f} PK {b['pk']:.2f}  CV²arr {b['cv2_arr']:.2f}  "
               f"L_P {p['l_p']:.2f}→{p['l_p1']:.2f} ΔL_P {p['dl_p']:.2f}  bracket [{p['lo']:.2f}, {p['hi']:.2f}] (forced only lo {p['lo_forced']:.2f}; W=srv lo {p['lo_srv']:.2f})  "
               f"own/HOL/load {p['own']:.2f}/{p['hol']:.2f}/{p['load']:.2f}  bystanders {p['bystander']:.2f}  fin {p['fin']:.2f} cap {p['cap']:.2f}")
-    print(f"  total: ΔL_P {tot['dl_p']:.2f}  bracket [{tot['lo']:.2f}, {tot['hi']:.2f}] (forced only lo {tot['lo_forced']:.2f})  own/HOL/load {tot['own']:.2f}/{tot['hol']:.2f}/{tot['load']:.2f}  bystanders {tot['bystander']:.2f}  fin {tot['fin']:.2f}  cap {tot['cap']:.2f}")
+    print(f"  total: ΔL_P {tot['dl_p']:.2f}  bracket [{tot['lo']:.2f}, {tot['hi']:.2f}] (forced only [{tot['lo_forced']:.2f}, {tot['hi_forced']:.2f}])  own/HOL/load {tot['own']:.2f}/{tot['hol']:.2f}/{tot['load']:.2f}  bystanders {tot['bystander']:.2f}  fin {tot['fin']:.2f}  cap {tot['cap']:.2f}")
     if a.out:
         json.dump(res, open(a.out, "w"), indent=1)
 

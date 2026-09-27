@@ -115,18 +115,24 @@ What did not work:
   capacity" 5–17, ITL 0.25–0.32 s. Killed.
 - `out ≤ 4` at 1.5 s spacing (`s15_base`, ρ_E1 ≈ 0.5): saturates and
   thrashes. Two mechanisms, both outside the E1 model: (i) the
-  vllm-rbln scheduler runs a prefill step exclusively and with priority
-  over decode (`vllm_rbln/v1/core/optimum_scheduler.py` "processed
-  exclusively (only one at a time)", WAITING scheduled before RUNNING;
-  the runner prefills the whole prompt in one step, `max-num-batched-tokens`
-  is the compiled chunk size, not a shared per-step budget), and the
+  scheduler that ran, vllm-rbln's `RBLNScheduler`
+  (`vllm_rbln/v1/core/rbln_scheduler.py`, logged on every engine in
+  `data/exp/serve_m27_v7_hosttensor.log`; the `optimum_scheduler.py`
+  cited here before did not run), never mixes a prefill with decodes:
+  guards (A)–(D), l. 198–205, make a step either all decodes or a lone
+  prefill, and an admitted prefill evicts the decode batch for that step,
+  so prefill is exclusive and has priority over decode; and the
   DP+EP ranks step in lockstep (`v1/worker/dp_utils.py`), so ITL goes
   from 0.017 s idle to 0.10 s when a *peer* rank prefills, 0.17–0.25 s
-  when the own rank has prefills pending, and 1.5 s at saturation; the
+  when the own rank has prefills pending, and 1.5 s at saturation (read
+  off the replays, not probed on an idle server; the decode probe planned
+  in `docs/memory-model.md` must reproduce them independently); the
   4-token decodes then hold the 8 running slots for seconds; (ii) the pool is 52 blocks of 4096 tokens
-  per rank, so a 5k-token session holds 2 blocks and ~20 live sessions
+  per rank (51 allocatable: one is vLLM's null block), so a 5k-token session holds 2 blocks and ~20 live sessions
   per rank fill it; LRU then evicts the prefixes with the longest gap
-  (every miss followed a 30 s gap), the misses re-prefill 4–6k tokens,
+  (49 % of the misses followed a gap of 29 s or more and 91 % arrived to
+  a queue on their rank; `scripts/exp/memory_model.py`, see
+  `docs/memory-model.md`), the misses re-prefill 4–6k tokens,
   and TTFT rises over the run (0.6 s → 3.6 s). `kv_cache_usage_perc`
   counts only running requests' blocks (20–35 %), not cached ones.
 - Sub-block granularity is 512 tokens: `cached_tokens` is rounded down
@@ -149,7 +155,8 @@ Reading: in the light arms the prefill queue is the only wait, the
 arrivals are Poisson-like and the PK wait is 1.3–1.6× the server's
 queueing time; the forced-miss rise sits inside the bracket
 of `prop:price` at 3.5 s and 9 % above its upper end at 2.5 s (the
-server's prefill time under concurrency is 1.10–1.23× the E1 model,
+server's prefill time under concurrency is 1.09–1.29× the E1 model in
+these runs (`pf_over_es` of `analyze_e2.py`; 1.07–1.10× in the long-context runs),
 which the bracket does not include); the Markovian finite-source
 price understates the rise 2–3×.
 

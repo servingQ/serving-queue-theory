@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 export PATH := $(HOME)/.elan/bin:$(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
 
-.PHONY: setup lean refs paper sim figs report check preview clean
+.PHONY: setup lean refs paper sim route figs report check preview clean
 
 setup:            ## install elan, rustup, tectonic, uv (user-local) and fetch Mathlib cache
 	scripts/setup.sh
@@ -18,6 +18,9 @@ paper:            ## compile paper/main.pdf
 
 sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests, report, tables/data staleness, figures
 	scripts/check_sim.sh
+
+route:            ## ROUTE language crate: fmt, clippy, tests, every program links (scripts/check_route.sh)
+	scripts/check_route.sh
 
 figs:             ## redraw paper/sim/fig-*.pdf from paper/sim/data/*.csv (written by paper_tables)
 	uv run --quiet --with matplotlib python scripts/plot_sim.py
@@ -40,7 +43,7 @@ exp:              ## regenerate paper/exp/ from the testbed measurements (data/e
 report:           ## print the simulator validation report
 	cd libqueuingsim && cargo run --release --quiet --example validate
 
-check: lean refs paper sim   ## everything CI runs
+check: lean refs paper sim route   ## everything CI runs
 
 preview: paper    ## render PDF pages to PNG for visual inspection
 	cd paper && uv run --quiet --with pymupdf python -c "import pymupdf,os; d=pymupdf.open('main.pdf'); out=os.environ.get('OUT','/tmp/sqt-preview'); os.makedirs(out,exist_ok=True); [p.get_pixmap(dpi=75).save(f'{out}/page{i+1}.png') for i,p in enumerate(d)]; print(len(d),'pages ->',out)"

@@ -1,0 +1,595 @@
+\chapter{Probabilistic Foundations: Arrivals, Service, and Little's Law}\label{sec:L1}
+
+This lecture defines the vocabulary of queueing theory and proves three tools that
+every later lecture relies on: the memorylessness of the exponential distribution,
+the Poisson process together with PASTA, and Little's law. We assume undergraduate
+probability (conditional expectation, the strong law of large numbers, probability
+generating functions).
+
+\section{Queueing systems and performance measures}
+
+\begin{definition}[Queueing system]\label{L1:def:system}
+A \term{queueing system} consists of four elements.
+\begin{enumerate}
+\item \term{Customers} (or jobs): entities that arrive at the system, require some
+  amount of processing, and leave. The arrival time of the $k$-th customer is $a_k$,
+  numbered so that $0\le a_1\le a_2\le\cdots$.
+\item The \term{arrival process}: the sequence of arrival times $(a_k)_{k\ge1}$, or
+  equivalently the counting process $A(t)=\#\{k: a_k\le t\}$.
+\item A \term{server} and \term{service times}: the server is the resource that
+  processes customers. Customer $k$ needs time $S_k$ when it has the server to
+  itself. $S_k$ is also called the \term{work} or service requirement of customer $k$.
+\item A \term{waiting room} and a \term{service discipline}: the space where customers
+  arriving at a busy server wait, and the rule that decides whom to serve, when, and
+  how much.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Service disciplines]\label{L1:def:discipline}
+\term{FIFO} (first in, first out) serves one customer at a time, to completion, in
+order of arrival. \term{Processor sharing} (PS) serves all customers in the system
+simultaneously at equal rates; it is defined formally in \cref{sec:L2}.
+A discipline under which the server never idles while work is present is called
+\term{work-conserving}. Both FIFO and PS are work-conserving.
+\end{definition}
+
+\begin{definition}[Kendall notation]\label{L1:def:kendall}
+A queueing system is written $A/S/c/K/N$. Here $A$ is the distribution of the
+interarrival times, $S$ the distribution of the service times, $c$ the number of
+servers, $K$ the system capacity ($\infty$ if omitted), and $N$ the size of the
+customer population ($\infty$ if omitted). The distribution symbols are $M$ (Markov:
+exponential and independent), $D$ (deterministic: constant), and $G$ (general:
+an arbitrary distribution, i.i.d.).
+\end{definition}
+
+For example, M/M/1 has Poisson arrivals, exponential service and one server
+(\cref{sec:L2}); M/G/1 allows a general service distribution (\cref{sec:L3});
+M/M/1//N is a closed system with only $N$ customers (\cref{sec:L4}); and
+M/G/$\infty$ is an infinite-server system with no waiting (\cref{sec:L4}).
+
+\begin{definition}[Performance measures]\label{L1:def:measures}
+Let $d_k$ be the time at which customer $k$ leaves the system.
+\begin{enumerate}
+\item The \term{sojourn time} (response time) is $W_k=d_k-a_k$.
+\item The \term{waiting time} $W_{q,k}$ is the time from the arrival of customer $k$
+  until its service first begins. For a FIFO single server, $W_k=W_{q,k}+S_k$.
+\item The \term{number in system} is $N(t)=\#\{k: a_k\le t<d_k\}$. The number in the
+  waiting room is written $N_q(t)$.
+\end{enumerate}
+\end{definition}
+
+Quantities in queueing theory are defined by two different kinds of averages, and the
+distinction will be essential several times.
+
+\begin{definition}[Time averages and customer averages]\label{L1:def:averages}
+The \term{time average} of the process $N(t)$ is
+$L=\lim_{t\to\infty}\frac1t\int_0^t N(s)\dd s$, and the \term{customer average} of the
+sequence $(W_k)$ is $W=\lim_{n\to\infty}\frac1n\sum_{k=1}^n W_k$ (when the limits
+exist). $L_q$ and $W_q$ are defined in the same way. If the limits are constants with
+probability one, then in the stationary regime they equal $\E[N]$ and $\E[W]$
+respectively.
+\end{definition}
+
+\begin{definition}[Arrival rate, load, stability]\label{def:load}
+The \term{arrival rate} is $\lambda=\lim_{t\to\infty}A(t)/t$.
+The \term{load} (utilisation) of a single-server system with mean service time
+$\E[S]$ is
+\[
+  \rho=\lambda\,\E[S].
+\]
+$\rho$ is the amount of work arriving per unit time and is dimensionless.
+The system is \term{stable} if $N(t)$ has a proper limiting distribution (or at least
+$L<\infty$) and every customer leaves in finite time.
+\end{definition}
+
+A single server processes at most one unit of work per unit time, so if $\rho>1$ the
+unfinished work grows linearly and the system cannot be stable. For a work-conserving
+G/G/1 system (i.i.d.\ interarrival and service times) it is known that $\rho<1$ is
+essentially necessary and sufficient for stability \cite{loynes1962}. For the models
+in these notes we assume $\rho<1$ as the stability condition and verify it model by
+model.
+
+\section{From a serving system to a queueing model}\label{L1:sec:projection}
+
+A queueing model of a serving system is a projection: it keeps what decides who waits
+and for how long, and drops the rest. \Cref{fig:projection} shows the projection used
+throughout these notes. The stations it names (processor sharing, delay stations,
+closed loops) are defined formally in later lectures; here they are described only
+informally, so that every later theorem has a place in the picture.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.86cm, >=Stealth, font=\small, line width=0.6pt,
+  station/.style={circle, draw, thick, minimum size=12mm, align=center},
+  note/.style={font=\footnotesize, align=center, text=black!75}]
+  % memory admission (engine-dependent): FCFS waiting line and m slots
+  \foreach \i in {0,1}
+    \draw[fill=orange!10] (-4.1+0.55*\i,-0.35) rectangle ++(0.5,0.7);
+  \draw (-4.15,-0.35) -- (-3.0,-0.35) (-4.15,0.35) -- (-3.0,0.35);
+  \node[draw, thick, rounded corners=1pt, fill=orange!10, minimum width=15mm, minimum height=11mm] (S) at (-1.75,0) {};
+  \foreach \x in {-0.45,0,0.45}
+    \foreach \y in {-0.22,0.22}
+      \draw[orange!60!black, fill=white] ($(S)+(\x-0.17,\y-0.15)$) rectangle ++(0.34,0.3);
+  \node[note, anchor=south] (Slab) at (-2.55,0.75) {\textbf{Memory admission}\\$m$ slots, FCFS};
+  % prefill queue: waiting slots and a FIFO server
+  \foreach \i in {0,1,2}
+    \draw[fill=blue!8] (0.55*\i,-0.35) rectangle ++(0.5,0.7);
+  \draw (-0.05,-0.35) -- (1.65,-0.35) (-0.05,0.35) -- (1.65,0.35);
+  \node[station, fill=blue!8] (P) at (2.75,0) {FIFO};
+  \node[note, anchor=south] (Plab) at (1.9,0.75) {\textbf{Prefill} (Lecture 3)\\server = token budget};
+  \node[note, anchor=north] (Pttft) at (2.75,-0.8) {TTFT $=W_q+S$};
+  % decode batch as a PS station
+  \node[station, minimum size=15mm, fill=red!8] (D) at (6.7,0) {};
+  \foreach \a in {0,72,...,288}
+    \fill[red!60!black] ($(D)+(\a:0.42)$) circle (1.5pt);
+  \node[font=\footnotesize] at (D) {PS};
+  \node[note, anchor=south] (Dlab) at (6.25,0.9) {\textbf{Decode} (Lecture 2)\\capacity $\varphi(m)$};
+  % tool call as a delay station
+  \node[draw, thick, rounded corners, fill=teal!8, minimum width=24mm, minimum height=11mm] (T) at (3.4,-2.8) {};
+  \foreach \k in {-2,-1,0,1,2}
+    \draw[teal!60!black] ($(T)+(0.42*\k,0)$) circle (0.16);
+  \node[note, anchor=north] (Tlab) at ($(T.south)+(0,-0.08)$) {\textbf{Tool call}: delay station, no queue (Lecture 4)};
+  % flows
+  \draw[->] (-7.2,0) -- (-4.2,0);
+  \node[note, anchor=south] at (-6.3,0.05) {new sessions\\Poisson $\Lambda$};
+  \draw[->] (S.east) -- (-0.1,0);
+  \draw[->] (P) -- node[note, above] {first token} (D);
+  \draw[->] (D.east) -- (8.9,0) node[note, right] {session\\ends};
+  \draw[->] (D.south) |- node[note, right, pos=0.3] {resume\\w.p.\ $p$} (T.east);
+  \draw[->] (T.west) -| node[note, left, pos=0.8] (Nlab) {next turn\\(hit or miss)} (-3.6,-0.38);
+  % the slot is held from admission to the end of decode
+  \draw[->, dotted, thick, orange!60!black] (D.north east) -- ++(0.35,0.35) |- (-1.75,2.35)
+    node[note, pos=0.75, above, text=orange!50!black] {slot freed when decode ends} -- (S.north);
+  % memory pool
+  \begin{scope}[on background layer]
+    \node[draw, dashed, rounded corners=4mm, fill=black!3, inner sep=3mm,
+          fit={(Slab) (Plab) (Dlab) (Tlab) (Nlab) (S) (P) (D) (T) (-4.15,0) (-1.75,2.6)}] (M) {};
+  \end{scope}
+  \node[note, anchor=south west, align=left] at ($(M.north west)+(0.1,0.05)$)
+    {\textbf{Memory pool} (dashed): $M$ bytes: KV of running turns, and cached KV of paused sessions\\
+     (evictable); a constraint in the paper's model, a queue of slots in engines that admit whole prompts};
+\end{tikzpicture}
+\caption{The serving system projected onto queues. Turns are the customers of the
+stations; sessions are the customers of the closed loop through the tool call. The
+dashed pool is shared memory: what it drops decides whether the next turn is a hit
+(short prefill work) or a miss (long prefill work). The memory-admission station
+(orange) is \emph{not} in the paper's model: it appears in engines that admit a turn
+only when its whole context fits, in arrival order; a turn then holds a slot from the
+start of its prefill to the end of its decode (\cref{L5:sec:honest}).}
+\label{fig:projection}
+\end{figure}
+
+\paragraph{Customers at two levels.} A \emph{turn} is a customer of the prefill and
+decode stations: it arrives, waits, is served and leaves. A \emph{session} is a customer
+at a coarser level: it circulates through prefill, decode and the tool call, and leaves
+only when the agent program ends. New sessions arrive from outside as a Poisson process
+of rate $\Lambda$, but the turns of a live session do not arrive independently of the
+state: the next turn exists only after the previous one has been served. The prefill and
+decode lectures look at turns; the lectures on closed systems, memory and admission look
+at sessions.
+
+\paragraph{Three stations.} \emph{Prefill} is a single FIFO server whose capacity is the
+token budget of an engine step: serving engines by default give that budget to the oldest
+pending prefill first. With Poisson arrivals this is the M/G/1 queue of
+\cref{sec:L3}; with a finite number $N$ of live sessions it is the closed system of
+\cref{sec:L4}. \emph{Decode} is a processor-sharing station: every step advances every
+turn in the batch by one token, so the batch shares the device equally, with a total
+rate $\varphi(m)$ that depends on the batch size $m$ (\cref{sec:L2}). The \emph{tool call}
+is a delay station: every session calls its own tool at once, without queueing, for a
+random think time.
+
+\paragraph{Memory is a constraint, and in some engines a queue.} The pool of $M$ bytes
+holds the KV cache of running turns and of paused sessions. In the paper's model
+nobody queues ``at'' the memory: the pool only bounds how much state can stay resident,
+and counting how much is resident on average is a calculation about sessions that stay
+in the system for a random time, which \cref{sec:L4} does with the M/G/$\infty$ model
+and Campbell's theorem. Many engines, however, admit a waiting turn only when its whole
+context fits, and in arrival order; vLLM does so by default (its scheduler checks that
+the full input sequence fits before admitting a request, and stops at the first request
+that does not). Memory is then a station as well. If every turn needs about $c$ bytes,
+the pool holds $m=\lfloor M/c\rfloor$ \emph{slots}; a turn holds its slot from the start
+of its prefill to the end of its decode, so the station is a multi-server queue
+$\cdot$/G/$m$ whose service time is the holding time $S+D$, and a turn that does not fit
+blocks everyone behind it (head-of-line blocking, now on memory). Two caveats: with
+unequal contexts a turn needs several slots and the station has no closed form; and in
+such engines the cache of paused sessions does not take slots away. Cached blocks that
+no running turn uses count as free: an admission that needs them evicts the least
+recently used ones, so the slots compete with the cache by turning hits into misses,
+not by blocking admission. (The paper's model, which lets a controller keep or drop a
+paused state at a price, is a policy these engines do not implement: their KV policy
+is LRU on the free blocks.) On the paper's testbed with long contexts this station,
+not the prefill queue, set the waits (\cref{L5:sec:honest}). The M/M/$m$ queue is an
+exercise of \cref{sec:L2}.
+
+\paragraph{The control changes the service law.} In classical queueing theory the
+service-time law is given. Here the KV policy chooses it: a turn whose prefix is still
+resident is a hit with short prefill work, and one whose prefix was dropped is a miss
+that recomputes the whole context. The policy therefore sets the distribution of $S$ at
+the prefill station, and the central question of \cref{sec:L3} is how a performance
+measure changes when that distribution changes.
+
+\paragraph{Performance.} The time to first token is the sojourn time at the prefill
+station, $\mathrm{TTFT}=W_q+S$. The objective is the mean number of turns in the two
+stations, $L=L_P+L_D$; by Little's law (\cref{thm:little}) it is the same as the mean
+delay per unit time.
+
+\paragraph{What the projection drops.} Work is measured in seconds rather than tokens
+and memory blocks; the budget left to prefill by the decode batch fluctuates, and the
+model replaces it by an average; the paper's model has no memory-admission station, so
+a turn whose KV does not fit waits for free blocks without the model seeing it; and
+session feedback makes turn arrivals non-Poisson.
+\Cref{sec:L5} returns to these gaps once the tools are in place.
+
+\section{The exponential distribution and memorylessness}
+
+\begin{definition}[Exponential distribution]\label{L1:def:exp}
+A random variable $X\ge0$ with $\Prob(X>t)=e^{-\mu t}$ for $t\ge0$ has the
+\term{exponential distribution} with \term{rate} $\mu>0$, written
+$X\sim\mathrm{Exp}(\mu)$. Then $\E[X]=1/\mu$ and $\E[X^2]=2/\mu^2$.
+\end{definition}
+
+\begin{proposition}[Memorylessness \cite{ross1996}]\label{prop:memoryless}
+If $X\sim\mathrm{Exp}(\mu)$, then for all $s,t\ge0$
+\begin{equation}\label{L1:eq:memoryless}
+  \Prob(X>s+t\mid X>s)=\Prob(X>t).
+\end{equation}
+Conversely, if a random variable with $0<X<\infty$ a.s.\ satisfies
+\eqref{L1:eq:memoryless}, then $X\sim\mathrm{Exp}(\mu)$ for some $\mu\in(0,\infty)$.
+\end{proposition}
+
+\begin{proof}
+The forward direction is $e^{-\mu(s+t)}/e^{-\mu s}=e^{-\mu t}$.
+Converse: let $G(t)=\Prob(X>t)$. Then \eqref{L1:eq:memoryless} reads
+$G(s+t)=G(s)G(t)$. $G$ is nonincreasing and right-continuous, and
+$G(0)=\Prob(X>0)=1$. By induction $G(nt)=G(t)^n$, hence $G(1)=G(1/n)^n$ and
+$G(m/n)=G(1)^{m/n}$.
+If $G(1)=0$, then $G(1/n)=0$ for every $n$, which contradicts
+$G(1/n)\to G(0)=1$ by right-continuity. If $G(1)=1$, then $G(r)=1$ for every
+rational $r$, and by monotonicity $G\equiv1$, that is $X=\infty$ a.s., contradicting
+the assumption. Hence $G(1)=e^{-\mu}$ for some $\mu\in(0,\infty)$, and
+$G(r)=e^{-\mu r}$ on the rationals. For arbitrary $t$, take rationals $r\downarrow t$;
+right-continuity gives $G(t)=e^{-\mu t}$.
+\end{proof}
+
+Memorylessness says that the remaining service time of a customer who has already
+received $s$ units of service has the same distribution as the service time of a new
+customer. This is why, in a system with exponential service, the number in system
+$N(t)$ alone determines the future, and $N(t)$ is a continuous-time Markov chain
+(\cref{sec:L2}). The following fact is also used often.
+
+\begin{lemma}[Minimum of exponentials \cite{ross1996}]\label{L1:lem:min}
+If $X_i\sim\mathrm{Exp}(\mu_i)$, $i=1,\dots,n$, are independent, then
+$\min_iX_i\sim\mathrm{Exp}(\sum_i\mu_i)$.
+\end{lemma}
+
+\begin{proof}
+$\Prob(\min_iX_i>t)=\prod_i\Prob(X_i>t)=e^{-(\sum_i\mu_i)t}$.
+\end{proof}
+
+\section{The Poisson process}
+
+\begin{definition}[Counting process and Poisson process]\label{def:poisson}
+A \term{counting process} $A=(A(t))_{t\ge0}$ is a nondecreasing, right-continuous,
+$\N$-valued process with $A(0)=0$ and jumps of size one only.
+A counting process $A$ is a \term{Poisson process} with \term{rate} $\lambda>0$ if
+\begin{enumerate}
+\item (\term{independent increments}) for disjoint intervals
+  $(s_1,t_1],\dots,(s_n,t_n]$ the increments $A(t_j)-A(s_j)$ are independent;
+\item (\term{stationary Poisson increments}) for all $s\ge0$, $t>0$,
+  $A(s+t)-A(s)\sim\mathrm{Poisson}(\lambda t)$, that is
+  $\Prob(A(s+t)-A(s)=n)=e^{-\lambda t}(\lambda t)^n/n!$.
+\end{enumerate}
+$S_n=\inf\{t:A(t)\ge n\}$ is the $n$-th arrival time, and $T_n=S_n-S_{n-1}$
+($S_0=0$) is the $n$-th \term{interarrival time}.
+\end{definition}
+
+\begin{theorem}[Exponential interarrival times \cite[\S2.2]{ross1996}]\label{L1:thm:interarrival}
+$A$ is a Poisson process with rate $\lambda$ if and only if the interarrival times
+$T_1,T_2,\dots$ are independent and each is $\mathrm{Exp}(\lambda)$.
+\end{theorem}
+
+\begin{proof}[Proof ($\Rightarrow$)]
+For $0=t_0<t_1<\dots<t_n$ and small $h>0$ consider the event
+$E_h=\{S_j\in(t_j,t_j+h],\ j=1,\dots,n\}$. Let $F_h$ be the event that there is no
+arrival in $(t_{j-1}+h,t_j]$ and exactly one in each $(t_j,t_j+h]$. Then
+$F_h\subset E_h$, and $E_h\setminus F_h$ is contained in the event that some interval
+of length $h$ has two or more arrivals, which has probability $O(h^{n+1})$. By
+independent and Poisson increments,
+\[
+  \Prob(F_h)=e^{-\lambda(t_1+(t_2-t_1-h)+\cdots+(t_n-t_{n-1}-h))}\,(\lambda h e^{-\lambda h})^n
+  =\lambda^n h^n e^{-\lambda t_n}\,(1+O(h)).
+\]
+Hence $(S_1,\dots,S_n)$ has density $\lambda^ne^{-\lambda s_n}$ on
+$\{0<s_1<\dots<s_n\}$. The linear map $T_j=S_j-S_{j-1}$ has Jacobian one and
+$s_n=\sum_jT_j$, so $(T_1,\dots,T_n)$ has density $\prod_{j=1}^n\lambda e^{-\lambda t_j}$,
+that is, independent $\mathrm{Exp}(\lambda)$. The converse is a standard argument
+using that $S_n$ is Gamma distributed together with memorylessness, and we omit it
+\cite[\S2.2]{ross1996}.
+\end{proof}
+
+\begin{proposition}[Superposition and thinning \cite{kingman1993}]\label{prop:superpose}
+\begin{enumerate}[label=(\roman*)]
+\item (\term{Superposition}) If $A_1,A_2$ are independent Poisson processes with rates
+  $\lambda_1,\lambda_2$, then $A_1+A_2$ is a Poisson process with rate
+  $\lambda_1+\lambda_2$.
+\item (\term{Thinning}) If each point of a Poisson process with rate $\lambda$ is kept
+  with probability $p$ and discarded with probability $1-p$, independently of
+  everything else, then the kept points and the discarded points are Poisson
+  processes with rates $p\lambda$ and $(1-p)\lambda$, and they are independent.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Independent increments follow from the independent increments of the two
+processes and their mutual independence. For the increment over one interval, the
+generating function of independent Poisson variables is
+$\E[z^{X_1+X_2}]=e^{\lambda_1t(z-1)}e^{\lambda_2t(z-1)}=e^{(\lambda_1+\lambda_2)t(z-1)}$,
+so the sum is $\mathrm{Poisson}((\lambda_1+\lambda_2)t)$.
+
+(ii) Let $X$ be the original increment over an interval of length $t$, $X_1$ the number
+kept, and $X_2=X-X_1$ the number discarded. Given $X=j+k$, the conditional
+probability that $X_1=j$ is binomial, $\binom{j+k}{j}p^j(1-p)^k$, so
+\[
+  \Prob(X_1=j,X_2=k)=e^{-\lambda t}\frac{(\lambda t)^{j+k}}{(j+k)!}\binom{j+k}{j}p^j(1-p)^k
+  =e^{-p\lambda t}\frac{(p\lambda t)^j}{j!}\cdot e^{-(1-p)\lambda t}\frac{((1-p)\lambda t)^k}{k!}.
+\]
+Thus on one interval $X_1,X_2$ are independent Poisson variables. On disjoint
+intervals the original increments and the coin flips are all independent, so all
+increments of the two processes are independent.
+\end{proof}
+
+\serving{If sessions arrive as a Poisson process (rate $\Lambda$ in the paper) and each
+turn is assigned independently to one of $J$ replicas, then by
+\cref{prop:superpose}(ii) each replica also sees Poisson arrivals. The turns within a
+session, however, go around a closed loop (prefill $\to$ decode $\to$ tool), so the
+turn arrivals are not exactly Poisson. The closed models of \cref{sec:L4} are the tool
+for this gap.}
+
+\section{PASTA: Poisson arrivals see time averages}
+
+The distribution of the state seen by arriving customers generally differs from the
+time-average distribution. For example, in a D/D/1 system with interarrival times
+exactly 1 and service times exactly $0.5$, the server is busy half of the time, yet
+every arriving customer finds it idle. With Poisson arrivals this discrepancy
+disappears.
+
+\begin{definition}[Lack of anticipation]\label{L1:def:lookahead}
+Given a state process $X=(X(t))_{t\ge0}$ and an arrival process $A$, we say that $A$
+has \term{lack of anticipation} with respect to $X$ if for every $t$ the future
+increments $\{A(t+s)-A(t):s\ge0\}$ are independent of the past
+$\{X(u):u\le t\}\cup\{A(u):u\le t\}$.
+\end{definition}
+
+In a queueing system this assumption says that future arrivals are independent of the
+system state so far. Note the direction: the state may (and does) depend on past
+arrivals; what is excluded is that future arrivals react to the state. Poisson arrivals
+from outside satisfy it naturally. Arrivals in a closed system (\cref{sec:L4}) do not.
+
+\begin{example}[One process with lack of anticipation, one without]\label{L1:ex:lookahead}
+\emph{(a) Lack of anticipation: the M/M/1 queue.} Customers come from a large outside
+population as a Poisson process, independently of the service times. The queue length
+$X(t)$ is a function of the arrivals before $t$ and the service times, and by
+independent increments the arrivals after $t$ are independent of both. An arriving
+customer is like a raindrop falling on the queue: the rain does not know how long the
+queue is. So the arrival instants are ``random inspection times'', and by
+\cref{thm:pasta} the fraction of arrivals that find the server busy equals the fraction
+of time it is busy, $\rho$.
+
+\emph{(b) No lack of anticipation: a single agent session.} One session alternates
+between a tool call (thinking, mean $Z$) and a turn at the server (mean $1/\mu$). Its
+next turn can arrive only after its previous turn has left the server. If $X(t)=1$
+(the turn is being served), then no arrival can happen until the service ends; if
+$X(t)=0$, an arrival may come at any moment. Future arrivals depend on the current
+state, so the condition fails. The consequence is visible: every arrival finds the
+server idle, while the server is busy a fraction $(1/\mu)/(Z+1/\mu)>0$ of the time.
+Arrivals do not see time averages. With $N$ sessions the same effect is weaker but
+present, and \cref{sec:L4} replaces PASTA by the arrival theorem for exactly this
+reason.
+
+\emph{(c) Lack of anticipation is not enough.} In the D/D/1 example above, the arrivals
+at times $1,2,3,\dots$ are deterministic, hence independent of everything, so they have
+lack of anticipation. Yet every arrival finds the server idle. What fails is the other
+hypothesis of \cref{thm:pasta}: the arrivals are not Poisson. They are locked in phase
+with the service, always landing after the previous customer has left. Poisson
+arrivals are spread uniformly over time and cannot lock onto any phase.
+\end{example}
+
+\begin{remark}[Why study PASTA if sessions violate it?]\label{L1:rem:why-pasta}
+Example~\ref{L1:ex:lookahead}(b) shows that a single agent session does not have lack
+of anticipation. PASTA is still the right starting point, for three reasons.
+\begin{enumerate}
+\item \emph{The prefill model rests on it.} The paper models the prefill stage as an
+  M/G/1 queue, and the proof of the Pollaczek--Khinchine formula (\cref{thm:pk}) uses
+  PASTA. The paper states that session feedback makes this an approximation and tests
+  it. One cannot judge an approximation without knowing what it approximates.
+\item \emph{Many sessions look Poisson.} Each session reacts to the state, but the
+  superposition of many independent sessions, each contributing a small share of the
+  arrivals, is close to a Poisson process; this is the Palm--Khinchine theorem
+  \cite{khinchine1960}. New sessions themselves arrive as a Poisson process in the
+  model, so the M/G/$\infty$ and Campbell calculations of \cref{sec:L4} use Poisson
+  arrivals without approximation.
+\item \emph{The exact closed-system answer is a corrected PASTA.} The arrival theorem
+  (\cref{thm:arrival}) says that an arriving turn sees the time averages of the system
+  with one session fewer, and it reduces to PASTA as the number of sessions grows
+  (\cref{L4:rem:arrival-limit}). For exponential work, \cref{prop:finite}(ii) shows
+  that the open formula built on PASTA overstates the wait at equal utilisation, so
+  PASTA gives a conservative estimate whose error the finite-population model
+  quantifies.
+\end{enumerate}
+\end{remark}
+
+\begin{theorem}[PASTA \cite{wolff1982}]\label{thm:pasta}
+Let $A$ be a Poisson process with rate $\lambda$, $X$ a state process with left
+limits, and $B$ a set of states, and suppose $A$ has lack of anticipation with respect
+to $X$. If $U(t)=\1\{X(t^-)\in B\}$ is left-continuous, then for every $T>0$
+\begin{equation}\label{L1:eq:pasta}
+  \E\Bigl[\sum_{k:\,S_k\le T}\1\{X(S_k^-)\in B\}\Bigr]=\lambda\,\E\Bigl[\int_0^T\1\{X(t)\in B\}\dd t\Bigr].
+\end{equation}
+Consequently, if the limits of the two averages
+$\frac1T\int_0^T\1\{X(t)\in B\}\dd t$ and
+$\frac{1}{A(T)}\sum_{k\le A(T)}\1\{X(S_k^-)\in B\}$ exist with probability one, they
+are equal: the fraction of arrivals that find the system in $B$ equals the fraction of
+time it spends in $B$.
+\end{theorem}
+
+\begin{proof}
+The left side is $\int_0^TU(t)\dd A(t)$. For the partition $t_j=jT/n$ of $[0,T]$,
+define the step function $U_n(t)=\sum_{j}U(t_j)\1\{t\in(t_j,t_{j+1}]\}$. $U(t_j)$ is
+determined by the past up to time $t_j$, and by lack of anticipation the increment
+$A(t_{j+1})-A(t_j)$ is independent of that past, so
+\[
+  \E\Bigl[\int_0^TU_n\dd A\Bigr]=\sum_j\E[U(t_j)]\,\E[A(t_{j+1})-A(t_j)]
+  =\lambda\sum_j\E[U(t_j)]\,(t_{j+1}-t_j)=\lambda\,\E\Bigl[\int_0^TU_n(t)\dd t\Bigr].
+\]
+Since $U$ is left-continuous, $U_n(t)\to U(t)$ for every $t$. The integrands on the
+two sides are bounded by $A(T)$ and $T$ respectively, and $\E[A(T)]=\lambda T<\infty$,
+so by dominated convergence $\E[\int_0^TU\dd A]=\lambda\E[\int_0^TU\dd t]$ as
+$n\to\infty$. Finally, the set of $t$ with $X(t^-)\ne X(t)$ is countable, so replacing
+$U(t)$ by $\1\{X(t)\in B\}$ on the right does not change the integral.
+The statement about limits follows from a sample-path version of
+\eqref{L1:eq:pasta} (a law of large numbers applied to a martingale), for which we
+cite \cite{wolff1982}.
+\end{proof}
+
+In \cref{sec:L3}, PASTA becomes a key step of the Pollaczek--Khinchine formula in the
+form ``the mean work an arriving turn finds waiting equals the time-average work
+waiting''.
+
+\section{The renewal-reward theorem}
+
+\begin{definition}[Renewal process and rewards]\label{L1:def:renewal}
+For i.i.d.\ positive random variables $C_1,C_2,\dots$ with $\E[C_1]<\infty$, let
+$\tau_n=C_1+\dots+C_n$ and $M(t)=\#\{n\ge1:\tau_n\le t\}$. $M$ is a
+\term{renewal process} and $C_n$ is its $n$-th \term{cycle}. Suppose each cycle
+carries a reward $R_n\ge0$, the pairs $(C_n,R_n)$ are i.i.d., and the cumulative reward
+$R(t)$ up to time $t$ satisfies
+\[
+  \sum_{n=1}^{M(t)}R_n\;\le\;R(t)\;\le\;\sum_{n=1}^{M(t)+1}R_n
+\]
+(this includes rewards that accrue gradually within a cycle). This is a
+\term{renewal-reward process}.
+\end{definition}
+
+\begin{theorem}[Renewal-reward theorem \cite{ross1996}]\label{thm:renewal-reward}
+If $\E[R_1]<\infty$, then with probability one
+$\displaystyle\lim_{t\to\infty}\frac{R(t)}{t}=\frac{\E[R_1]}{\E[C_1]}$.
+\end{theorem}
+
+\begin{proof}
+First we show $M(t)/t\to1/\E[C_1]$ a.s. By definition $\tau_{M(t)}\le t<\tau_{M(t)+1}$,
+and since each $\tau_n<\infty$, $M(t)\to\infty$. By the strong law,
+$\tau_n/n\to\E[C_1]$, so both ends of
+\[
+  \frac{\tau_{M(t)}}{M(t)}\le\frac{t}{M(t)}<\frac{\tau_{M(t)+1}}{M(t)+1}\cdot\frac{M(t)+1}{M(t)}
+\]
+converge to $\E[C_1]$. Now
+\[
+  \frac{1}{t}\sum_{n=1}^{M(t)}R_n=\frac{M(t)}{t}\cdot\frac{1}{M(t)}\sum_{n=1}^{M(t)}R_n
+  \longrightarrow\frac{1}{\E[C_1]}\,\E[R_1]
+\]
+(the strong law for the second factor), and the upper bound has the same limit since
+$(M(t)+1)/t\to1/\E[C_1]$. The conclusion follows by squeezing.
+\end{proof}
+
+In the form ``long-run time average $=$ expected reward per cycle / expected cycle
+length'', the renewal-reward theorem is used directly for the residual service time
+(the inspection paradox) in \cref{sec:L3}.
+
+\section{Little's law}
+
+\begin{theorem}[Little's law \cite{little1961,stidham1974}]\label{thm:little}
+For a sequence of customers $(a_k,d_k)$ with $a_k\le d_k<\infty$ and $a_k$
+nondecreasing, suppose the two limits
+\[
+  \lambda=\lim_{t\to\infty}\frac{A(t)}{t}\in(0,\infty),\qquad
+  W=\lim_{n\to\infty}\frac1n\sum_{k=1}^nW_k<\infty
+\]
+exist. Then $L=\lim_{t\to\infty}\frac1t\int_0^tN(s)\dd s$ exists and
+\begin{equation}\label{L1:eq:little}
+  L=\lambda W .
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Since $N(s)=\sum_k\1\{a_k\le s<d_k\}$, we have
+$\int_0^tN(s)\dd s=\sum_k\bigl|[a_k,d_k)\cap[0,t]\bigr|$.
+Each term is at most $W_k$, is zero if $a_k>t$, and equals $W_k$ exactly if
+$d_k\le t$. Therefore
+\begin{equation}\label{L1:eq:little-sandwich}
+  \sum_{k:\,d_k\le t}W_k\;\le\;\int_0^tN(s)\dd s\;\le\;\sum_{k:\,a_k\le t}W_k=\sum_{k=1}^{A(t)}W_k .
+\end{equation}
+Upper bound: since $A(t)\to\infty$,
+$\frac1t\sum_{k\le A(t)}W_k=\frac{A(t)}{t}\cdot\frac{1}{A(t)}\sum_{k\le A(t)}W_k\to\lambda W$.
+
+Lower bound: with $\bar W_n=\frac1n\sum_{k\le n}W_k$ we have
+$\frac{W_n}{n}=\bar W_n-\frac{n-1}{n}\bar W_{n-1}\to W-W=0$. Also $A(a_n)\ge n$ and
+$A(a_n^-)\le n-1$, so $a_n/n\to1/\lambda$, and therefore $W_n/a_n\to0$.
+For any $\varepsilon>0$ there is $k_0$ such that $d_k=a_k+W_k\le(1+\varepsilon)a_k$ for
+$k\ge k_0$. Then for $t\ge\max_{k<k_0}d_k$, every customer with
+$a_k\le t/(1+\varepsilon)$ has $d_k\le t$, so
+\[
+  \frac1t\int_0^tN(s)\dd s\;\ge\;\frac1t\sum_{k=1}^{A(t/(1+\varepsilon))}W_k
+  \longrightarrow\frac{\lambda W}{1+\varepsilon}.
+\]
+Letting $\varepsilon\downarrow0$, the liminf is at least $\lambda W$. Together with
+the upper bound this gives \eqref{L1:eq:little}.
+\end{proof}
+
+The proof uses no distributional assumption and no service discipline. It is a
+deterministic theorem that holds on every sample path on which the limits exist. So
+depending on how we draw the boundary of ``the system'', we obtain several identities.
+
+\begin{corollary}[Utilisation law \cite{kleinrock1975}]\label{cor:busy}
+Under the assumptions of \cref{thm:little}, consider a single-server system and
+suppose the average of the service times $\frac1n\sum_{k\le n}S_k$ converges to
+$\E[S]$.
+\begin{enumerate}[label=(\roman*)]
+\item The fraction of time the server is busy is $\rho=\lambda\E[S]$. In particular
+  $\rho\le1$ in a stable system.
+\item For the waiting room, $L_q=\lambda W_q$, and under FIFO $L=L_q+\rho$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) Take ``the server'' alone as the system. Customer $k$ enters it when its service
+starts and leaves $S_k$ later. Every customer is eventually served, so the arrival
+rate of this subsystem is also $\lambda$, and the customer average of its sojourn times
+is $\E[S]$. The number in this subsystem is 1 when the server is busy and 0 otherwise,
+so its time average is the fraction of time the server is busy. By \cref{thm:little}
+this equals $\lambda\E[S]=\rho$, and being a fraction it is at most one.
+(ii) Taking the waiting room alone as the system, the sojourn times are $W_{q,k}$, so
+$L_q=\lambda W_q$. Taking time averages in $N=N_q+(\text{number in service})$ gives
+$L=L_q+\rho$.
+\end{proof}
+
+\begin{example}\label{L1:ex:little}
+Suppose $\lambda=2$ turns per second arrive at the prefill stage and the mean prefill
+work is $\E[S]=0.3$ seconds. By \cref{cor:busy} the server is busy a fraction
+$\rho=0.6$ of the time. If the observed mean number of waiting turns is $L_q=0.9$,
+then $W_q=L_q/\lambda=0.45$ seconds, the mean TTFT is $W_q+\E[S]=0.75$ seconds, and the
+mean number of turns in the stage is $L=\lambda\cdot0.75=1.5$.
+\end{example}
+
+The paper takes as its objective the mean number of turns in the prefill stage and in
+the decode batch, $L=L_P+L_D$. By \cref{thm:little} this equals the total delay
+accumulated per unit time, $\lambda\cdot(\text{mean sojourn time})$, so ``reduce the
+mean number of turns'' and ``reduce the mean delay'' are the same goal. The ``price of
+a miss'' of \cref{sec:L3} is defined precisely as a change in this $L_P$.
+
+\section{Exercises}
+
+\begin{exercise}\label{L1:exr:race}
+For independent $X_1\sim\mathrm{Exp}(\mu_1)$ and $X_2\sim\mathrm{Exp}(\mu_2)$, show that
+$\Prob(X_1<X_2)=\mu_1/(\mu_1+\mu_2)$, and that the event $\{X_1<X_2\}$ is independent
+of $\min(X_1,X_2)$.
+\emph{Hint:} integrate $\Prob(X_1<X_2,\ \min>t)$ against the density of $X_1$.
+\end{exercise}
+
+\begin{exercise}\label{L1:exr:delay}
+Each time a session makes a tool call, it stays away from the server for a mean of $Z$
+seconds. If tool calls start at rate $\lambda$, show that the time-average number of
+sessions in a tool call is $\lambda Z$. Does this hold whatever the distribution of the
+tool-call duration?
+\emph{Hint:} take the tool-call stage alone as ``the system'' and apply
+\cref{thm:little}.
+\end{exercise}

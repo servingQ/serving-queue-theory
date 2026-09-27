@@ -86,3 +86,17 @@ jobs:
         with:
           name: sim-validation-report
           path: libqueuingsim/validation-report.md
+
+  route:
+    name: ROUTE language (route)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain (route/rust-toolchain.toml)
+        working-directory: route
+        run: rustup toolchain install && cargo --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: route
+      - name: fmt, clippy, tests (pool semantics, vLLM oracle scenarios), programs link
+        run: scripts/check_route.sh

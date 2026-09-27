@@ -126,6 +126,18 @@ def main():
             out.write(macro("eTwoWqOverPkHi", f"{max(r_pk):.0f}"))
             out.write(macro("eTwoWqOverFinLo", f"{min(r_fin):.0f}"))
             out.write(macro("eTwoWqOverFinHi", f"{max(r_fin):.0f}"))
+            ww = [r["who_waits"] for r in runs if "who_waits" in r]
+            if ww:
+                out.write(macro("eTwoMissQueueLo", f"{100 * min(w['miss']['queue'] for w in ww):.0f}"))
+                out.write(macro("eTwoMissQueueHi", f"{100 * max(w['miss']['queue'] for w in ww):.0f}"))
+                out.write(macro("eTwoHitQueueLo", f"{100 * min(w['hit']['queue'] for w in ww):.0f}"))
+                out.write(macro("eTwoHitQueueHi", f"{100 * max(w['hit']['queue'] for w in ww):.0f}"))
+                out.write(macro("eTwoMissThinkLo", f"{min(w['miss']['think'] for w in ww):.1f}"))
+                out.write(macro("eTwoMissThinkHi", f"{max(w['miss']['think'] for w in ww):.1f}"))
+                out.write(macro("eTwoHitThinkLo", f"{min(w['hit']['think'] for w in ww):.1f}"))
+                out.write(macro("eTwoHitThinkHi", f"{max(w['hit']['think'] for w in ww):.1f}"))
+                out.write(macro("eTwoAnyPfLo", f"{100 * min(r['any_prefill'] for r in runs):.0f}"))
+                out.write(macro("eTwoAnyPfHi", f"{100 * max(r['any_prefill'] for r in runs):.0f}"))
             out.write(macro("eTwoPartialTtftLo", f"{min(r['ttft_partial'] for r in runs):.0f}"))
             out.write(macro("eTwoPartialTtftHi", f"{max(r['ttft_partial'] for r in runs):.0f}"))
     print("wrote", a.tex_dir, "rows", len(lines))

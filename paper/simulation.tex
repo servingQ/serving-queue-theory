@@ -27,8 +27,10 @@ its own assumptions and with one assumption dropped
 pass). Three of those checks matter later: forced misses land at the
 upper end of the bracket of Proposition~\ref{prop:price} and leave the
 decode batch unchanged; the priced eviction orders beat shortest-first
-only within seed noise, while the admission cap decides whether the
-replica thrashes; and the load at which moving beats affinity follows
+only within seed noise, least recently used, the order vLLM uses, pays
+several times their time to first token (Table~\ref{tab:sim-evict-dyn}),
+and the admission cap decides whether the replica thrashes; and the load
+at which moving beats affinity follows
 $\rho^*$ of~\eqref{eq:rhostar}.
 
 \paragraph{Replayed production sessions.} Table~\ref{tab:sim-trace}

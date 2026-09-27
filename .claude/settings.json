@@ -8,10 +8,19 @@
             "type": "command",
             "command": "scripts/hooks/post-edit.sh",
             "timeout": 300,
-            "statusMessage": "Rebuilding Lean / linting Rust / checking paper refs…"
+            "statusMessage": "Rebuilding Lean / linting Rust / checking paper refs\u2026"
           }
         ]
       }
     ]
+  },
+  "permissions": {
+    "additionalDirectories": [
+      "ref/vllm"
+    ]
+  },
+  "model": "fable",
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "opus"
   }
 }

@@ -1,0 +1,939 @@
+\chapter{Probabilistic Foundations: Arrivals, Service, and Little's Law}\label{sec:L1}
+
+This lecture defines the vocabulary of queueing theory and proves three tools that
+every later lecture relies on: the memorylessness of the exponential distribution,
+the Poisson process together with PASTA, and Little's law. We assume undergraduate
+probability (conditional expectation, the strong law of large numbers, probability
+generating functions).
+
+\section{Queueing systems and performance measures}
+
+\begin{definition}[Queueing system]\label{L1:def:system}
+A \term{queueing system} consists of four elements.
+\begin{enumerate}
+\item \term{Customers} (or jobs): entities that arrive at the system, require some
+  amount of processing, and leave. The arrival time of the $k$-th customer is $a_k$,
+  numbered so that $0\le a_1\le a_2\le\cdots$.
+\item The \term{arrival process}: the sequence of arrival times $(a_k)_{k\ge1}$, or
+  equivalently the counting process $A(t)=\#\{k: a_k\le t\}$.
+\item A \term{server} and \term{service times}: the server is the resource that
+  processes customers. Customer $k$ needs time $S_k$ when it has the server to
+  itself. $S_k$ is also called the \term{work} or service requirement of customer $k$.
+\item A \term{waiting room} and a \term{service discipline}: the space where customers
+  arriving at a busy server wait, and the rule that decides whom to serve, when, and
+  how much.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Service disciplines]\label{L1:def:discipline}
+\term{FIFO} (first in, first out) serves one customer at a time, to completion, in
+order of arrival. \term{Processor sharing} (PS) serves all customers in the system
+simultaneously at equal rates; it is defined formally in \cref{sec:L2}.
+A discipline under which the server never idles while work is present is called
+\term{work-conserving}. Both FIFO and PS are work-conserving.
+\end{definition}
+
+\begin{definition}[Kendall notation]\label{L1:def:kendall}
+A queueing system is written $A/S/c/K/N$. Here $A$ is the distribution of the
+interarrival times, $S$ the distribution of the service times, $c$ the number of
+servers, $K$ the system capacity ($\infty$ if omitted), and $N$ the size of the
+customer population ($\infty$ if omitted). The distribution symbols are $M$ (Markov:
+exponential and independent), $D$ (deterministic: constant), and $G$ (general:
+an arbitrary distribution, i.i.d.).
+\end{definition}
+
+For example, M/M/1 has Poisson arrivals, exponential service and one server
+(\cref{sec:L2}); M/G/1 allows a general service distribution (\cref{sec:L3});
+M/M/1//N is a closed system with only $N$ customers (\cref{sec:L4}); and
+M/G/$\infty$ is an infinite-server system with no waiting (\cref{sec:L4}).
+
+\begin{definition}[Performance measures]\label{L1:def:measures}
+Let $d_k$ be the time at which customer $k$ leaves the system.
+\begin{enumerate}
+\item The \term{sojourn time} (response time) is $W_k=d_k-a_k$.
+\item The \term{waiting time} $W_{q,k}$ is the time from the arrival of customer $k$
+  until its service first begins. For a FIFO single server, $W_k=W_{q,k}+S_k$.
+\item The \term{number in system} is $N(t)=\#\{k: a_k\le t<d_k\}$. The number in the
+  waiting room is written $N_q(t)$.
+\end{enumerate}
+\end{definition}
+
+Quantities in queueing theory are defined by two different kinds of averages, and the
+distinction will be essential several times.
+
+\begin{definition}[Time averages and customer averages]\label{L1:def:averages}
+The \term{time average} of the process $N(t)$ is
+$L=\lim_{t\to\infty}\frac1t\int_0^t N(s)\dd s$, and the \term{customer average} of the
+sequence $(W_k)$ is $W=\lim_{n\to\infty}\frac1n\sum_{k=1}^n W_k$ (when the limits
+exist). $L_q$ and $W_q$ are defined in the same way. If the limits are constants with
+probability one, then in the stationary regime they equal $\E[N]$ and $\E[W]$
+respectively.
+\end{definition}
+
+\begin{definition}[Arrival rate, load, stability]\label{def:load}
+The \term{arrival rate} is $\lambda=\lim_{t\to\infty}A(t)/t$.
+The \term{load} (utilisation) of a single-server system with mean service time
+$\E[S]$ is
+\[
+  \rho=\lambda\,\E[S].
+\]
+$\rho$ is the amount of work arriving per unit time and is dimensionless.
+The system is \term{stable} if $N(t)$ has a proper limiting distribution (or at least
+$L<\infty$) and every customer leaves in finite time.
+\end{definition}
+
+A single server processes at most one unit of work per unit time, so if $\rho>1$ the
+unfinished work grows linearly and the system cannot be stable. For a work-conserving
+G/G/1 system (i.i.d.\ interarrival and service times) it is known that $\rho<1$ is
+essentially necessary and sufficient for stability \cite{loynes1962}. For the models
+in these notes we assume $\rho<1$ as the stability condition and verify it model by
+model.
+
+\section{From a serving system to a queueing model}\label{L1:sec:model}
+
+A queueing model of a serving system keeps what decides which request waits and for
+how long, and leaves out the rest. \Cref{fig:deployment} shows the model of a
+disaggregated deployment used throughout these notes. The queueing objects it uses
+(multi-server queues, processor sharing, delay stations, closed loops) are defined and
+analysed in later lectures; here the serving system itself is defined, first in the
+picture and then exactly, so that every later theorem has a place in it.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.8cm, y=0.8cm, >=Stealth, font=\small, line width=0.6pt,
+  station/.style={circle, draw, thick, minimum size=10mm, align=center, inner sep=1pt},
+  note/.style={font=\footnotesize, align=center, text=black!75}]
+  % ---------- prefill instance ----------
+  \foreach \i in {0,1}
+    \draw[fill=orange!10] (0.4+0.5*\i,-0.3) rectangle ++(0.45,0.6);
+  \draw (0.35,-0.3) -- (1.4,-0.3) (0.35,0.3) -- (1.4,0.3);
+  \node[draw, thick, rounded corners=1pt, fill=orange!10, minimum width=12mm, minimum height=9mm] (SP) at (2.5,0) {};
+  \foreach \x in {-0.36,0,0.36}
+    \foreach \y in {-0.17,0.17}
+      \draw[orange!60!black, fill=white] ($(SP)+(\x-0.13,\y-0.11)$) rectangle ++(0.26,0.22);
+  \node[station, fill=blue!8] (P) at (4.4,0) {FIFO};
+  \draw[->] (SP.east) -- (P.west);
+  \draw[fill=gray!15, draw=gray!60] (0.2,-1.4) rectangle (5.3,-0.85);
+  \node[font=\scriptsize, text=black!75] at (2.75,-1.12) {prefix cache of paused sessions};
+  \node[note] at (2.5,0.85) {$m_P$ slots};
+  \node[note] at (4.4,0.9) {prefill};
+  \node[draw, dashed, rounded corners=3mm, inner sep=2.5mm, fit={(0.2,-1.4) (5.3,1.2)}] (MP) {};
+  \node[note, anchor=south] at (MP.north) {\textbf{Prefill instance} (pool $M_P$)};
+  % ---------- link ----------
+  \node[station, fill=green!8] (L) at (7.0,0) {PS};
+  \node[note, anchor=north] at (7.0,-0.65) {KV link\\bandwidth $B$};
+  % ---------- decode instance ----------
+  \foreach \i in {0,1}
+    \draw[fill=orange!10] (8.9+0.5*\i,-0.3) rectangle ++(0.45,0.6);
+  \draw (8.85,-0.3) -- (9.9,-0.3) (8.85,0.3) -- (9.9,0.3);
+  \node[draw, thick, rounded corners=1pt, fill=orange!10, minimum width=12mm, minimum height=9mm] (SD) at (11.0,0) {};
+  \foreach \x in {-0.36,0,0.36}
+    \foreach \y in {-0.17,0.17}
+      \draw[orange!60!black, fill=white] ($(SD)+(\x-0.13,\y-0.11)$) rectangle ++(0.26,0.22);
+  \node[station, fill=red!8] (D) at (12.9,0) {PS};
+  \draw[->] (SD.east) -- (D.west);
+  \node[note] at (11.0,0.85) {$m_D$ slots};
+  \node[note] at (12.9,-0.95) {batch $\varphi(m)$};
+  \node[draw, dashed, rounded corners=3mm, inner sep=2.5mm, fit={(8.8,-1.25) (14.0,1.2)}] (MD) {};
+  \node[note, anchor=south] at (MD.north) {\textbf{Decode instance} (pool $M_D$)};
+  % ---------- tool call ----------
+  \node[draw, thick, rounded corners, fill=teal!8, minimum width=20mm, minimum height=9mm] (T) at (7.0,-3.1) {};
+  \foreach \k in {-2,-1,0,1,2}
+    \draw[teal!60!black] ($(T)+(0.36*\k,0)$) circle (0.13);
+  \node[note, anchor=north] at ($(T.south)+(0,-0.05)$) {\textbf{Tool call}: delay station};
+  % ---------- flows ----------
+  \draw[->] (-3.0,0) -- (0.3,0);
+  \node[note, anchor=south] at (-2.1,0.05) {new sessions\\Poisson $\Lambda$};
+  \draw[->] (P.east) -- (L.west);
+  \draw[->] (L.east) -- (8.8,0);
+  \draw[->] (D.east) -- (15.4,0) node[note, right] {ends};
+  \draw[->] (D.south) |- node[note, right, pos=0.25] {resume w.p.\ $p$} (T.east);
+  \draw[->] (T.west) -| (-0.2,0) -- (0.3,0);
+  \node[note, anchor=east] at (-0.3,-2.2) {next turn\\(hit or miss)};
+\end{tikzpicture}
+\caption{A disaggregated deployment as a queueing model. A turn waits for KV memory
+at a prefill instance (it is admitted only when its whole context fits, in arrival
+order), is prefilled one request at a time in arrival order, sends its KV cache over a
+link whose bandwidth concurrent transfers share, waits for KV memory at a decode
+instance, and decodes in a batch that shares the instance's throughput. Sessions loop
+through a tool call back to the prefill instance, where the prefix cache decides
+whether the next turn is a hit (short prefill work) or a miss (the whole context is
+recomputed).}
+\label{fig:deployment}
+\end{figure}
+
+The figure is a picture, not a definition: it does not say when a waiting request is
+admitted, what happens to its KV memory afterwards, or who decides a hit. The rest of
+this section makes it a definition. We first define a small language in which a
+serving deployment is a program, and give it a precise meaning
+(\cref{L1:sec:language}); the language knows nothing about tokens or prefill costs.
+We then write the deployment of \cref{fig:deployment} as one program, with its
+workload and costs as the program's parameters (\cref{L1:sec:replica}), and read off
+what that program implies (\cref{L1:sec:implies}). The tools of later lectures are
+needed only to compute averages of the quantities defined here.
+
+\subsection{A language for serving deployments}\label{L1:sec:language}
+
+\paragraph{Requests and sessions.} A \emph{request} is one turn of an agent: it
+arrives at a prefill instance, waits, is prefilled, transferred and decoded, and
+leaves. A \emph{session} is the agent program that sends these requests: it returns
+after each tool call and leaves only when the program ends. New sessions arrive from
+outside as a Poisson process, but the requests of a live session do not arrive
+independently of the system: the next one exists only after the previous one has been
+decoded and its tool call has returned. In the language the object that moves is
+therefore the session, and each request is one pass of the session through a loop.
+
+A serving deployment does four things to a request: it makes it wait until its KV
+cache fits in a memory pool, runs it on a stage (a prefill instance, a link, a decode
+instance, a tool), frees its memory (possibly keeping the prefix cached), and sends it
+somewhere next. We give each of these an instruction. The resulting language, which we
+call \textsc{Route}, describes a system by a \emph{deployment} (its memory pools and
+stages), a \emph{workload} (how sessions arrive and how their turns evolve), and a
+\emph{route}, the path a session follows through the deployment.
+
+\begin{definition}[Syntax of \textsc{Route}]\label{L1:def:syntax}
+A \textsc{Route} program is a triple $(\mathcal D,\mathcal W,\pi_0)$ of a deployment, a
+workload and a route.
+\begin{align*}
+  \text{deployment item}\quad d \;&::=\; \kw{pool}\ m\ (M,\,E)
+    \;\mid\; \kw{stage}\ s : k\\
+  \text{stage kind}\quad k \;&::=\; \mathrm{serial} \;\mid\; \mathrm{shared}(\varphi)
+    \;\mid\; \mathrm{external} \;\mid\; \mathrm{step}(B,\tau)\\
+  \text{workload}\quad \mathcal W \;&::=\; \kw{arrivals}\ (\Lambda,\,y_0,\,G)\\
+  \text{action}\quad \alpha \;&::=\; \kw{turn}
+    \;\mid\; \kw{admit}\ m\ c
+    \;\mid\; \kw{free}\ m
+    \;\mid\; \kw{free}\ m\ \kw{cache}\ \ell\\
+    &\phantom{::=}\;\;\mid\; \kw{run}\ s\ w
+    \;\mid\; \kw{run}\ s\ (w_{\mathrm p}, w_{\mathrm d})\ \kw{growing}\ m\\
+  \text{route}\quad \pi \;&::=\; \epsilon
+    \;\mid\; \alpha;\pi
+    \;\mid\; \kw{loop}\ \pi
+    \;\mid\; \kw{branch}_p\ \pi_1\ \pi_2
+    \;\mid\; \kw{end}
+\end{align*}
+Here $m$ names a KV memory pool of $M$ bytes with eviction order $E$, $s$ names a
+stage, and $p\in[0,1]$. A \emph{serial} stage runs one request at a time, in arrival
+order, at rate $1$ (a prefill instance); a \emph{shared}$(\varphi)$ stage runs all its
+requests at once and splits a throughput $\varphi(n)$ equally among the $n$ present
+(a decode batch, a link); an \emph{external} stage runs every request on its own, with
+no waiting (a tool call); a \emph{step}$(B,\tau)$ stage is an engine that
+runs iterations, handing a budget of $B$ tokens per iteration to its jobs
+in their order of entry, one token to a job in its decode phase and as many
+as its remaining prefill work allows to a job in its prefill phase, and
+taking $\tau(\cdot)$ seconds for an iteration of the tokens it scheduled
+(a colocated replica with chunked prefill). The workload has a session arrival rate $\Lambda$, a
+measurable \term{attribute space} $\mathcal X$ with the attributes $y_0\in\mathcal X$ of
+a new session, and a \term{turn kernel} $G$, a transition kernel on $\mathcal X$:
+$G(y,\cdot)$ is the law of a session's next-turn attributes given its current ones. A
+session's attributes are $x=(y,H)\in\mathcal X\times\{0,1\}$, where $y$ is set by the
+workload and the \term{hit indicator} $H$ by the deployment. The arguments $c$ (bytes to
+allocate), $\ell$ (bytes to keep cached, $\ell\le c$) and $w$ (work) are nonnegative
+measurable functions of $x$. Sequencing is associative, with $\epsilon$ as unit.
+\end{definition}
+
+We write $\kw{hold}\ m\ c\ \{\pi\}\ \kw{cache}\ \ell$ for
+$\kw{admit}\ m\ c;\ \pi;\ \kw{free}\ m\ \kw{cache}\ \ell$: every program we write
+frees what it admits, and the scoped form makes that balance syntactic.
+Informally: $\kw{turn}$ draws the session's next-turn attributes from $G$;
+$\kw{admit}\ m\ c$ joins pool $m$'s admission queue and leaves it with $c$ bytes
+allocated; $\kw{free}\ m\ \kw{cache}\ \ell$ frees the allocation but keeps $\ell$ bytes
+of it as a cached prefix, which the pool may evict later; $\kw{run}\ s\ w$ joins stage
+$s$ with $w$ units of work and continues when the work is done;
+$\kw{run}\ s\ (w_{\mathrm p},w_{\mathrm d})\ \kw{growing}\ m$ joins a step stage with
+$w_{\mathrm p}$ prefill and $w_{\mathrm d}$ decode tokens, and before each iteration
+enlarges its allocation in pool $m$ to the tokens it will have computed; $\kw{branch}_p$
+continues with $\pi_1$ with probability $p$ and with $\pi_2$ otherwise; $\kw{end}$ ends
+the session.
+
+\paragraph{Semantics.} The meaning of a program is a stochastic process whose state is
+the following configuration. For a finite sequence $q$ we write $r\cdot q$ for $q$
+with $r$ in front, $q\cdot r$ for $q$ with $r$ appended, $q-r$ for $q$ with $r$ removed,
+and for a partial map $f$ into $\R_+$ (or into pairs whose first entry is in $\R_+$) we
+write $|f|$ for the sum of its (first) values.
+
+\begin{definition}[Configuration]\label{L1:def:config}
+A \term{configuration} $\Gamma$ of a program $(\mathcal D,\mathcal W,\pi_0)$ consists of
+\begin{enumerate}[label=(\alph*)]
+\item the time $t\ge0$ and the finite set $\mathcal R$ of live sessions;
+\item for each session $r\in\mathcal R$: its attributes $x_r=(y_r,H_r)$, its
+  continuation $\pi_r$ (the rest of its route), its status
+  $\mathrm{st}_r\in\{\mathsf{ready}\}\cup\{\mathsf{queued}(m)\}\cup\{\mathsf{in}(s)\}$,
+  and its remaining work $\omega_r\ge0$;
+\item for each pool $m$: its admission queue $q_m$, a finite sequence of sessions; its
+  allocation $h_m$, a partial map from sessions to bytes; and its prefix cache $C_m$, a
+  partial map from sessions to pairs (bytes, time of last use);
+\item for each stage $s$: the sequence $Q_s$ of sessions at the stage, in order of
+  entry.
+\end{enumerate}
+Every reachable configuration satisfies the memory invariant
+\begin{equation}\label{L1:eq:invariant}
+  |h_m|+|C_m|\le M\qquad\text{for every pool } m \text{ of } M \text{ bytes}.
+\end{equation}
+\end{definition}
+
+The program runs by two kinds of steps. \emph{Commands} take no time and change the
+configuration when their guard holds. \emph{Flow} lets time pass while no command is
+enabled. For a pool with eviction order $E$, $\mathrm{evict}_E(C,b)$ deletes entries of
+$C$ in the order $E$ until $|C|\le b$; for LRU the order is increasing time of last use.
+We write ``$r$ at $\alpha;\pi'$'' for $\mathrm{st}_r=\mathsf{ready}$ and
+$\pi_r=\alpha;\pi'$.
+
+\begin{definition}[Operational semantics of \textsc{Route}]\label{L1:def:semantics}
+The commands are the following guarded assignments, written
+$[\textsc{name}]\ \text{guard}\ \longrightarrow\ \text{effect}$.
+\[
+\renewcommand{\arraystretch}{1.25}
+\begin{array}{@{}l@{\ }l@{\ }l@{}}
+{[\textsc{Turn}]} & r \text{ at } \kw{turn};\pi'
+  &\longrightarrow\ \text{draw } y'\sim G(y_r,\cdot);\ y_r:=y';\ \pi_r:=\pi'\\
+{[\textsc{Queue}]} & r \text{ at } \kw{admit}\ m\ c;\pi'
+  &\longrightarrow\ q_m:=q_m\cdot r;\ \mathrm{st}_r:=\mathsf{queued}(m);\ \pi_r:=\pi'\\
+{[\textsc{Admit}]} & q_m=r\cdot q',\ |h_m|+c(x_r)\le M
+  &\longrightarrow\ H_r:=\1\{r\in\operatorname{dom}C_m\};\ C_m:=C_m-r;\\
+&&\phantom{\longrightarrow}\ C_m:=\mathrm{evict}_E\bigl(C_m,\,M-|h_m|-c(x_r)\bigr);\\
+&&\phantom{\longrightarrow}\ h_m(r):=c(x_r);\ q_m:=q';\ \mathrm{st}_r:=\mathsf{ready}\\
+{[\textsc{Free}]} & r \text{ at } \kw{free}\ m\ [\kw{cache}\ \ell];\pi'
+  &\longrightarrow\ h_m:=h_m-r;\ [\,C_m(r):=(\ell(x_r),t)\,];\\
+&&\phantom{\longrightarrow}\ \pi_r:=\pi'\\
+{[\textsc{Run}]} & r \text{ at } \kw{run}\ s\ w;\pi'
+  &\longrightarrow\ \omega_r:=w(x_r);\ Q_s:=Q_s\cdot r;\\
+&&\phantom{\longrightarrow}\ \mathrm{st}_r:=\mathsf{in}(s);\ \pi_r:=\pi'\\
+{[\textsc{Finish}]} & \mathrm{st}_r=\mathsf{in}(s),\ \omega_r=0
+  &\longrightarrow\ Q_s:=Q_s-r;\ \mathrm{st}_r:=\mathsf{ready}\\
+{[\textsc{Branch}]} & r \text{ at } \kw{branch}_p\ \pi_1\ \pi_2;\pi'
+  &\longrightarrow\ \pi_r:=\pi_1;\pi' \text{ w.p.\ } p,\ \text{else } \pi_r:=\pi_2;\pi'\\
+{[\textsc{Loop}]} & r \text{ at } \kw{loop}\ \pi;\pi'
+  &\longrightarrow\ \pi_r:=\pi;\kw{loop}\ \pi;\pi'\\
+{[\textsc{End}]} & r \text{ at } \kw{end};\pi'
+  &\longrightarrow\ \mathcal R:=\mathcal R-r
+\end{array}
+\]
+The brackets in \textsc{Free} are present exactly when the action has $\kw{cache}$.
+All random draws are independent of each other and of the past. Commands are
+\emph{urgent}: while any command is enabled, one is executed (the enabled command of
+the session that arrived first). When none is enabled, \textsc{Flow} lets time
+advance: each session at a stage works off its remaining work at rate
+\begin{equation}\label{L1:eq:rates}
+  v_r=\begin{cases}
+    \1\{r \text{ is the first entry of } Q_s\} & s:\mathrm{serial},\\[0.2em]
+    \varphi(|Q_s|)/|Q_s| & s:\mathrm{shared}(\varphi),\\[0.2em]
+    1 & s:\mathrm{external},
+  \end{cases}
+  \qquad \frac{\dd\omega_r}{\dd t}=-v_r,
+\end{equation}
+until the first time some $\omega_r$ reaches $0$ (which enables \textsc{Finish}) or a
+session arrives. At each epoch of the Poisson process of rate $\Lambda$, the command
+\textsc{Arrive} adds a new session $r$ to $\mathcal R$ with $y_r=y_0$, $H_r=0$,
+$\pi_r=\pi_0$ and $\mathrm{st}_r=\mathsf{ready}$.
+\end{definition}
+
+A step stage does not flow continuously: it advances by iterations. At
+the start of an iteration its jobs are taken in order of entry and each is
+handed $\min(\text{remaining},\ \text{budget left})$ tokens (one for a decode
+phase); a $\kw{growing}$ job first enlarges its allocation, and if the pool
+has no room the most recently admitted holder is \emph{preempted}: its job
+leaves the stage, its allocation is freed with the prefix it computed
+cached, and it rejoins the head of the pool's queue to be admitted again.
+The iteration ends $\tau$ seconds later and its tokens are then applied.
+
+\textsc{Admit} is where the admission rule lives. Only the first session in the queue
+can be admitted, so a request that does not fit blocks every request behind it; the
+guard counts only the bytes allocated to admitted requests, not the cache, so a cached
+prefix never blocks an admission; instead, the eviction in the second line of
+\textsc{Admit} deletes as many cached prefixes as the new allocation needs, which keeps
+\eqref{L1:eq:invariant}. The hit indicator is decided at the same moment, by whether
+the session's own prefix survived until its admission. \textsc{Free} also keeps the
+invariant, since it frees $c$ bytes and caches $\ell\le c$ of them.
+
+\paragraph{Production schedulers.} Three refinements of \textsc{Admit} are
+needed to write a production engine such as vLLM as a program, and none
+changes the invariant. (i) The queue of a pool may be served by a step
+stage: admission happens only at the start of an iteration, with the budget
+the running jobs leave, so a waiting request's cached prefix is not
+protected until then and can be evicted while it waits. (ii) The guard may
+ask for more than is allocated: vLLM admits a request only if its whole
+prompt fits, but allocates only the blocks of its first chunk and grows
+from there. (iii) A request may reuse only part of its cached prefix (the
+blocks it shares with its previous turn); the rest stays cached, unusable,
+until it is evicted. With these rules the program of the vLLM v1 engine
+reproduces the real scheduler step for step, and it keeps the cached
+prefixes of finished sessions, as \textsc{End} does: the cache does not
+know that a session has left.
+
+The semantics is well defined for programs in which every $\kw{loop}$ body contains a
+$\kw{run}$ with positive work (a step stage's jobs are not in \eqref{L1:eq:rates}: they
+advance only at the end of an iteration): then between two flow steps each session executes only
+finitely many commands. It is also an algorithm. \Cref{alg:route} runs it, and a
+discrete-event simulator of a serving system is an implementation of this loop.
+
+\begin{algorithm}[t]
+\caption{Interpreter of a \textsc{Route} program up to time $t_{\max}$}\label{alg:route}
+\begin{algorithmic}[1]
+\Require deployment $\mathcal D$, workload $\mathcal W$, route $\pi_0$, horizon $t_{\max}$
+\State $t\gets0$;\ $\mathcal R\gets\emptyset$;\ all queues, allocations, caches and stages empty
+\State $a\gets$ a draw from $\mathrm{Exp}(\Lambda)$ \Comment{next session arrival}
+\While{$t<t_{\max}$}
+  \While{some command is enabled} \Comment{zero-time phase}
+    \State execute the enabled command of the earliest-arrived session
+  \EndWhile
+  \State compute $v_r$ for every session at a stage by \eqref{L1:eq:rates}
+  \State $e\gets$ the earliest end of a running iteration of a step stage ($\infty$ if none)
+  \State $\Delta\gets\min\bigl(a-t,\ e-t,\ \min_{r:\,v_r>0}\omega_r/v_r\bigr)$
+  \For{every session $r$ at a stage}
+    \State $\omega_r\gets\omega_r-v_r\Delta$
+  \EndFor
+  \State $t\gets t+\Delta$
+  \If{$t=a$}
+    \State \textsc{Arrive};\ $a\gets t+{}$a draw from $\mathrm{Exp}(\Lambda)$
+  \EndIf
+  \If{$t=e$} \Comment{apply the iteration's tokens; the next one is assigned}
+    \State end the iteration; start the next one after the zero-time phase
+  \EndIf
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{The disaggregated replica}\label{L1:sec:replica}
+
+A program needs a workload and the functions $c$, $\ell$, $w$. For the deployment of
+\cref{fig:deployment} they come from the agentic workload and from the costs of one
+replica.
+
+\begin{definition}[Agentic workload]\label{L1:def:workload}
+Sessions arrive at the epochs $A_1<A_2<\cdots$ of a Poisson process of rate $\Lambda$
+(\cref{def:poisson}). The attributes of a turn are $y=(K,n,o,T,Z)\in\mathcal X=\R_+^5$.
+\begin{enumerate}[label=(\alph*)]
+\item \emph{Tokens.} Turn $j$ of session $i$ carries a prefix of $K_{ij}$ tokens that
+  the prefill instance has already processed, $n_{ij}$ new tokens, and produces
+  $o_{ij}$ output tokens. Its context is $T_{ij}=K_{ij}+n_{ij}$, and
+  \begin{equation}\label{L1:eq:context}
+    K_{i1}=0,\qquad K_{i,j+1}=T_{ij},\qquad n_{i,j+1}\ge o_{ij}.
+  \end{equation}
+  The new tokens of the next turn contain the previous output, which was produced on
+  the decode instance, and the tool's output.
+\item \emph{Think times.} After turn $j$ the session calls a tool for a time
+  $Z_{ij}\ge0$ with mean $Z$.
+\item \emph{Turn kernel.} A new session has $y_0=0$. Given the current turn $y$,
+  $G(y,\cdot)$ draws $(n',o',Z')$ with $n'\ge o$ and sets $K'=T$ and $T'=K'+n'$, so that
+  successive turns satisfy \eqref{L1:eq:context}.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Costs]\label{L1:def:costs}
+A replica has prefill constants $a,b>0$, a KV size of $\kappa$ bytes per token, a link
+of bandwidth $B$ with fixed overhead $x_0$, a decode capacity function $\varphi$, and
+memory pools of $M_P$ and $M_D$ bytes. For turn $(i,j)$:
+\begin{enumerate}[label=(\alph*)]
+\item Prefilling $n$ new tokens on a cached prefix of $K$ tokens takes
+  \begin{equation}\label{L1:eq:prefill}
+    P(n,K)=a\,n+b\,n\,(K+n/2)
+  \end{equation}
+  seconds. With the hit indicator $H_{ij}$ (whether the prefix is still cached when
+  the turn is admitted), the prefill work is
+  \begin{equation}\label{L1:eq:work}
+    S_{ij}=H_{ij}\,P(n_{ij},K_{ij})+(1-H_{ij})\,P(T_{ij},0)
+    =P(n_{ij},K_{ij})+(1-H_{ij})\,\Delta S(K_{ij}),
+  \end{equation}
+  where $\Delta S(K)=aK+bK^2/2$ is the extra work of a miss.
+\item The transfer of the context to the decode instance is the work
+  $X_{ij}=x_0+\kappa\,T_{ij}/B$ seconds.
+\item The decode work is $D_{ij}=o_{ij}$ tokens. A batch of $m$ running turns takes
+  $\tau(m)$ seconds per step and advances each turn by one token, so its capacity is
+  $\varphi(m)=m/\tau(m)$ tokens per second.
+\item The memory footprint is $c_{ij}=\kappa\,T_{ij}$ bytes on either instance.
+\end{enumerate}
+\end{definition}
+
+\begin{example}[The disaggregated replica]\label{L1:ex:program}
+The deployment of \cref{fig:deployment} is the program
+\begin{center}
+\begin{tabular}{@{}l@{\qquad}l@{}}
+$\kw{pool}\ \mathsf{mem}_P\ (M_P,\ \mathrm{LRU})$ &
+$\kw{stage}\ \mathsf{prefill} : \mathrm{serial}$ \\
+$\kw{pool}\ \mathsf{mem}_D\ (M_D,\ \mathrm{LRU})$ &
+$\kw{stage}\ \mathsf{link} : \mathrm{shared}(1)$ \\
+$\kw{arrivals}\ (\Lambda,\ y_0,\ G)$ &
+$\kw{stage}\ \mathsf{decode} : \mathrm{shared}(\varphi)$ \\
+&
+$\kw{stage}\ \mathsf{tool} : \mathrm{external}$
+\end{tabular}
+\\[0.6em]
+\begin{tabular}{@{}l@{\qquad}l@{}}
+$\pi_0 \;=\; \kw{turn};\ \kw{loop}\ \bigl($ & \\
+\quad $\kw{admit}\ \mathsf{mem}_P\ c;$ & \emph{wait for KV memory at the prefill instance}\\
+\quad $\kw{run}\ \mathsf{prefill}\ S;$ & \emph{the first token is out when this ends}\\
+\quad $\kw{run}\ \mathsf{link}\ X;$ & \emph{KV transfer, bandwidth shared}\\
+\quad $\kw{free}\ \mathsf{mem}_P\ \kw{cache}\ \kappa T;$ & \emph{memory freed, prefix stays cached}\\
+\quad $\kw{admit}\ \mathsf{mem}_D\ c;$ & \emph{wait for KV memory at the decode instance}\\
+\quad $\kw{run}\ \mathsf{decode}\ D;$ & \emph{batched decode}\\
+\quad $\kw{free}\ \mathsf{mem}_D;$ & \\
+\quad $\kw{branch}_p\ (\kw{run}\ \mathsf{tool}\ Z;\ \kw{turn})\ (\kw{end})\ \bigr)$ &
+  \emph{tool call and next turn, or end}
+\end{tabular}
+\end{center}
+with the workload $(\Lambda,y_0,G)$ of \cref{L1:def:workload} and $c$, $S$, $X$, $D$
+from \cref{L1:def:costs}. Because $\kw{branch}_p$ ends the loop with probability $1-p$
+after each turn, session $i$ has $J_i$ turns with
+$\Prob(J_i\ge j+1\mid J_i\ge j)=p$, so $\E[J_i]=1/(1-p)$. Other deployments are other
+programs: a replica without a prefix cache drops $\kw{cache}\ \kappa T$, and every turn
+is then a miss (\cref{L1:exr:nocache}); a colocated replica is a shorter program with
+one pool and no link (\cref{L1:exr:colocated}).
+\end{example}
+
+\subsection{What the program implies}\label{L1:sec:implies}
+
+Running the program of \cref{L1:ex:program} produces, for every request, seven epochs.
+Number requests $k=1,2,\dots$ in the order of their \textsc{Queue} at $\mathsf{mem}_P$.
+We write $\sigma(k)$ for the session of request $k$, and $S_k$, $X_k$, $D_k$, $c_k$,
+$H_k$ and $Z_k$ for its quantities. Let
+\[
+  a_k\le\alpha_k\le s_k\le f_k\le e_k\le\alpha'_k\le d_k
+\]
+be the times of its \textsc{Queue} at $\mathsf{mem}_P$, its \textsc{Admit} there, the
+moment it becomes the first entry of $Q_{\mathsf{prefill}}$, its \textsc{Finish} at
+$\mathsf{prefill}$, its \textsc{Finish} at $\mathsf{link}$, its \textsc{Admit} at
+$\mathsf{mem}_D$, and its \textsc{Finish} at $\mathsf{decode}$. Let
+$R_P(t)=\{k:\alpha_k\le t<e_k\}$ be the requests holding memory at the prefill
+instance.
+
+\begin{lemma}[Sample-path equations of the replica]\label{L1:lem:paths}
+Under \cref{L1:def:semantics}, the program of \cref{L1:ex:program} satisfies
+\begin{align}
+  \alpha_k&=\inf\Bigl\{t\ge\max(a_k,\alpha_{k-1}):
+      \textstyle\sum_{l\in R_P(t)}c_l+c_k\le M_P\Bigr\},\label{L1:eq:admitP}\\
+  s_k&=\max(\alpha_k,f_{k-1}),\qquad f_k=s_k+S_k,\label{L1:eq:lindley}\\
+  a_{k^+}&=d_k+Z_k\quad\text{if the session continues},\label{L1:eq:feedback}
+\end{align}
+where $k^+$ is the next request of session $\sigma(k)$, and
+$H_k=\1\{\sigma(k)\text{'s prefix is in }C_{\mathsf{mem}_P}\text{ at }\alpha_k\}$.
+The link and the decode batch drain $X_k$ and $D_k$ at the rates \eqref{L1:eq:rates}.
+\end{lemma}
+
+\begin{proof}
+A request joins the admission queue of $\mathsf{mem}_P$ at $a_k$ and can be admitted
+only at its head, after $\alpha_{k-1}$, and only once the guard of \textsc{Admit}
+holds, which is \eqref{L1:eq:admitP}. After its admission it executes \textsc{Run} at
+once, so it enters $Q_{\mathsf{prefill}}$ in admission order, which is arrival order;
+by \eqref{L1:eq:rates} it is worked at rate $1$ exactly when it is first, that is from
+the \textsc{Finish} of its predecessor or its own entry, whichever is later, until
+$S_k$ is worked off, which is \eqref{L1:eq:lindley}. After \textsc{Finish} at
+$\mathsf{decode}$ the session frees its memory, branches, runs $Z_k$ at the external
+stage (rate $1$, no waiting), executes \textsc{Turn} and \textsc{Loop}, and queues
+again, all in zero time except the tool, which is \eqref{L1:eq:feedback}. The
+statement about $H_k$ is the first assignment of \textsc{Admit}.
+\end{proof}
+
+\Cref{L1:eq:feedback} is the closed loop: request arrival times depend on completion
+times, which depend on the congestion. The request rate is nevertheless fixed by the
+session rate. If the system is stable, every session leaves after its $J_i$ turns
+(\cref{L1:ex:program}), and
+\begin{equation}\label{L1:eq:turnrate}
+  \lambda=\Lambda\,\E[J]=\frac{\Lambda}{1-p}.
+\end{equation}
+
+\paragraph{The stages as queues.} Each stage kind is a queue studied in one later
+lecture. A serial stage is a single first-in first-out server, and
+\eqref{L1:eq:lindley} is its recursion: the M/G/1 queue of \cref{sec:L3} when arrivals
+are Poisson and the closed system of \cref{sec:L4} when a finite number of sessions
+circulate. A shared stage is a processor-sharing station (\cref{sec:L2}), and an
+external stage is a delay station (\cref{sec:L4}). A pool is a queue too. If every
+context needs about $c$ bytes, the guard of \textsc{Admit} reads $|R_P(t)|<m_P$ with
+$m_P=\lfloor M_P/c\rfloor$ \emph{slots}: a multi-server queue $\cdot$/G/$m_P$
+(\cref{sec:L2}) whose holding time is the time from \textsc{Admit} to \textsc{Free},
+\[
+  e_k-\alpha_k={\underbrace{(s_k-\alpha_k)}_{\text{wait for prefill}}}+S_k
+  +{\underbrace{(e_k-f_k)}_{\text{transfer}}},
+\]
+and likewise $m_D=\lfloor M_D/c\rfloor$ slots held for $d_k-\alpha'_k$ at the decode
+instance. With unequal contexts a request needs several slots, and the queue has no
+closed form.
+
+\paragraph{The cache chooses the prefill work.} In classical queueing theory the
+service-time law is given. Here, by \eqref{L1:eq:work} and \textsc{Admit}, the cache
+chooses it: the eviction order $E$ decides $H_k$, and
+\begin{equation}\label{L1:eq:ES}
+  \E[S]=\E\bigl[P(n,K)\bigr]+\E\bigl[(1-H)\,\Delta S(K)\bigr].
+\end{equation}
+Only the second term depends on the policy, and it depends on it through which
+sessions miss, weighted by $\Delta S(K)$, which grows as $K^2$. The central question of
+\cref{sec:L3} is how a performance measure changes when the distribution of $S$
+changes; \eqref{L1:eq:ES} says the eviction policy is what changes it.
+
+\paragraph{Performance.} The first token is produced when the prefill ends, so
+\begin{equation}\label{L1:eq:ttft}
+  \mathrm{TTFT}_k=f_k-a_k
+  ={\underbrace{(\alpha_k-a_k)}_{W^M_{P,k}}}
+  +{\underbrace{(s_k-\alpha_k)}_{W_{P,k}}}+S_k,
+\end{equation}
+the wait for KV memory at the prefill instance, the wait for the prefill instance, and
+the prefill work. The transfer and the decode come after the first token and do not
+enter it; they set when the rest of the answer arrives, and they reach the TTFT only
+through memory, because a request keeps its prefill allocation until $e_k$. The
+objective of the scheduler is the time average of the number of requests in the
+system,
+\[
+  L=\lim_{t\to\infty}\frac1t\int_0^t N(u)\dd u,\qquad N(u)=\#\{k:a_k\le u<d_k\},
+\]
+which by Little's law (\cref{thm:little}) equals $\lambda W$ with $W$ the average of
+$d_k-a_k$ over requests and $\lambda$ from \eqref{L1:eq:turnrate}. No stage can be
+stable unless its load is below its capacity:
+\begin{equation}\label{L1:eq:stable}
+  \rho_P=\lambda\,\E[S]<1,\qquad \rho_L=\lambda\,\E[X]<1,\qquad
+  \lambda\,\E[D]<\max_{m\le m_D}\varphi(m).
+\end{equation}
+By \eqref{L1:eq:ES}, the first condition already depends on the eviction policy.
+
+\paragraph{What the model leaves out.} Work is a continuous quantity rather than whole
+tokens and memory blocks; an instance's scheduler steps are replaced by the continuous
+flow \eqref{L1:eq:rates}; the allocation $c_k$ ignores the $o_k$ tokens a decode adds,
+and a running decode that needs a block when none is free is preempted and later
+recomputed, which the step stage with $\kw{growing}$ expresses but the replica of
+\cref{L1:ex:program} does not use; and by \eqref{L1:eq:feedback}
+request arrivals are not Poisson. \Cref{sec:L5} returns to these gaps once the tools
+are in place.
+
+\section{The exponential distribution and memorylessness}
+
+\begin{definition}[Exponential distribution]\label{L1:def:exp}
+A random variable $X\ge0$ with $\Prob(X>t)=e^{-\mu t}$ for $t\ge0$ has the
+\term{exponential distribution} with \term{rate} $\mu>0$, written
+$X\sim\mathrm{Exp}(\mu)$. Then $\E[X]=1/\mu$ and $\E[X^2]=2/\mu^2$.
+\end{definition}
+
+\begin{proposition}[Memorylessness \cite{ross1996}]\label{prop:memoryless}
+If $X\sim\mathrm{Exp}(\mu)$, then for all $s,t\ge0$
+\begin{equation}\label{L1:eq:memoryless}
+  \Prob(X>s+t\mid X>s)=\Prob(X>t).
+\end{equation}
+Conversely, if a random variable with $0<X<\infty$ a.s.\ satisfies
+\eqref{L1:eq:memoryless}, then $X\sim\mathrm{Exp}(\mu)$ for some $\mu\in(0,\infty)$.
+\end{proposition}
+
+\begin{proof}
+The forward direction is $e^{-\mu(s+t)}/e^{-\mu s}=e^{-\mu t}$.
+Converse: let $G(t)=\Prob(X>t)$. Then \eqref{L1:eq:memoryless} reads
+$G(s+t)=G(s)G(t)$. $G$ is nonincreasing and right-continuous, and
+$G(0)=\Prob(X>0)=1$. By induction $G(nt)=G(t)^n$, hence $G(1)=G(1/n)^n$ and
+$G(m/n)=G(1)^{m/n}$.
+If $G(1)=0$, then $G(1/n)=0$ for every $n$, which contradicts
+$G(1/n)\to G(0)=1$ by right-continuity. If $G(1)=1$, then $G(r)=1$ for every
+rational $r$, and by monotonicity $G\equiv1$, that is $X=\infty$ a.s., contradicting
+the assumption. Hence $G(1)=e^{-\mu}$ for some $\mu\in(0,\infty)$, and
+$G(r)=e^{-\mu r}$ on the rationals. For arbitrary $t$, take rationals $r\downarrow t$;
+right-continuity gives $G(t)=e^{-\mu t}$.
+\end{proof}
+
+Memorylessness says that the remaining service time of a customer who has already
+received $s$ units of service has the same distribution as the service time of a new
+customer. This is why, in a system with exponential service, the number in system
+$N(t)$ alone determines the future, and $N(t)$ is a continuous-time Markov chain
+(\cref{sec:L2}). The following fact is also used often.
+
+\begin{lemma}[Minimum of exponentials \cite{ross1996}]\label{L1:lem:min}
+If $X_i\sim\mathrm{Exp}(\mu_i)$, $i=1,\dots,n$, are independent, then
+$\min_iX_i\sim\mathrm{Exp}(\sum_i\mu_i)$.
+\end{lemma}
+
+\begin{proof}
+$\Prob(\min_iX_i>t)=\prod_i\Prob(X_i>t)=e^{-(\sum_i\mu_i)t}$.
+\end{proof}
+
+\section{The Poisson process}
+
+\begin{definition}[Counting process and Poisson process]\label{def:poisson}
+A \term{counting process} $A=(A(t))_{t\ge0}$ is a nondecreasing, right-continuous,
+$\N$-valued process with $A(0)=0$ and jumps of size one only.
+A counting process $A$ is a \term{Poisson process} with \term{rate} $\lambda>0$ if
+\begin{enumerate}
+\item (\term{independent increments}) for disjoint intervals
+  $(s_1,t_1],\dots,(s_n,t_n]$ the increments $A(t_j)-A(s_j)$ are independent;
+\item (\term{stationary Poisson increments}) for all $s\ge0$, $t>0$,
+  $A(s+t)-A(s)\sim\mathrm{Poisson}(\lambda t)$, that is
+  $\Prob(A(s+t)-A(s)=n)=e^{-\lambda t}(\lambda t)^n/n!$.
+\end{enumerate}
+$S_n=\inf\{t:A(t)\ge n\}$ is the $n$-th arrival time, and $T_n=S_n-S_{n-1}$
+($S_0=0$) is the $n$-th \term{interarrival time}.
+\end{definition}
+
+\begin{theorem}[Exponential interarrival times \cite[\S2.2]{ross1996}]\label{L1:thm:interarrival}
+$A$ is a Poisson process with rate $\lambda$ if and only if the interarrival times
+$T_1,T_2,\dots$ are independent and each is $\mathrm{Exp}(\lambda)$.
+\end{theorem}
+
+\begin{proof}[Proof ($\Rightarrow$)]
+For $0=t_0<t_1<\dots<t_n$ and small $h>0$ consider the event
+$E_h=\{S_j\in(t_j,t_j+h],\ j=1,\dots,n\}$. Let $F_h$ be the event that there is no
+arrival in $(t_{j-1}+h,t_j]$ and exactly one in each $(t_j,t_j+h]$. Then
+$F_h\subset E_h$, and $E_h\setminus F_h$ is contained in the event that some interval
+of length $h$ has two or more arrivals, which has probability $O(h^{n+1})$. By
+independent and Poisson increments,
+\[
+  \Prob(F_h)=e^{-\lambda(t_1+(t_2-t_1-h)+\cdots+(t_n-t_{n-1}-h))}\,(\lambda h e^{-\lambda h})^n
+  =\lambda^n h^n e^{-\lambda t_n}\,(1+O(h)).
+\]
+Hence $(S_1,\dots,S_n)$ has density $\lambda^ne^{-\lambda s_n}$ on
+$\{0<s_1<\dots<s_n\}$. The linear map $T_j=S_j-S_{j-1}$ has Jacobian one and
+$s_n=\sum_jT_j$, so $(T_1,\dots,T_n)$ has density $\prod_{j=1}^n\lambda e^{-\lambda t_j}$,
+that is, independent $\mathrm{Exp}(\lambda)$. The converse is a standard argument
+using that $S_n$ is Gamma distributed together with memorylessness, and we omit it
+\cite[\S2.2]{ross1996}.
+\end{proof}
+
+\begin{proposition}[Superposition and thinning \cite{kingman1993}]\label{prop:superpose}
+\begin{enumerate}[label=(\roman*)]
+\item (\term{Superposition}) If $A_1,A_2$ are independent Poisson processes with rates
+  $\lambda_1,\lambda_2$, then $A_1+A_2$ is a Poisson process with rate
+  $\lambda_1+\lambda_2$.
+\item (\term{Thinning}) If each point of a Poisson process with rate $\lambda$ is kept
+  with probability $p$ and discarded with probability $1-p$, independently of
+  everything else, then the kept points and the discarded points are Poisson
+  processes with rates $p\lambda$ and $(1-p)\lambda$, and they are independent.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Independent increments follow from the independent increments of the two
+processes and their mutual independence. For the increment over one interval, the
+generating function of independent Poisson variables is
+$\E[z^{X_1+X_2}]=e^{\lambda_1t(z-1)}e^{\lambda_2t(z-1)}=e^{(\lambda_1+\lambda_2)t(z-1)}$,
+so the sum is $\mathrm{Poisson}((\lambda_1+\lambda_2)t)$.
+
+(ii) Let $X$ be the original increment over an interval of length $t$, $X_1$ the number
+kept, and $X_2=X-X_1$ the number discarded. Given $X=j+k$, the conditional
+probability that $X_1=j$ is binomial, $\binom{j+k}{j}p^j(1-p)^k$, so
+\[
+  \Prob(X_1=j,X_2=k)=e^{-\lambda t}\frac{(\lambda t)^{j+k}}{(j+k)!}\binom{j+k}{j}p^j(1-p)^k
+  =e^{-p\lambda t}\frac{(p\lambda t)^j}{j!}\cdot e^{-(1-p)\lambda t}\frac{((1-p)\lambda t)^k}{k!}.
+\]
+Thus on one interval $X_1,X_2$ are independent Poisson variables. On disjoint
+intervals the original increments and the coin flips are all independent, so all
+increments of the two processes are independent.
+\end{proof}
+
+\serving{If sessions arrive as a Poisson process of rate $\Lambda$ and each turn is
+routed independently to one of $J$ prefill instances, then by
+\cref{prop:superpose}(ii) each instance also sees Poisson arrivals. The turns within a
+session, however, go around a closed loop (prefill $\to$ link $\to$ decode $\to$
+tool), so the turn arrivals are not exactly Poisson. The closed models of
+\cref{sec:L4} are the tool for this gap.}
+
+\section{PASTA: Poisson arrivals see time averages}
+
+The distribution of the state seen by arriving customers generally differs from the
+time-average distribution (\cref{L1:ex:lookahead}(b) below gives an example). With
+Poisson arrivals this discrepancy disappears.
+
+\begin{definition}[Lack of anticipation]\label{L1:def:lookahead}
+Given a state process $X=(X(t))_{t\ge0}$ and an arrival process $A$, we say that $A$
+has \term{lack of anticipation} with respect to $X$ if for every $t$ the future
+increments $\{A(t+s)-A(t):s\ge0\}$ are independent of the past
+$\{X(u):u\le t\}\cup\{A(u):u\le t\}$.
+\end{definition}
+
+In a queueing system this assumption says that future arrivals are independent of the
+system state so far. Note the direction: the state may (and does) depend on past
+arrivals; what is excluded is that future arrivals react to the state. Poisson arrivals
+from outside satisfy it naturally. Arrivals in a closed system (\cref{sec:L4}) do not.
+
+\begin{example}[One process with lack of anticipation, one without]\label{L1:ex:lookahead}
+\emph{(a) Lack of anticipation: the M/M/1 queue.} Customers come from a large outside
+population as a Poisson process, independently of the service times. The queue length
+$X(t)$ is a function of the arrivals before $t$ and the service times, and by
+independent increments the arrivals after $t$ are independent of both. An arriving
+customer is like a raindrop falling on the queue: the rain does not know how long the
+queue is. So the arrival instants are ``random inspection times'', and by
+\cref{thm:pasta} the fraction of arrivals that find the server busy equals the fraction
+of time it is busy, $\rho$.
+
+\emph{(b) No lack of anticipation: a single agent session.} One session alternates
+between a tool call (mean $Z$) and a turn at a server (mean $1/\mu$). Its
+next turn can arrive only after its previous turn has left the server. If $X(t)=1$
+(the turn is being served), then no arrival can happen until the service ends; if
+$X(t)=0$, an arrival may come at any moment. Future arrivals depend on the current
+state, so the condition fails. The consequence is visible: every arrival finds the
+server idle, while the server is busy a fraction $(1/\mu)/(Z+1/\mu)>0$ of the time.
+Arrivals do not see time averages. With $N$ sessions the same effect is weaker but
+present, and \cref{sec:L4} replaces PASTA by the arrival theorem for exactly this
+reason.
+\end{example}
+
+\begin{remark}[Why study PASTA if sessions violate it?]\label{L1:rem:why-pasta}
+Example~\ref{L1:ex:lookahead}(b) shows that a single agent session does not have lack
+of anticipation. PASTA is still the right starting point, for three reasons.
+\begin{enumerate}
+\item \emph{The prefill model rests on it.} The prefill instance is modelled as an
+  M/G/1 queue, and the proof of the Pollaczek--Khinchine formula (\cref{thm:pk}) uses
+  PASTA. Session feedback makes this an approximation, to be tested against the
+  system. One cannot judge an approximation without knowing what it approximates.
+\item \emph{Many sessions look Poisson.} Each session reacts to the state, but the
+  superposition of many independent sessions, each contributing a small share of the
+  arrivals, is close to a Poisson process; this is the Palm--Khinchine theorem
+  \cite{khinchine1960}. New sessions themselves arrive as a Poisson process in the
+  model, so the M/G/$\infty$ and Campbell calculations of \cref{sec:L4} use Poisson
+  arrivals without approximation.
+\item \emph{The exact closed-system answer is a corrected PASTA.} The arrival theorem
+  (\cref{thm:arrival}) says that an arriving turn sees the time averages of the system
+  with one session fewer, and it reduces to PASTA as the number of sessions grows
+  (\cref{L4:rem:arrival-limit}). For exponential work, \cref{prop:finite}(ii) shows
+  that the open formula built on PASTA overstates the wait at equal utilisation, so
+  PASTA gives a conservative estimate whose error the finite-population model
+  quantifies.
+\end{enumerate}
+\end{remark}
+
+\begin{theorem}[PASTA \cite{wolff1982}]\label{thm:pasta}
+Let $A$ be a Poisson process with rate $\lambda$, $X$ a state process with left
+limits, and $B$ a set of states, and suppose $A$ has lack of anticipation with respect
+to $X$. If $U(t)=\1\{X(t^-)\in B\}$ is left-continuous, then for every $T>0$
+\begin{equation}\label{L1:eq:pasta}
+  \E\Bigl[\sum_{k:\,S_k\le T}\1\{X(S_k^-)\in B\}\Bigr]=\lambda\,\E\Bigl[\int_0^T\1\{X(t)\in B\}\dd t\Bigr].
+\end{equation}
+Consequently, if the limits of the two averages
+$\frac1T\int_0^T\1\{X(t)\in B\}\dd t$ and
+$\frac{1}{A(T)}\sum_{k\le A(T)}\1\{X(S_k^-)\in B\}$ exist with probability one, they
+are equal: the fraction of arrivals that find the system in $B$ equals the fraction of
+time it spends in $B$.
+\end{theorem}
+
+\begin{proof}
+The left side is $\int_0^TU(t)\dd A(t)$. For the partition $t_j=jT/n$ of $[0,T]$,
+define the step function $U_n(t)=\sum_{j}U(t_j)\1\{t\in(t_j,t_{j+1}]\}$. $U(t_j)$ is
+determined by the past up to time $t_j$, and by lack of anticipation the increment
+$A(t_{j+1})-A(t_j)$ is independent of that past, so
+\[
+  \E\Bigl[\int_0^TU_n\dd A\Bigr]=\sum_j\E[U(t_j)]\,\E[A(t_{j+1})-A(t_j)]
+  =\lambda\sum_j\E[U(t_j)]\,(t_{j+1}-t_j)=\lambda\,\E\Bigl[\int_0^TU_n(t)\dd t\Bigr].
+\]
+Since $U$ is left-continuous, $U_n(t)\to U(t)$ for every $t$. The integrands on the
+two sides are bounded by $A(T)$ and $T$ respectively, and $\E[A(T)]=\lambda T<\infty$,
+so by dominated convergence $\E[\int_0^TU\dd A]=\lambda\E[\int_0^TU\dd t]$ as
+$n\to\infty$. Finally, the set of $t$ with $X(t^-)\ne X(t)$ is countable, so replacing
+$U(t)$ by $\1\{X(t)\in B\}$ on the right does not change the integral.
+The statement about limits follows from a sample-path version of
+\eqref{L1:eq:pasta} (a law of large numbers applied to a martingale), for which we
+cite \cite{wolff1982}.
+\end{proof}
+
+In \cref{sec:L3}, PASTA becomes a key step of the Pollaczek--Khinchine formula in the
+form ``the mean work an arriving turn finds waiting equals the time-average work
+waiting''.
+
+\section{Little's law}
+
+\begin{theorem}[Little's law \cite{little1961,stidham1974}]\label{thm:little}
+For a sequence of customers $(a_k,d_k)$ with $a_k\le d_k<\infty$ and $a_k$
+nondecreasing, suppose the two limits
+\[
+  \lambda=\lim_{t\to\infty}\frac{A(t)}{t}\in(0,\infty),\qquad
+  W=\lim_{n\to\infty}\frac1n\sum_{k=1}^nW_k<\infty
+\]
+exist. Then $L=\lim_{t\to\infty}\frac1t\int_0^tN(s)\dd s$ exists and
+\begin{equation}\label{L1:eq:little}
+  L=\lambda W .
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Since $N(s)=\sum_k\1\{a_k\le s<d_k\}$, we have
+$\int_0^tN(s)\dd s=\sum_k\bigl|[a_k,d_k)\cap[0,t]\bigr|$.
+Each term is at most $W_k$, is zero if $a_k>t$, and equals $W_k$ exactly if
+$d_k\le t$. Therefore
+\begin{equation}\label{L1:eq:little-sandwich}
+  \sum_{k:\,d_k\le t}W_k\;\le\;\int_0^tN(s)\dd s\;\le\;\sum_{k:\,a_k\le t}W_k=\sum_{k=1}^{A(t)}W_k .
+\end{equation}
+Upper bound: since $A(t)\to\infty$,
+$\frac1t\sum_{k\le A(t)}W_k=\frac{A(t)}{t}\cdot\frac{1}{A(t)}\sum_{k\le A(t)}W_k\to\lambda W$.
+
+Lower bound: with $\bar W_n=\frac1n\sum_{k\le n}W_k$ we have
+$\frac{W_n}{n}=\bar W_n-\frac{n-1}{n}\bar W_{n-1}\to W-W=0$. Also $A(a_n)\ge n$ and
+$A(a_n^-)\le n-1$, so $a_n/n\to1/\lambda$, and therefore $W_n/a_n\to0$.
+For any $\varepsilon>0$ there is $k_0$ such that $d_k=a_k+W_k\le(1+\varepsilon)a_k$ for
+$k\ge k_0$. Then for $t\ge\max_{k<k_0}d_k$, every customer with
+$a_k\le t/(1+\varepsilon)$ has $d_k\le t$, so
+\[
+  \frac1t\int_0^tN(s)\dd s\;\ge\;\frac1t\sum_{k=1}^{A(t/(1+\varepsilon))}W_k
+  \longrightarrow\frac{\lambda W}{1+\varepsilon}.
+\]
+Letting $\varepsilon\downarrow0$, the liminf is at least $\lambda W$. Together with
+the upper bound this gives \eqref{L1:eq:little}.
+\end{proof}
+
+The proof uses no distributional assumption and no service discipline. It is a
+deterministic theorem that holds on every sample path on which the limits exist. So
+depending on how we draw the boundary of ``the system'', we obtain several identities.
+
+\begin{corollary}[Utilisation law \cite{kleinrock1975}]\label{cor:busy}
+Under the assumptions of \cref{thm:little}, consider a single-server system and
+suppose the average of the service times $\frac1n\sum_{k\le n}S_k$ converges to
+$\E[S]$.
+\begin{enumerate}[label=(\roman*)]
+\item The fraction of time the server is busy is $\rho=\lambda\E[S]$. In particular
+  $\rho\le1$ in a stable system.
+\item For the waiting room, $L_q=\lambda W_q$, and under FIFO $L=L_q+\rho$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) Take ``the server'' alone as the system. Customer $k$ enters it when its service
+starts and leaves $S_k$ later. Every customer is eventually served, so the arrival
+rate of this subsystem is also $\lambda$, and the customer average of its sojourn times
+is $\E[S]$. The number in this subsystem is 1 when the server is busy and 0 otherwise,
+so its time average is the fraction of time the server is busy. By \cref{thm:little}
+this equals $\lambda\E[S]=\rho$, and being a fraction it is at most one.
+(ii) Taking the waiting room alone as the system, the sojourn times are $W_{q,k}$, so
+$L_q=\lambda W_q$. Taking time averages in $N=N_q+(\text{number in service})$ gives
+$L=L_q+\rho$.
+\end{proof}
+
+\begin{example}\label{L1:ex:little}
+Suppose $\lambda=2$ turns per second arrive at a prefill instance and the mean prefill
+work is $\E[S]=0.3$ seconds. By \cref{cor:busy} the prefill server is busy a fraction
+$\rho_P=0.6$ of the time. If the observed mean number of turns waiting for it is
+$L_q=0.9$, then $W_q=L_q/\lambda=0.45$ seconds, the mean TTFT (with no wait for memory)
+is $W_q+\E[S]=0.75$ seconds, and the mean number of turns at the prefill server is
+$L=\lambda\cdot0.75=1.5$.
+\end{example}
+
+The scheduler's objective is the mean number of turns in the stations, for example
+$L=L_P+L_D$ for the prefill server and the decode batch. By \cref{thm:little} this
+equals the total delay accumulated per unit time, $\lambda\cdot(\text{mean sojourn
+time})$, so ``reduce the mean number of turns'' and ``reduce the mean delay'' are the
+same goal. The ``price of a miss'' of \cref{sec:L3} is defined precisely as a change in
+$L_P$.
+
+\section{Exercises}
+
+\begin{exercise}\label{L1:exr:race}
+For independent $X_1\sim\mathrm{Exp}(\mu_1)$ and $X_2\sim\mathrm{Exp}(\mu_2)$, show that
+$\Prob(X_1<X_2)=\mu_1/(\mu_1+\mu_2)$, and that the event $\{X_1<X_2\}$ is independent
+of $\min(X_1,X_2)$.
+\emph{Hint:} integrate $\Prob(X_1<X_2,\ \min>t)$ against the density of $X_1$.
+\end{exercise}
+
+\begin{exercise}\label{L1:exr:delay}
+Each time a session makes a tool call, it stays away from the server for a mean of $Z$
+seconds. If tool calls start at rate $\lambda$, show that the time-average number of
+sessions in a tool call is $\lambda Z$. Does this hold whatever the distribution of the
+tool-call duration?
+\emph{Hint:} take the tool-call stage alone as ``the system'' and apply
+\cref{thm:little}.
+\end{exercise}
+
+\begin{exercise}\label{L1:exr:nocache}
+Remove $\kw{cache}\ \kappa T$ from the program of \cref{L1:ex:program}. Show from
+\cref{L1:def:semantics} that every turn then has $H_k=0$, and compute $\E[S]$ from
+\eqref{L1:eq:ES}. Which of the conditions \eqref{L1:eq:stable} becomes harder to meet?
+\end{exercise}
+
+\begin{exercise}\label{L1:exr:colocated}
+In a \emph{colocated} replica, prefill and decode run on one instance with one pool of
+$M$ bytes, and no transfer is needed. Write its \textsc{Route} program with one step
+stage. The instance of the paper gives each iteration's budget first to the decoding
+turns and the rest to the oldest prefill; the step stage serves its jobs in their
+order of entry. Show that the two orders coincide when turns enter in the order they
+are admitted and a prefill may take all the budget left: after every iteration every
+job in its decode phase precedes every job in its prefill phase. Give a two-job
+example showing that a cap on a single prefill's tokens per iteration breaks this.
+\emph{Hint:} a prefill that does not finish in an iteration leaves no budget behind it.
+\end{exercise}

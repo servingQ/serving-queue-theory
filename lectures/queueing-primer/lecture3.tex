@@ -1,0 +1,399 @@
+\chapter{The M/G/1 Queue and the Pollaczek--Khinchine Formula: the Price of a Miss}\label{sec:L3}
+
+In \cref{sec:L2} the service times were exponential, so the state of the queue
+was summarised by a single number, the number of customers. Prefill work is not
+exponential. It is a general distribution that mixes short appends (hits) with
+long recomputations (misses). The goal of this lecture is to compute the mean
+waiting time of a FIFO queue with a general service distribution (the
+Pollaczek--Khinchine formula), and then to differentiate it to prove the central
+proposition of the paper, the price of a miss. The key message is a single one.
+\emph{The mean wait of a FIFO queue depends not only on the mean of the work but
+also on its second moment.}
+
+\section{The M/G/1 queue and the residual service time}
+
+\begin{definition}[M/G/1 FIFO queue]\label{L3:def:mg1}
+An \term{M/G/1 queue} is a single-server queue with the following properties.
+\begin{enumerate}[label=(\alph*)]
+\item Arrivals form a Poisson process of rate $\lambda>0$ (\cref{def:poisson}).
+\item The \term{service time} (work) $S_k$ of the $k$-th customer is i.i.d.\ with
+  an arbitrary distribution $G$ (``General'') and independent of the arrival
+  process. $S$ denotes a generic random variable with law $G$, and we assume
+  $\E[S]<\infty$.
+\item There is one server, the waiting room is infinite, and the service
+  discipline is \term{FIFO} (first in, first out): when the server becomes free,
+  it serves the earliest waiting customer to completion without interruption.
+\end{enumerate}
+The load is $\rho=\lambda\E[S]$ (\cref{def:load}). The \term{waiting time in
+queue} $W_q$ of a customer is the time from arrival to the start of service, and
+the \term{sojourn time} is $W_q+S$. $L_q$ and $L$ are the time averages of the
+number of customers in the waiting room and in the whole system (waiting room
+and server), respectively.
+\end{definition}
+
+Unlike the exponential distribution, a general service distribution is not
+memoryless (\cref{prop:memoryless}). How much longer a customer who has already
+been served for 3 seconds will take depends on the information ``3 seconds''.
+The wait of an arriving customer therefore requires the quantity ``how much
+service is left for the customer now in service''.
+
+\begin{definition}[Residual service time]\label{L3:def:residual}
+If the server is serving a customer at time $t$, let $R(t)$ be the remaining
+service time of that customer; if the server is idle, set $R(t)=0$. $R(t)$ is
+called the \term{residual service time}.
+\end{definition}
+
+The sample path of $R(t)$ is a sawtooth. At the moment service of customer $k$
+begins, it jumps up to $S_k$; it then decreases with slope $-1$, and when it
+reaches 0 the next service begins or the server becomes idle. Hence the
+contribution of a single customer $k$ to $\int R(t)\dd t$ is the area $S_k^2/2$
+of a triangle with base and height $S_k$.
+
+\begin{lemma}[Time average of the residual service time \cite{kleinrock1975}]\label{lem:residual}
+In an M/G/1 queue, suppose $\E[S^2]<\infty$ and that the number $D(T)$ of
+customers who have completed service by time $T$ satisfies $D(T)/T\to\lambda$
+(a.s.) (stability; this holds if $\rho<1$). Then almost surely
+\[
+  \lim_{T\to\infty}\frac1T\int_0^T R(t)\dd t=\frac{\lambda\E[S^2]}{2}
+  =\rho\cdot\frac{\E[S^2]}{2\E[S]}.
+\]
+In particular, averaged only over the time the server is busy, the mean residual
+service time is $\E[S^2]/(2\E[S])$.
+\end{lemma}
+
+\begin{proof}
+Let $A(T)$ be the number of arrivals in $[0,T]$. The triangles of the customers
+who completed service in $[0,T]$ lie entirely in $[0,T]$, and every customer
+whose service has started arrived before $T$, so
+\[
+  \sum_{k=1}^{D(T)}\frac{S_k^2}{2}\ \le\ \int_0^T R(t)\dd t\ \le\ \sum_{k=1}^{A(T)}\frac{S_k^2}{2}.
+\]
+(Under FIFO the service order equals the arrival order, so the first $D(T)$
+customers are exactly those who have completed service.) By the strong law of
+large numbers $\frac1n\sum_{k\le n}S_k^2\to\E[S^2]$; for a Poisson process
+$A(T)/T\to\lambda$, and by assumption $D(T)/T\to\lambda$. Hence
+\[
+  \frac1T\sum_{k=1}^{D(T)}\frac{S_k^2}{2}
+  =\frac{D(T)}{T}\cdot\frac{1}{D(T)}\sum_{k=1}^{D(T)}\frac{S_k^2}{2}
+  \longrightarrow\lambda\cdot\frac{\E[S^2]}{2},
+\]
+and the upper sum has the same limit. The squeeze gives the first equality. The
+second equality is $\lambda=\rho/\E[S]$. The fraction of time the server is busy
+is $\rho$ (\cref{cor:busy}) and $R=0$ during idle time, so the average over busy
+time is $\lambda\E[S^2]/(2\rho)=\E[S^2]/(2\E[S])$.
+\end{proof}
+
+\begin{remark}[Inspection paradox]\label{L3:rem:inspection}
+$\E[S^2]/(2\E[S])=\frac{\E[S]}{2}(1+\mathrm{CV}^2)$, where
+$\mathrm{CV}^2=\Var[S]/\E[S]^2$ is the \term{squared coefficient of variation}.
+The intuition ``a customer in service has, on average, about half of its service
+left'' fails because, when we look at the server at a random time, the
+probability of catching a long service is proportional to its length. Indeed,
+the service observed at a busy instant has the \term{length-biased
+distribution} with density $x\,G(\mathrm{d}x)/\E[S]$, whose mean is
+$\E[S^2]/\E[S]$; the observation instant is uniform within that service, so the
+mean remaining time is half of it. This is the \term{inspection paradox}. For the
+exponential distribution $\mathrm{CV}^2=1$, so the mean residual equals $\E[S]$
+itself, in agreement with memorylessness.
+\end{remark}
+
+\section{The Pollaczek--Khinchine formula}
+
+\begin{theorem}[Pollaczek--Khinchine mean formula \cite{pollaczek1930,khinchine1932}]\label{thm:pk}
+In an M/G/1 FIFO queue let $\rho<1$ and $\E[S^2]<\infty$. Then in steady state
+\begin{equation}\label{L3:eq:pk}
+  \E[W_q]=\frac{\lambda\E[S^2]}{2(1-\rho)},\qquad
+  L=\rho+\frac{\lambda^2\E[S^2]}{2(1-\rho)}.
+\end{equation}
+\end{theorem}
+
+\paragraph{Steady-state assumption.} The proof takes the following facts as
+given. If $\rho<1$, the queue is stable, the waiting time $W_q^{(k)}$ of the
+$k$-th customer converges in distribution, and the limit law has a finite mean
+(when $\E[S^2]<\infty$). Moreover the customer averages and the time averages
+exist almost surely. These are standard results obtained by analysing the
+Lindley recursion $W^{(k+1)}_q=(W^{(k)}_q+S_k-\tau_{k+1})^+$ ($\tau$ the
+interarrival times); see \cite[Ch.~3, 10]{asmussen2003} and
+\cite[Ch.~5]{kleinrock1975}. The proof below accepts this existence and computes
+the \emph{value} of the limit.
+
+\begin{proof}
+Consider a customer who has just arrived in steady state (the ``tagged
+customer''). Under FIFO this customer waits for (1) the residual service time of
+the customer in service and (2) the service times of the $N_q$ customers already
+in the waiting room:
+\[
+  W_q=R+\sum_{j=1}^{N_q}S_{(j)},
+\]
+where $R$ is the residual service time at the arrival instant and $S_{(j)}$ is the
+service time of the $j$-th waiting customer.
+
+\emph{Mean of (1).} Poisson arrivals see time averages (PASTA, \cref{thm:pasta}).
+So the law of $R$ seen at the arrival instant is the time-stationary law of
+$R(t)$, and by \cref{lem:residual} $\E[R]=\lambda\E[S^2]/2$.
+
+\emph{Mean of (2).} The waiting customers have not started service yet. Under
+FIFO the state of the queue up to the arrival of the tagged customer is
+determined only by the arrival times and the service times of the customers who
+have already started service. Hence the service times $S_{(1)},S_{(2)},\dots$ of
+the customers not yet started can be regarded as i.i.d.\ $G$ random variables
+independent of $N_q$. Therefore
+$\E\bigl[\sum_{j\le N_q}S_{(j)}\bigr]=\sum_{n}\Prob(N_q=n)\,n\E[S]=\E[N_q]\E[S]$.
+By PASTA again, $\E[N_q]$ equals the time average $L_q$ of the number in the
+waiting room.
+
+\emph{Combining.} Applying Little's law (\cref{thm:little}) to the waiting room
+alone as the ``system'' gives $L_q=\lambda\E[W_q]$. Therefore
+\[
+  \E[W_q]=\frac{\lambda\E[S^2]}{2}+\lambda\E[W_q]\,\E[S]
+  =\frac{\lambda\E[S^2]}{2}+\rho\,\E[W_q].
+\]
+Since $\E[W_q]<\infty$, subtracting $\rho\E[W_q]$ from both sides and dividing by
+$1-\rho>0$ gives the first formula. The second formula is Little's law applied to
+the whole system: $L=\lambda(\E[W_q]+\E[S])=\rho+\lambda\E[W_q]$.
+\end{proof}
+
+\begin{corollary}[Variance increases the wait \cite{kleinrock1975}]\label{cor:variance}
+Under the assumptions of \cref{thm:pk},
+\begin{equation}\label{L3:eq:pk-cv}
+  \E[W_q]=\frac{\rho}{1-\rho}\cdot\frac{1+\mathrm{CV}^2}{2}\cdot\E[S].
+\end{equation}
+Hence, of two work laws with the same $\lambda$ and the same mean $\E[S]$ (so the
+same load $\rho<1$), the one with the larger variance waits strictly longer. In
+particular:
+\begin{enumerate}[label=(\roman*)]
+\item M/M/1 ($\mathrm{CV}^2=1$): $\E[W_q]=\rho\E[S]/(1-\rho)$, in agreement with
+  \cref{prop:mm1}.
+\item M/D/1 (deterministic service, $\mathrm{CV}^2=0$):
+  $\E[W_q]=\rho\E[S]/(2(1-\rho))$, exactly half of M/M/1 at the same load.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+Substituting $\E[S^2]=\E[S]^2(1+\mathrm{CV}^2)$ into \cref{L3:eq:pk} and using
+$\lambda\E[S]=\rho$ gives \cref{L3:eq:pk-cv}. With $\rho$ and $\E[S]$ fixed, the
+right side is strictly increasing in $\mathrm{CV}^2$. (i) and (ii) substitute
+$\mathrm{CV}^2=1,0$. For an exponential law with mean $1/\mu$ this is
+$\rho/(\mu(1-\rho))$, the M/M/1 waiting time.
+\end{proof}
+
+\begin{remark}
+Contrast this with the PS queue of \cref{sec:L2} (\cref{def:ps}). The mean number
+in an M/G/1-PS queue is $\rho/(1-\rho)$, insensitive to the work law
+(\cref{thm:insens}), while the mean number in FIFO, \cref{L3:eq:pk}, is sensitive
+to the law through $\E[S^2]$. A single long job blocks every customer behind it
+under FIFO, but not under PS, where all customers share the server.
+\end{remark}
+
+\section{Mixtures of hits and misses}
+
+The KV cache policy decides whether each turn is a hit or a miss, and hence sets
+the law of the prefill work.
+
+\begin{definition}[Hit/miss mixture work]\label{L3:def:mixture}
+Let $S^{\mathrm{hit}}$ and $S^{\mathrm{miss}}$ be square-integrable nonnegative
+random variables with $S^{\mathrm{miss}}\ge S^{\mathrm{hit}}$ (a.s.). At
+\term{hit rate} $h\in[0,1]$ the work $S_h$ has the law of $S^{\mathrm{hit}}$ with
+probability $h$ and the law of $S^{\mathrm{miss}}$ with probability $1-h$ (the
+choice is made by an independent coin toss).
+\end{definition}
+
+\begin{corollary}[A higher hit rate lowers the PK wait]\label{cor:mixture}
+Let $m_1(h)=\E[S_h]$, $m_2(h)=\E[S_h^2]$ and $\rho(h)=\lambda m_1(h)$.
+\begin{enumerate}[label=(\roman*)]
+\item $m_1$, $m_2$ and $\rho$ are affine and nonincreasing in $h$.
+\item If $\rho(h_0)<1$, then $\rho(h)<1$ for all $h\in[h_0,1]$, and
+  $W(h)=\lambda m_2(h)/(2(1-\rho(h)))$ is nonincreasing on $[h_0,1]$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) By the law of total expectation
+$m_k(h)=h\E[(S^{\mathrm{hit}})^k]+(1-h)\E[(S^{\mathrm{miss}})^k]$, $k=1,2$, and
+its slope in $h$ is $\E[(S^{\mathrm{hit}})^k]-\E[(S^{\mathrm{miss}})^k]\le0$
+(since $0\le S^{\mathrm{hit}}\le S^{\mathrm{miss}}$, $k$-th powers preserve the
+order).
+(ii) Since $\rho$ is nonincreasing, $\rho(h)\le\rho(h_0)<1$. If
+$h_0\le h\le h'$, then $0\le\lambda m_2(h')\le\lambda m_2(h)$ and
+$1-\rho(h')\ge1-\rho(h)>0$, so the numerator decreases and the denominator
+increases, giving $W(h')\le W(h)$.
+\end{proof}
+
+\section{The price of a miss}
+
+\Cref{cor:mixture} gives only a direction. A scheduler needs a \emph{magnitude}.
+If we drop the KV state of a particular program $i$, so that its next turn is a
+miss, by how much does the delay of the whole prefill stage grow?
+
+\begin{definition}[Mean number in the prefill stage and policy change]\label{L3:def:policy-change}
+Model the prefill stage as an M/G/1 FIFO queue with arrival rate $\lambda$, work
+$S$ ($m_1=\E[S]$, $m_2=\E[S^2]<\infty$) and load $\rho=\lambda m_1<1$. Let
+$W=\lambda m_2/(2(1-\rho))$ be the PK wait and $L_P$ the mean number in the
+prefill stage (waiting and in service). By Little's law
+\[
+  L_P=\lambda(W+m_1)=\rho+\frac{\lambda^2m_2}{2(1-\rho)}.
+\]
+For programs (classes) $i=1,\dots,k$, a \term{policy change} turns a fraction
+$q_i\ge0$ of arrivals ($\sum_iq_i\le1$) from hits with work
+$S_i^{\mathrm{hit}}\ge0$ into misses with work
+$S_i^{\mathrm{miss}}=S_i^{\mathrm{hit}}+\Delta S_i$, $\Delta S_i\ge0$. The moments of
+the work become
+\[
+  m_1'=m_1+A,\quad A=\sum_iq_i\Delta S_i,\qquad
+  m_2'=m_2+B,\quad B=\sum_iq_i\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr),
+\]
+and the new load is $\rho'=\rho+\lambda A$. We write $L_P'$ for the new mean
+number and $\Delta L_P=L_P'-L_P$ for the change.
+\end{definition}
+
+\begin{theorem}[The price of a miss]\label{thm:price}
+In the setting of \cref{L3:def:policy-change}, suppose $\rho'<1$ and define
+\begin{equation}\label{L3:eq:price}
+  \Phi_i=\Delta S_i
+  +\frac{\lambda\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr)}{2(1-\rho)}
+  +\frac{\lambda W\,\Delta S_i}{1-\rho}.
+\end{equation}
+Then
+\[
+  \lambda\sum_iq_i\Phi_i\ \le\ \Delta L_P\ \le\ \frac{1-\rho}{1-\rho'}\,\lambda\sum_iq_i\Phi_i .
+\]
+\end{theorem}
+
+\begin{proof}
+Write $u=1-\rho>0$. Then $1-\rho'=u-\lambda A>0$, and since $A\ge0$,
+$0<u-\lambda A\le u$. Applying the PK formula (\cref{thm:pk}) to the new work,
+\[
+  \Delta L_P=\lambda A+\frac{\lambda^2}{2}\Bigl(\frac{m_2+B}{u-\lambda A}-\frac{m_2}{u}\Bigr)
+  =\lambda A+\frac{\lambda^2}{2}\cdot\frac{u(m_2+B)-(u-\lambda A)m_2}{u(u-\lambda A)}
+  =\lambda A+\frac{Y}{u(u-\lambda A)},
+\]
+where $Y=\frac{\lambda^2}{2}\bigl(uB+\lambda A m_2\bigr)\ge0$. On the other hand,
+taking the $q_i$-weighted sum of \cref{L3:eq:price} and using $W=\lambda m_2/(2u)$,
+\[
+  \lambda\sum_iq_i\Phi_i=\lambda A+\frac{\lambda^2B}{2u}+\frac{\lambda^2WA}{u}
+  =\lambda A+\frac{\lambda^2}{2u^2}\bigl(uB+\lambda Am_2\bigr)
+  =\lambda A+\frac{Y}{u^2}.
+\]
+\emph{Lower bound.} Since $u-\lambda A\le u$, $Y/(u(u-\lambda A))\ge Y/u^2$, and
+hence $\Delta L_P\ge\lambda\sum_iq_i\Phi_i$.
+
+\emph{Upper bound.} A direct computation gives
+\[
+  \frac{u}{u-\lambda A}\Bigl(\lambda A+\frac{Y}{u^2}\Bigr)-\Delta L_P
+  =\lambda A\Bigl(\frac{u}{u-\lambda A}-1\Bigr)+\frac{Y}{u(u-\lambda A)}-\frac{Y}{u(u-\lambda A)}
+  =\frac{(\lambda A)^2}{u-\lambda A}\ \ge0 .
+\]
+Since $u/(u-\lambda A)=(1-\rho)/(1-\rho')$, the upper bound holds.
+\end{proof}
+
+\paragraph{Reading the three terms.} $\Phi_i$ is measured in seconds. Misses of
+program $i$ occur at rate $\lambda q_i$, so by Little's law $\lambda q_i\Phi_i$ is
+an increase in the mean number, and $\Phi_i$ is ``the total waiting time, summed
+over all turns, that one miss adds''.
+\begin{enumerate}[label=(\arabic*)]
+\item $\Delta S_i$: the miss itself takes longer to serve (its own cost).
+\item $\lambda((S^{\mathrm{miss}}_i)^2-(S^{\mathrm{hit}}_i)^2)/(2(1-\rho))$: turns
+  that arrive while the miss is being served wait for all of it. This comes from
+  the second moment in the PK formula, and its size is the difference of the
+  \emph{squares} of the work. It is the cost imposed on other customers, the
+  \term{externality} of the economics of queues; in these notes we call it the
+  \term{head-of-line term}.
+\item $\lambda W\Delta S_i/(1-\rho)$: the extra work raises the load, which
+  stretches every wait by the factor $1/(1-\rho)$ (the load term).
+\end{enumerate}
+Since $(S^{\mathrm{miss}})^2-(S^{\mathrm{hit}})^2=(S^{\mathrm{miss}}+S^{\mathrm{hit}})\Delta S$,
+\[
+  \frac{\text{(2)}}{\text{(1)}}=\frac{\lambda(S_i^{\mathrm{miss}}+S_i^{\mathrm{hit}})}{2(1-\rho)},\qquad
+  \frac{\text{(2)}}{\text{(3)}}=\frac{S_i^{\mathrm{miss}}+S_i^{\mathrm{hit}}}{2W}.
+\]
+The first ratio is of the order of ``the number of turns that arrive while one
+miss is served''. When it is small, the price is close to $\Delta S_i$; when it is
+large, the head-of-line term dominates. Once the mean wait $W$ exceeds half the
+sum of the miss and hit work, the load term exceeds the head-of-line term.
+
+\begin{example}[At moderate load the head-of-line term dominates]\label{L3:ex:price}
+In seconds, let $\lambda=1.25$, $m_1=0.4$, $m_2=0.5$, so $\rho=0.5$ and $W=0.625$.
+Let a program have hit work $S^{\mathrm{hit}}=0.2$ and miss work
+$S^{\mathrm{miss}}=2.0$ ($\Delta S=1.8$). The three terms are
+\[
+  \Delta S=1.8,\qquad \frac{1.25\,(4-0.04)}{2\cdot0.5}=4.95,\qquad
+  \frac{1.25\cdot0.625\cdot1.8}{0.5}=2.8125,
+\]
+so $\Phi=9.5625$ seconds. One miss creates more than five times its own extra
+service in total waiting, and most of it is paid by the turns queued behind it.
+The two ratios are $2.75$ and $1.76$. If a fraction $q=0.01$ of this program's
+turns turn into misses, then $\rho'=0.5225$, and the exact change
+$\Delta L_P\approx0.1241$ lies in the interval $[0.1195,\ 0.1252]$ of the theorem.
+\end{example}
+
+\begin{corollary}[Divergence near saturation]\label{cor:price-diverge}
+Fix the work law ($m_1>0$, $m_2>0$) and $\Delta S_i>0$, and let
+$\lambda\uparrow1/m_1$ (that is, $\rho\uparrow1$). Then $\Phi_i\to\infty$.
+\end{corollary}
+
+\begin{proof}
+Put $\rho=1-\varepsilon$ with $0<\varepsilon\le1/2$, so
+$\lambda=(1-\varepsilon)/m_1\ge1/(2m_1)$. The first two terms of $\Phi_i$ are
+nonnegative, and the third is
+$\lambda W\Delta S_i/\varepsilon=\lambda^2m_2\Delta S_i/(2\varepsilon^2)\ge m_2\Delta S_i/(8m_1^2\varepsilon^2)$,
+which diverges as $\varepsilon\to0$.
+\end{proof}
+
+\begin{corollary}[Monotonicity in the context length]\label{cor:price-mono}
+Let the prefill cost be $P(n,K)=an+bn(K+n/2)$ ($a,b\ge0$; the cost of computing
+$n$ tokens on top of a prefix of length $K$). A hit costs
+$S^{\mathrm{hit}}=P(n,K)$ and a miss, which recomputes the whole context, costs
+$S^{\mathrm{miss}}=P(K+n,0)$. Then $\Delta S=aK+bK^2/2$, and with $\lambda,\rho,W$
+and the number $n$ of appended tokens fixed, $\Phi$ is nondecreasing in $K\ge0$.
+\end{corollary}
+
+\begin{proof}
+$P(K+n,0)-P(n,K)=a(K+n)+\tfrac b2(K+n)^2-an-bnK-\tfrac b2n^2=aK+\tfrac b2K^2$.
+Both $\Delta S$ and $S^{\mathrm{hit}}=an+bnK+bn^2/2$ are nonnegative and
+nondecreasing in $K$, and so is
+$S^{\mathrm{miss}}+S^{\mathrm{hit}}=2S^{\mathrm{hit}}+\Delta S$. The three terms of
+\cref{L3:eq:price} are nonnegative constants times $\Delta S$,
+$(S^{\mathrm{miss}}+S^{\mathrm{hit}})\Delta S$ and $\Delta S$, respectively, so all
+are nondecreasing in $K$.
+\end{proof}
+
+\serving{Chunked prefill splits a long prefill into small chunks and interleaves
+them with the decode steps, which protects the requests that are decoding. But
+pending prefills are still processed in arrival order, so a prefill that arrives
+behind a long miss cannot start until every chunk of that miss is done. As long
+as the server's order is FIFO, the head-of-line term (2) remains, whatever the
+chunk size.}
+
+\serving{At the same load and with the same append, \cref{cor:price-mono} says
+that the price of a miss is larger for a program with a longer context. But what
+the scheduler compares is $p_i\Phi_i/c_i$, divided by the memory $c_i$ and
+weighted by the resume probability $p_i$, and that order can flip with the load,
+because the load changes the weights of the three terms of $\Phi_i$.}
+
+\begin{remark}[Limits of the M/G/1 assumption]\label{L3:rem:finite}
+M/G/1 assumes an infinite customer population. In practice a memory pool holds a
+few dozen live sessions at a time, and a session waiting for prefill cannot
+create its next turn, so arrivals slow down when the queue is long. The finite
+population model of Lecture~4 (\cref{prop:finite}) captures this effect exactly
+and shows that, for exponential work, the wait of the open formula is at least
+the finite-population wait at the same utilisation. In that case the $W$ of this
+lecture is a conservative (upper) estimate. For general work the relation between
+the two waits is a question for measurement.
+\end{remark}
+
+\section{Exercises}
+
+\begin{exercise}\label{L3:ex:1}
+Show that the mean residual service time over busy time, $\E[S^2]/(2\E[S])$, is
+always at least $\E[S]/2$, with equality only when $S$ is deterministic. Also
+check that it equals $\E[S]$ when $S$ is exponential.
+\emph{Hint:} $\E[S^2]=\E[S]^2+\Var[S]$.
+\end{exercise}
+
+\begin{exercise}\label{L3:ex:2}
+With the numbers of \cref{L3:ex:price} and $q=0.01$, compute $\Delta L_P$ exactly
+and check $0.1195\le\Delta L_P\le0.1252$. How does the ratio of the upper to the
+lower bound change as $q$ grows?
+\emph{Hint:} substitute $m_1+A$ and $m_2+B$ into
+$L_P=\lambda m_1+\lambda^2m_2/(2(1-\lambda m_1))$.
+\end{exercise}

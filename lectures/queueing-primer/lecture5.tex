@@ -1,0 +1,466 @@
+\chapter{Putting It Together: The Theory of the Paper, Step by Step}\label{sec:L5}
+
+The first four lectures built tools. This lecture assembles them into the
+argument of the paper. We go in the order the paper does: the model
+(\cref{L5:sec:model}), where the variance of prefill work comes from
+(\cref{L5:sec:variance}), the decision problem and its single price
+(\cref{L5:sec:decision}), and the scheduler whose every step compares that
+price with the price of memory (\cref{L5:sec:scheduler}). We close with an
+honest list of what is exact and what is approximate
+(\cref{L5:sec:honest}). For each step we name the result of Lectures 1--4
+that carries it.
+
+\section{The model in one page}\label{L5:sec:model}
+
+\begin{definition}[Replica and its three demands]\label{L5:def:replica}
+The system has $J$ \term{replicas}; each has a memory pool of $M$ bytes.
+A turn $i$ has context $K_i$ tokens (already in the session), appends $n_i$
+new tokens and decodes $o_i$ output tokens. It makes three demands on the
+replica that serves it.
+\begin{enumerate}[label=(\alph*)]
+\item \emph{Prefill compute.} Prefilling $n$ tokens on top of a resident
+  prefix of $K$ tokens costs
+  \begin{equation}\label{L5:eq:prefill}
+    P(n,K)=a\,n+b\,n\,(K+n/2)
+  \end{equation}
+  seconds, with $a,b\ge0$: a linear term for the dense layers and an
+  attention term over the prefix. A \term{hit} costs $P(n_i,K_i)$; a
+  \term{miss} recomputes the whole context, $P(K_i+n_i,0)$.
+\item \emph{Decode bandwidth.} $D_i=o_i(\beta K_i+\omega/m)$ seconds, where
+  $m$ is the batch size, $\beta$ the time to read one token's KV and
+  $\omega$ the time to read the weights once.
+\item \emph{Memory.} $c_i=\kappa K_i$ bytes while the state is resident,
+  with $\kappa$ the KV bytes per token.
+\end{enumerate}
+\end{definition}
+
+The hit/miss distinction lives entirely in demand (a): $D_i$ and $c_i$ are
+the same for a hit and a miss. By \cref{cor:price-mono} the extra work of a
+miss is $\Delta S_i=aK_i+bK_i^2/2$, quadratic in the context.
+
+\paragraph{Two stations and a pool.} \Cref{fig:projection} in
+\cref{L1:sec:projection} shows the structure; here we add the numbers and
+name the lecture that backs each modelling choice.
+\begin{enumerate}
+\item \emph{Decode is a PS station} with capacity $\varphi(m)$
+  (\cref{def:ps}). Continuous batching advances every turn in the batch at
+  each step. By \cref{thm:insens} the batch-size law is
+  $\pi(m)\propto\rho_D^m/\prod_{k\le m}\varphi(k)$ with $\rho_D=\lambda\E[D]$,
+  whatever the law of $D$.
+\item \emph{Prefill is a FIFO queue} whose server is available the fraction
+  of time the decode batch leaves. Chunked prefill interleaves chunks with
+  decode steps but serves pending prefills in arrival order, so the
+  M/G/1 FIFO analysis of \cref{sec:L3} applies, with the PK wait
+  $\E[W_q]=\lambda\E[S^2]/(2(1-\rho))$ (\cref{thm:pk}).
+\item \emph{Sessions form a closed loop} (prefill $\to$ decode $\to$ tool),
+  and new sessions arrive as a Poisson process of rate $\Lambda$. The tool
+  call is a delay station (\cref{L4:def:delay}).
+\item \emph{The pool} of $M$ bytes holds both the running batch and the
+  paused sessions' KV. Once it is full, the KV policy decides what to
+  drop, and so which future turns hit.
+\end{enumerate}
+
+\paragraph{The objective.} The paper minimises $L=L_P+L_D$, the mean number
+of turns in the prefill stage plus the mean number in the decode batch. By
+Little's law (\cref{thm:little}), $L$ equals $\lambda$ times the mean time a
+turn spends in the two stages, so minimising $L$ is minimising mean delay.
+
+\serving{The two stations respond to the cache in opposite ways. The decode
+stage sees only the mean demand (insensitivity), and a miss does not change
+the decode demand at all (\cref{L2:cor:decode-hit}). The prefill stage sees
+the second moment of its work (PK), and the cache sets that second moment.
+This asymmetry is the whole reason the paper prices misses at the prefill
+queue.}
+
+\section{Where the variance of prefill work comes from}\label{L5:sec:variance}
+
+The PK formula makes $\E[S^2]$, equivalently $\mathrm{CV}^2$, a first-class
+quantity (\cref{cor:variance}). The paper does not assume that agentic
+workloads are intrinsically ``high variance''; it asks where the variance
+comes from. The tool is the law of total variance.
+
+\begin{lemma}[Variance split of the hit/miss mixture]\label{L5:lem:split}
+Let $S_h$ be the mixture of \cref{L3:def:mixture}: $S^{\mathrm{hit}}$ with
+probability $h$ and $S^{\mathrm{miss}}$ with probability $1-h$, with means
+$\mu_{\mathrm{hit}},\mu_{\mathrm{miss}}$ and variances
+$\sigma^2_{\mathrm{hit}},\sigma^2_{\mathrm{miss}}$. Then
+\[
+  \Var[S_h]=\underbrace{h\,\sigma^2_{\mathrm{hit}}+(1-h)\,\sigma^2_{\mathrm{miss}}}_{\text{spread of the appends}}
+  +\underbrace{h(1-h)\,(\mu_{\mathrm{miss}}-\mu_{\mathrm{hit}})^2}_{\text{hit/miss mixture}} .
+\]
+\end{lemma}
+
+\begin{proof}
+Let $I$ be the indicator of a hit. By the law of total variance,
+$\Var[S_h]=\E[\Var(S_h\mid I)]+\Var(\E[S_h\mid I])$. The first term is
+$h\sigma^2_{\mathrm{hit}}+(1-h)\sigma^2_{\mathrm{miss}}$. The conditional
+mean $\E[S_h\mid I]$ takes the value $\mu_{\mathrm{hit}}$ with probability
+$h$ and $\mu_{\mathrm{miss}}$ with probability $1-h$, a two-point
+variable whose variance is $h(1-h)(\mu_{\mathrm{miss}}-\mu_{\mathrm{hit}})^2$.
+\end{proof}
+
+The first term is not the scheduler's to change: it comes from the spread
+of tool outputs (a line or a whole file). The second term is the KV
+policy's lever. It vanishes at $h\in\{0,1\}$ and grows with the squared gap
+$(\mu_{\mathrm{miss}}-\mu_{\mathrm{hit}})^2$, which by \eqref{L5:eq:prefill}
+grows like $K^4$ once attention dominates. The paper measures both terms
+on production traces rather than assuming either one dominates. The lesson
+for the theory is that what a scheduler must price is not a ratio of
+$\mathrm{CV}^2$ but the rise of $\lambda\E[S^2]/(2(1-\rho))$ that one
+more miss causes. That is exactly $\Phi_i$.
+
+\section{The decision problem and one price}\label{L5:sec:decision}
+
+At a decision epoch a replica holds a set of paused programs. Program
+$i$ holds $c_i$ bytes, resumes with probability $p_i$ after an expected
+further $\tau_i$ seconds, and its next turn needs $S_i^{\mathrm{hit}}$ if
+its state is still resident and $S_i^{\mathrm{hit}}+\Delta S_i$ if not. The
+controller decides for each state whether to keep it, and the memory
+constraint couples all these decisions.
+
+\paragraph{Step 1: price a miss.} \Cref{thm:price} gives the rise in $L_P$
+when a fraction of turns turns from hits into misses:
+\[
+  \Phi_i=\underbrace{\Delta S_i}_{\text{own work}}
+  +\underbrace{\frac{\lambda\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr)}{2(1-\rho)}}_{\text{head-of-line}}
+  +\underbrace{\frac{\lambda W\,\Delta S_i}{1-\rho}}_{\text{load}} .
+\]
+A single eviction is a transient event, while \cref{thm:price} compares two
+stationary regimes. The paper therefore reads one eviction as a small
+change of policy, a fraction $q_i$ of arrivals turning from hits into
+misses. This is an approximation, and the paper tests it empirically.
+
+\paragraph{Step 2: price a drop.} Dropping program $i$'s state causes a
+miss only if the program resumes, so the expected price of the drop, its
+price per byte and its price per byte-second held are
+\begin{equation}\label{L5:eq:utility}
+  w_i=p_i\,\Phi_i,\qquad v_i=\frac{w_i}{c_i},\qquad u_i=\frac{w_i}{c_i\,\tau_i}.
+\end{equation}
+
+\paragraph{Step 3: price memory.} Keeping program $i$ occupies $c_i$ bytes
+for about $\tau_i$ seconds, that is $c_i\tau_i$ byte-seconds. Let
+$x_i\in\{0,1\}$ indicate ``keep'' and let $B$ be the byte-seconds available
+over the horizon. The keep-or-drop problem is
+\begin{equation}\label{L5:eq:primal}
+  \mathrm{OPT}=\min_{x\in\{0,1\}^I}\ \sum_i(1-x_i)\,w_i
+  \quad\text{s.t.}\quad \sum_i c_i\tau_i\,x_i\le B .
+\end{equation}
+Relaxing the constraint with a multiplier $\theta\ge0$ gives the
+Lagrangian
+$\mathcal{L}(x,\theta)=\sum_i(1-x_i)w_i+\theta\bigl(\sum_ic_i\tau_ix_i-B\bigr)$.
+We call $\theta$ the \term{shadow price} of a byte-second.
+
+\begin{proposition}[One price for memory]\label{L5:prop:shadow}
+\begin{enumerate}[label=(\roman*)]
+\item For every $\theta\ge0$, $x^\theta_i=\1\{u_i>\theta\}$ minimises
+  $\mathcal{L}(\cdot,\theta)$, and $g(\theta):=\mathcal{L}(x^\theta,\theta)\le\mathrm{OPT}$.
+\item If $\theta$ is such that $x^\theta$ uses the budget exactly,
+  $\sum_ic_i\tau_ix^\theta_i=B$, then $x^\theta$ is optimal
+  for~\eqref{L5:eq:primal}.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) $\mathcal{L}(x,\theta)=\sum_iw_i-\theta B+\sum_ix_i(\theta c_i\tau_i-w_i)$
+is separable in $x$. Each term is minimised by $x_i=1$ when
+$\theta c_i\tau_i<w_i$, that is $u_i>\theta$, and by $x_i=0$ otherwise.
+For any feasible $x$ the bracket $\sum_ic_i\tau_ix_i-B$ is $\le0$, so
+$\sum_i(1-x_i)w_i\ge\mathcal{L}(x,\theta)\ge g(\theta)$. Minimising over
+feasible $x$ gives $\mathrm{OPT}\ge g(\theta)$ (weak duality).
+
+(ii) $x^\theta$ is feasible, and its constraint term vanishes, so its
+objective equals $g(\theta)\le\mathrm{OPT}$. Hence it is optimal.
+\end{proof}
+
+Part~(ii) is the threshold rule of \cref{thm:threshold} in byte-second form:
+keep what is worth more per byte-second than memory, drop the rest. When
+no $\theta$ uses the budget exactly (items are indivisible), the fractional
+relaxation is still solved by the threshold rule with one item split, and
+engines that evict blocks rather than whole programs are close to that case.
+
+\paragraph{Step 4: how long to keep.} \Cref{L5:prop:shadow} decides at one instant.
+Because the Lagrangian is separable, once $\theta$ is fixed each program can also be
+treated on its own over time: keep its state until some time $T$ and drop it then if the
+program has not resumed. Let the program resume with probability $p\in(0,1]$, and, given
+that it resumes, after a time with a continuous distribution function $G$ and density
+$g$ on $[0,\infty)$. Holding the state costs $\theta c$ per second; dropping it costs
+$\Phi$ if the program resumes later. The expected cost of the rule ``hold until $T$'' is
+\begin{equation}\label{L5:eq:hold-cost}
+  C(T)=\theta c\int_0^T\bigl(1-pG(t)\bigr)\dd t+\Phi\,p\,\bigl(1-G(T)\bigr),
+\end{equation}
+since the state is held at time $t$ exactly when the program has not resumed by $t$,
+and a miss occurs exactly when it resumes after $T$. The quantity that decides is the
+\term{resume hazard}
+\[
+  \eta(t)=\frac{p\,g(t)}{1-pG(t)},
+\]
+the rate at which a program that has not resumed by $t$ resumes at $t$.
+
+\begin{proposition}[Optimal holding time]\label{L5:prop:hold}
+Let $r=\theta c/\Phi$ with $\Phi>0$, and suppose $g$ is continuous.
+\begin{enumerate}[label=(\roman*)]
+\item $C'(T)=\bigl(1-pG(T)\bigr)\bigl(\theta c-\Phi\,\eta(T)\bigr)$ for every $T\ge0$.
+  Holding a little longer lowers the cost exactly when $\Phi\,\eta(T)>\theta c$.
+\item If $\eta$ is nonincreasing, let $T^*=\inf\{T\ge0:\eta(T)\le r\}$. If
+  $T^*<\infty$ it minimises $C$ over $[0,\infty)$; if $T^*=\infty$, $C$ is nonincreasing
+  and the state should be held until the program resumes. In particular $T^*=0$, drop at
+  once, if and only if $\eta(0)\le r$.
+\item If $G$ is exponential with mean $\tau$, then $\eta$ is nonincreasing and
+  $\eta(0)=p/\tau$, so the state should be kept at all if and only if
+  \[
+    u=\frac{p\,\Phi}{c\,\tau}>\theta ,
+  \]
+  the price per byte-second of \eqref{L5:eq:utility}. If $p=1$ and $u>\theta$, the
+  state is held until the program resumes. If $p<1$ and $u>\theta$, the optimal holding
+  time is
+  \[
+    T^*=\tau\,\ln\Bigl[\frac{p}{1-p}\Bigl(\frac{\Phi}{\theta c\tau}-1\Bigr)\Bigr].
+  \]
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The integrand in \eqref{L5:eq:hold-cost} is continuous, so by the fundamental
+theorem of calculus the first term has derivative $\theta c(1-pG(T))$, and the second
+has derivative $-\Phi p\,g(T)$. Factoring out $1-pG(T)$ gives the formula when
+$pG(T)<1$; when $pG(T)=1$ (possible only if $p=1$) both sides vanish, because
+$g(T)=0$ wherever $G$ has reached $1$ and $g$ is continuous. The factor $1-pG(T)$ is
+nonnegative, so the sign of $C'(T)$ is the sign of $\theta c-\Phi\eta(T)$.
+
+(ii) For $T<T^*$, $\eta(T)>r$, so $C'(T)\le0$ by (i). For $T>T^*$, $\eta(T)\le r$
+because $\eta$ is nonincreasing, so $C'(T)\ge0$. Hence $C$ is nonincreasing on
+$[0,T^*]$ and nondecreasing on $[T^*,\infty)$, and $T^*$ is a minimiser. If
+$T^*=\infty$, then $C'\le0$ everywhere. The last claim is the definition of $T^*$ at
+$T=0$, using that $\eta$ is nonincreasing.
+
+(iii) With $x=e^{-T/\tau}$, $g(T)=x/\tau$ and $1-pG(T)=1-p+px$, so
+\[
+  \eta(T)=\frac{p}{\tau}\cdot\frac{x}{1-p+px}.
+\]
+The map $x\mapsto x/(1-p+px)$ is nondecreasing on $(0,1]$, and $x$ decreases in $T$,
+so $\eta$ is nonincreasing; it is the constant $1/\tau$ when $p=1$. At $T=0$,
+$\eta(0)=p/\tau$, and $\eta(0)>r$ is $p\Phi/(c\tau)>\theta$. If $p=1$, $\eta\equiv1/\tau>r$,
+so $T^*=\infty$ by (ii). If $p<1$, $\eta(T)\to0$ as $T\to\infty$, so $T^*$ is finite and
+solves $\eta(T^*)=r$ by continuity:
+$px/\tau=r(1-p+px)$, that is $x=r(1-p)/\bigl(p(1/\tau-r)\bigr)$, and
+$T^*=-\tau\ln x=\tau\ln\bigl[\frac{p}{1-p}\bigl(\frac{1}{r\tau}-1\bigr)\bigr]$ with
+$1/(r\tau)=\Phi/(\theta c\tau)$.
+\end{proof}
+
+So the instantaneous test $u_i>\theta$ of the scheduler is exactly the optimal decision
+to keep a state for exponential resume times, and part~(iii) adds how long to keep it.
+For example, with $p=0.5$, $\tau=10$\,s, $\Phi=20$\,s, $c=1$ and $\theta=0.3$, $u=1>\theta$,
+the optimal holding time is $T^*\approx17.3$\,s, and it lowers the expected cost from
+$C(0)=p\Phi=10$ to $C(T^*)\approx5.6$. When the gap distribution has a decreasing hazard, as
+heavy-tailed gaps typically do, part~(ii) gives a program-specific time-to-live.
+
+\begin{remark}[Unknown resume times and the oracle]\label{L5:rem:ski}
+If nothing is known about $G$, holding the state is the classical \emph{ski rental}
+problem: pay rent $\theta c$ per second or buy once at price $\Phi$
+\cite{karlin1988}. The rule ``hold for $\Phi/(\theta c)$ seconds'' costs at most twice
+the cost in hindsight for any resume time: if the program resumes at
+$\tau\le\Phi/(\theta c)$ it pays $\theta c\tau$, which is optimal; otherwise it pays
+$2\Phi$ against a hindsight optimum of $\Phi$. The hindsight optimum, which knows
+whether and when each program resumes, is called the \term{oracle}; it keeps a state
+exactly when the program resumes and $\theta c\tau<\Phi$. It cannot be run online, but
+it is the benchmark against which a policy's cost is reported as cost/OPT. The factor
+two needs the program to resume: against a program that never does, the oracle pays
+nothing, and no rule that holds the state for a positive time has a bounded ratio.
+\end{remark}
+
+\Cref{L5:prop:hold} holds $\theta$ and $\Phi$ fixed. In the real system both move with
+the policy: what is dropped changes the load, and the load changes every $\Phi_i$ and
+the value of $\theta$ that fills the pool. The joint optimum is a Markov decision problem
+over the whole state, with no closed form; \cref{L5:prop:hold} is its solution at a
+fixed point of $(\theta,\Phi)$.
+
+\section{The scheduler, step by step}\label{L5:sec:scheduler}
+
+Every decision now compares a program's $u_i$ with the replica's $\theta$.
+
+\paragraph{Eviction.} When $\Delta C$ bytes must be freed now, the problem
+is the covering knapsack of \cref{L4:def:knapsack} with $w_i=p_i\Phi_i$.
+Take blocks in increasing $u_i$ until $\Delta C$ is freed; $\theta$ is the
+$u_i$ of the last block taken, and $\theta=0$ while the pool has room.
+Deployed rules evict by a fixed key: shortest context first, least recently
+used, longest idle, or an expired time-to-live. \Cref{prop:blind} says what
+such a key can and cannot do: a key that ignores $p_i$ has no constant
+approximation ratio (part~(i)), and shortest-first is within a factor two
+only when every program resumes and the price is the recompute work alone
+(part~(ii)).
+
+\begin{example}[The load reorders programs]\label{L5:ex:flip}
+Take $a=0.2$\,ms/token and $b=a/K_c$ with $K_c=50{,}000$ tokens, and an
+append of $n=1000$ tokens. Program A has $K=200$k tokens and $p=0.3$;
+program B has $K=20$k tokens and $p=0.9$. Then $\Delta S_A=120$\,s and
+$\Delta S_B=4.8$\,s. At an idle queue ($\lambda\to0$) the price is the own
+work, and the price per thousand tokens $p\Phi/K$ is $0.18$\,s for A and
+$0.216$\,s for B: evict A first. At $\lambda=0.25$/s with $\E[S]=2$\,s and
+$\E[S^2]=20$\,s$^2$ ($\rho=0.5$, $W=5$\,s) the head-of-line term dominates;
+$\Phi_A\approx4080$\,s and $\Phi_B\approx23.2$\,s, and the prices per
+thousand tokens become $6.12$\,s and $1.05$\,s: evict B first. No fixed key
+reproduces both orders, which is why the scheduler prices at decision time.
+\end{example}
+
+\paragraph{Keep, offload or drop.} With a slower tier (host memory or a
+shared KV store) each paused state has three options: keep it at cost
+$\theta c_i\tau_i$, drop it at expected cost $w_i$, or offload it at the
+\term{priced fetch}, which is $\Phi_i$ with the transfer time in place of
+$\Delta S_i$ (plus the tier's own wait once it saturates). The scheduler
+takes the least of the three. Two facts follow from this being a minimum.
+
+\begin{proposition}[Offloading as an option]\label{L5:prop:offload}
+Let each state $i$ have a finite set of actions $\mathcal{A}_i$ with
+costs $\gamma_i(a)$, and let the total cost be separable. Then
+\begin{enumerate}[label=(\roman*)]
+\item enlarging each $\mathcal{A}_i$ never raises the optimal cost; in
+  particular, making offloading available never hurts;
+\item a policy that always offloads can cost more than one that never
+  offloads.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) A minimum over a larger set is at most the minimum over a subset.
+(ii) One state with keep cost $1$, drop cost $1$ and priced fetch $2$
+suffices: always offloading pays $2$, never offloading pays $1$.
+\end{proof}
+
+So when an always-offloading stack collapses, the collapse is a property of
+the policy, not of the offloading mechanism.
+
+\paragraph{Placement.} A resuming turn can run where its state is (replica
+1) or elsewhere (replica $j$). The router charges each replica its wait $W_j$
+and service $S_j$, the cost $R_j$ of moving or recomputing the state, and
+the expected future cost $F_j$ of the program's remaining turns, and picks
+the minimum. The price of a miss supplies $R_j$: moving turns the next turn
+into a miss served at replica $j$, so $R_j$ is $\Phi_i$ at replica $j$'s
+load. \emph{Session affinity}, the rule that never moves a program, sets
+$R_j=\infty$ for $j\ne1$.
+
+\begin{proposition}[When affinity loses]\label{L5:prop:rhostar}
+Let the affinity replica be an M/M/1 queue with service rate $\mu$ and
+utilisation $\rho<1$, and let the alternative be an idle replica with the
+same rate, at extra cost $x=R+F\ge0$. Staying costs more than moving if and
+only if
+\[
+  \rho>\rho^*:=\frac{\mu x}{1+\mu x},
+\]
+and $\rho^*$ is nondecreasing in $x$.
+\end{proposition}
+
+\begin{proof}
+By \cref{prop:mm1} the mean response time at the affinity replica is
+$1/(\mu(1-\rho))$, and moving costs $1/\mu+x$. The inequality
+$1/(\mu(1-\rho))>1/\mu+x$ is $1/(1-\rho)>1+\mu x$, that is
+$1-\rho<1/(1+\mu x)$, that is $\rho>\mu x/(1+\mu x)$. The map
+$x\mapsto\mu x/(1+\mu x)=1-1/(1+\mu x)$ is nondecreasing.
+\end{proof}
+
+An idle alternative gives the earliest inversion, so $\rho^*$ is a lower
+bound on the load at which affinity loses to any real alternative. A shared
+KV store lowers $R$ and hence $\rho^*$: affinity and a store are
+alternatives, not complements.
+
+\paragraph{Admission.} The pool holds both the batch and the paused
+states, and the two compete unstably: a miss keeps its turn longer in the
+prefill queue and in the batch, which holds more bytes, which evicts more
+paused state, which causes more misses. Admission keeps the replica out
+of this regime by capping the number of live sessions. The cap comes from
+\cref{cor:resident-kv}: with sessions of lifetime $T_s$ holding $K(t)$
+tokens at age $t$, the mean resident KV is $\kappa\Lambda\E[\int_0^{T_s}K(t)\dd t]$.
+Writing $\bar k=\kappa\E[\int_0^{T_s}K(t)\dd t]/\E[T_s]$ for the
+time-averaged footprint of a live session and using Little's law for the
+mean number of live sessions $\Lambda\E[T_s]$, the mean resident KV is
+(live sessions)$\times\bar k$. The admission step caps live sessions near
+$M/\bar k$ and holds the rest in an entry queue. \Cref{cor:resident-kv}
+also warns that the naive footprint $\kappa\E[\bar K]$ underestimates
+$\bar k$ whenever long contexts belong to long sessions. The cap has a price
+of its own, the wait at the entry queue, and a session is worth admitting
+while the memory it will hold, priced at $\theta$ per byte-second, costs
+less than that wait.
+
+\paragraph{The scheduler in one table.} Each deployed rule replaces one
+price by a constant:
+\begin{center}\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Rule & What it fixes \\
+\midrule
+shortest-first eviction & $w_i\propto c_i^2$ (every program resumes, own work only) \\
+LRU, time-to-live & $p_i$ constant \\
+always offload & priced fetch $=0$ \\
+strict session affinity & $R_j=\infty$ \\
+admit every session & $\theta=0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{What is exact and what is approximate}\label{L5:sec:honest}
+
+A mathematician should know which statements are theorems about the model
+and which are modelling choices.
+
+\begin{itemize}
+\item \emph{Exact, given the model:} the price bracket (\cref{thm:price}),
+  the decode price and its monotonicity (\cref{thm:L-mono},
+  \cref{prop:decode-price}), the finite-population inequalities
+  (\cref{prop:finite}), the price-blind bounds (\cref{prop:blind}), and
+  \cref{L5:prop:shadow,L5:prop:offload,L5:prop:rhostar}.
+\item \emph{Approximate:} the prefill stage is not M/G/1. Session feedback
+  makes its arrivals non-Poisson, and the server's budget fluctuates with
+  the decode batch. BCMP product form covers the PS and delay stations but
+  not the FIFO prefill stage. For exponential work,
+  \cref{prop:finite}(ii) shows the open formula overstates the wait at
+  equal utilisation. For general work this comparison is an empirical
+  question.
+\item \emph{Approximate:} one eviction is a transient event priced by a
+  stationary comparison (Step~1 above).
+\item \emph{Not in the queueing formula:} a turn whose KV does not fit
+  waits for memory blocks before its prefill starts. That wait is set by
+  the pool, not by the queue, and adds to the PK wait. The capacity
+  function $\varphi$ depends on the footprint law and the admission rule
+  and must be calibrated, not derived.
+\end{itemize}
+
+\paragraph{What the testbed showed about the last point.} On the paper's testbed
+with contexts of about 50k tokens, the wait for the first token was a wait for memory
+blocks: the prefill server was busy a small fraction of the time, and the PK wait was
+one to two orders of magnitude below the observed one. Three engine rules made the
+pool a queue. A waiting turn is admitted only when its whole prompt fits; admission is
+in arrival order, so a turn that does not fit blocks everyone behind it (head-of-line
+blocking, now on memory); and every admission takes the least recently used cached
+blocks. What was observed: the turns that missed had the same think times as the hits,
+and nearly all of them had arrived while their rank already had a queue. What a
+post hoc model of the replica suggests, but the measurements do not show directly: the
+admissions ahead of them evicted their prefixes while they waited. Either way the
+misses were selected by congestion, so on that testbed the ratio of miss to hit waiting
+times measures congestion, not the price of a miss. In the short-context runs the extra
+misses caused by forced ones followed long think gaps and a higher rate of re-inserted
+contexts, which points to the pool (re-insertions shortening how long a cached prefix
+survives) rather than to the wait.
+In queueing terms, the hit rate is not a policy input but depends on the wait, and the
+wait on the hit rate; the next step of this research treats this
+feedback.
+
+The paper tests the approximate links in two ways: in simulation on
+replayed production sessions, and on a real testbed. The criterion is
+\emph{decision faithfulness}: the model must rank policies the way the
+real system does, even where its latencies are off.
+
+\section{Exercises}
+
+\begin{exercise}\label{L5:ex:split}
+In \cref{L5:lem:split} let $\sigma_{\mathrm{hit}}=\sigma_{\mathrm{miss}}=\sigma$.
+Find the hit rate $h$ that maximises the mixture term, and show that the
+mixture term exceeds the append term exactly when
+$h(1-h)(\mu_{\mathrm{miss}}-\mu_{\mathrm{hit}})^2>\sigma^2$.
+\emph{Hint:} $h(1-h)$ is maximised at $h=1/2$.
+\end{exercise}
+
+\begin{exercise}\label{L5:ex:rhostar}
+With $\mu=1$ turn/s, compute $\rho^*$ of \cref{L5:prop:rhostar} for
+$x=0.1$, $1$ and $10$\,s, and interpret: how loaded must the affinity
+replica be before moving a program with a ten-second recompute pays off?
+\emph{Hint:} $\rho^*=x/(1+x)$ when $\mu=1$.
+\end{exercise}

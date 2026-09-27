@@ -1,0 +1,16 @@
+[package]
+name = "route"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "ROUTE: a language for serving deployments, with a discrete-event interpreter"
+publish = false
+
+[dependencies]
+rand = "0.9"
+
+[profile.test]
+opt-level = 3
+
+[profile.dev.package."*"]
+opt-level = 3

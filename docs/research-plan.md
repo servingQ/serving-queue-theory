@@ -6,7 +6,7 @@ should happen: simulation first, then empirical measurement (§4). Update it whe
 changes. The paper (`paper/main.tex`) is the public statement. This file is
 the internal plan and may be blunter.
 
-Last updated: 2026-09-25.
+Last updated: 2026-09-27.
 
 ## 0. Where we are / next steps (read this first in a new session)
 
@@ -22,6 +22,58 @@ fresh session can continue without the chat history. Keep this section
 current at the end of every work block.
 
 **Done.**
+- **ROUTE, second pass (2026-09-27).** The vLLM program now reproduces
+  the real scheduler request for request on the full short-context trace
+  (3 321/3 321; six semantic gaps found by differential replay and fixed in
+  the language: admission served by the engine, whole-prompt gate, partial
+  reuse with dead blocks, `end` keeps the cache, admission order, release
+  order); the six scenarios are Lean theorems (`RouteOracle.lean`,
+  `decide +kernel`) and hold on the real A100 engine; the paper's "prefill
+  from what decode leaves" equals vLLM's admission order unless a
+  per-request chunk cap is set (`RouteServe.lean`, cited in §2.2). The A100
+  miss under-prediction (117 vs 426) was these semantic gaps; with them fixed
+  the model's remaining error is the time model (two overhead constants),
+  `docs/route-language.md` §8. Review round with ROUTE:
+  `docs/reviews/2026-09-27-route-round1*.md`.
+  **Hypothesis H-pin (new):** pinning a queued turn's cached prefix (the
+  vLLM rule leaves it evictable until the turn is scheduled) removes the
+  wait channel of Lecture 5 and moves the cliff; in simulation of the A100
+  trace at 3.0 s spacing the full-hit rate is 0.24 under the vLLM rule and
+  0.80 with pinning. Test: patch vLLM to touch a waiting request's cached
+  blocks at `add_request` (and untouch on abort), replay 3.0 s and 2.5 s
+  (`scripts/exp/lambda/steptrace/pinpatch.py`, run 2026-09-27, results in
+  `docs/route-language.md` §8).
+  **Next for ROUTE** (in order): (1) port the paper's §4.2 replay
+  (libqueuingsim `TwoStage`, calibrated on RBLN) to a ROUTE program with the
+  engine rules that the vLLM diff established (engine-served admission,
+  whole-prompt gate, dead blocks, `end` keeps the cache) and check whether
+  the §4.2 conclusions move; (2) identify the served overhead constants
+  from a served step trace with synchronous against asynchronous
+  scheduling at light load; (3) Kani harnesses, then Aeneas, on a pure pool
+  core of `route/src/sim.rs` against `RouteLang.Step` and
+  `Exec.makeRoom_room`.
+- **ROUTE (2026-09-27): the serving-deployment language of Lecture 1
+  rebuilt as a programming language for the formal verification and
+  simulation of serving systems.** `route/` (Rust parser, interpreter,
+  CLI), `lean/ServingQueueTheory/Route.lean` (syntax, pool semantics,
+  memory invariant `RouteLang.Step.invariant`, the two replicas as
+  programs, the surface syntax `[route| … ]` inside Lean),
+  `route/programs/*.route` (M/G/1, PS, M/M/1//N, the agentic replica,
+  the paper's two-resource replica, PD tandem, routing, vLLM v1, vLLM
+  on the A100 replaying the short trace). Validated against the closed
+  forms, the hand-written `libqueuingsim` models (now run under `make
+  sim`, `libqueuingsim/tests/route_*.rs`), the real upstream vLLM
+  scheduler on six deterministic scenarios (6/6 step-exact,
+  `route/tests/vllm_oracle.rs`) and the ten measured A100 runs (one
+  calibrated parameter; mean TTFT within 10–30 % below the cliff, the
+  cliff at 2.5 s reproduced; `data/exp/route/gpu.txt`). Spec
+  `docs/route-language.md`; review of the lecture's version against
+  vLLM, design, self-review and the verification-tooling survey
+  `docs/route-review.md`. Next for ROUTE: an executable Lean semantics
+  (`#eval`) fed by the oracle scenarios, Aeneas/Kani on the pool core,
+  cross-session prefix sharing, a fluid option for the step stage, and
+  the eviction under-prediction on the A100 (117 vs 426 misses at
+  3.5 s).
 - Paper v0.13 (2026-09-26, after the user's feedback and a clarity
   review `docs/reviews/2026-09-26-clarity.md`): §4 renamed "Results"
   (4.1 real-world traces, 4.2 simulation, 4.3 testbed); a "Background"
@@ -109,8 +161,68 @@ current at the end of every work block.
   146 words. Round-4 leftovers done in v0.13.
 - Simulator recalibrated on E1/E2 (`CAL_*`), ω = 0.057 s; `make sim`
   OK (35 checks).
+- **Memory model (2026-09-26, three review rounds, accepted).**
+  `scripts/exp/memory_model.py`, `docs/memory-model.md`,
+  `docs/reviews/2026-09-26-memory-round{1,2,3}*.md`, outputs
+  `data/exp/memory/`. A closed-loop replica model of the testbed:
+  strict FCFS admission of whole prompts from 51 allocatable blocks per
+  rank, block-level LRU with the engine's sub-block copy semantics
+  (a hit needs one block more than a miss), prompt-only reuse, one
+  exclusive prefill, growth during decode, E1 prefill cost, **measured
+  decode durations** as input. It reproduces which turns hit (κ
+  0.73–0.99), per-class TTFT, door waits and the per-rank waiting-count
+  series of /metrics in the long-context replays, and the classes of the
+  short-context runs incl. the saturated arm. Finding: the long-context
+  misses are the turns that queued (92–100 % arrived to a queue); the
+  hit/miss TTFT ratio is congestion, not the price of a miss. Paper
+  corrected accordingly (abstract, intro, §4.3; macros
+  `\eTwoMissQueue*`, `\eTwoHitQueue*`, `\eTwo*Think*`, `\eTwoAnyPf*`
+  from `analyze_e2.py`); no model output is in the paper (rule 7).
+
+- **Miss feedback (2026-09-27, analysis only, not in the paper).**
+  `docs/analytic-memory.md`, Lean `MissFeedback.lean` (Tarski extremal
+  equilibria, comparative statics, bistability, the PK instance, the
+  forced-miss multiplier), `scripts/exp/analyze_feedback.py`. The hit
+  rate is a fixed point `h = E[G(Z + W(h); h)]`; in the short-context
+  price test the implied secant slope is 0.18–0.19 at 2.5 s and ~0 at
+  3.5 s; the wait channel is excluded, the pool channel inferred by
+  elimination and association (insertion +42 %, misses after the 30 s
+  gaps; no fixed-threshold version fits). With forced misses alone the
+  price bracket misses the rise at 2.5 s; with the induced ones it holds.
+  Next: registered channel-separation run (redesigned, review round 2).
 
 **Next (in order).**
+0. **Memory model, decode stretch: status 2026-09-26 23:06.** Probes A–G run
+   (`data/exp/decode/`, `probe_decode.py`, `analyze_decode.py`); lockstep
+   replica model `scripts/exp/lockstep_model.py`. The pre-registered
+   validation **failed** (v1 deviated from the registered max rule and
+   charged c0 as engine time; see docs/memory-model.md "Deviations and
+   corrections"). Post hoc, the registered max rule on probes A+B with c0
+   fixed meets every threshold on the long-context runs and s15's miss
+   count, but not metric 1 in the short-context arms. Next, in order:
+   (i) commit the model and a new registration **before** any test (the
+   user must approve the commit); (ii) the probes review round 4 asks for
+   (short appends timed by a decoding observer on another rank; decode cost
+   while a peer prefills; randomised order, nonce per prompt), and an
+   engine-side step log for one replay if feasible; (iii) a fresh saturated
+   held-out replay with ensemble-interval thresholds; (iv) the probe
+   measurements into §4.3 / App. D via `make exp`.
+   Original plan (review round 3):
+   (a) User decision: may `memory_model.py` output enter the paper as
+   `make exp` tables labelled model output (AGENTS.md rule 7 now admits
+   simulator numbers only via `paper/simulation.tex`)? (b) Decode probe
+   on an idle server, E1-style: decode step time vs batch b ∈
+   {1,2,3,4,5,8} (compiled buckets 1,4,8) and context, mixed contexts,
+   equal and unequal load across ranks, decode rate while a peer or the
+   own rank prefills, and the prefill stretch measured directly.
+   (c) A step-level lockstep model on one clock for all ranks, a
+   preemption frees its victim. (d) Pre-register the validation in
+   docs/memory-model.md (date, git hash) before the first run: s10c8 and
+   s15_base held out, s15 reproduced without a prefill-stretch factor, no
+   parameter from E2/E2b. (e) Then the model-based price of a miss at
+   50k contexts (force single turns to miss, measure the added summed
+   TTFT) against the bracket of `prop:price`; later port the pool
+   mechanics into libqueuingsim so §4.2's replica is the validated one.
 1. **A100 testbed (user decision, 2026-09-26).** Reproduce the cost fit
    and both replays on GPU vLLM, then run the pending experiments there
    (offloading test with LMCache, eviction replay with 16-token blocks,
@@ -151,7 +263,7 @@ use `pkill -f` with a pattern that appears in your own command line
 ## 1. Thesis
 
 **Central claim (v0.6).** Every KV decision in agentic serving asks what
-it costs to lose a suspended program's state. That cost is the *price of
+it costs to lose a paused program's state. That cost is the *price of
 a miss* `Φ_i`: the total TTFT one miss adds across all turns at the
 prefill queue.
 
@@ -166,7 +278,7 @@ law). The replica has **two resources and a memory pool**:
 - decode bandwidth: `D = o (β K + ω/n)`; KV reads do not amortise over
   the batch, weights do. Decode stage = PS with capacity φ(n),
   insensitive. Hit/miss does not change D.
-- memory: `β K` bytes while resident; shared by suspended states and the
+- memory: `β K` bytes while resident; shared by paused states and the
   batch; admission cap; shadow price θ per byte-second.
 
 Cost-model check (roofline, 70B-class, not paper numbers): hit prefill
@@ -478,7 +590,7 @@ fill the "Simulator" columns of `tab:scorecard`; they replace nothing in
 - Per turn: arrival time, new tokens, cached tokens (hit length), output
   tokens, service time split into prefill and decode, tool time after
   the turn.
-- Per program: turn count, whether it resumed after each suspension. This
+- Per program: turn count, whether it resumed after each pause. This
   gives empirical `p_i` for E4.
 - Eviction events: which programs were resident, their `c_i`, and the
   memory target. This gives E4 instances.

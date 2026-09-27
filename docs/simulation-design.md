@@ -4,7 +4,15 @@ Design and status of the discrete-event simulator. Read
 `docs/research-plan.md` first: the simulator is the first validation
 phase, and the empirical programme (E1–E6) follows it.
 
-Status (2026-09-23): the **uncalibrated** simulator exists in
+Status (2026-09-27): since this date the scenarios can be written as
+ROUTE programs (`route/`, `docs/route-language.md`); `libqueuingsim`
+depends on the `route` crate and `make sim` runs the programs next to
+the hand-written models (`libqueuingsim/tests/route_*.rs`). The vLLM
+engine (`route/programs/vllm.route`) and its A100 replay
+(`vllm_replay.route`) are the calibrated-simulator items of §6 below
+that ROUTE now covers: continuous batching with a token budget, chunked
+prefill, block-level KV with LRU, preemption, trace replay, the E1 fits
+per chunk. Status (2026-09-23): the **uncalibrated** simulator exists in
 `libqueuingsim/` (Rust). It covers validation-ladder steps 1–4 and reports
 in paper §4.1 (`sec:sim`). The **calibrated** simulator of paper §4.2
 (continuous batching, block-level KV, trace replay, E1 service fits) is
@@ -64,7 +72,7 @@ and a seed gives bit-identical output on the same libm (CI runs on
   context length (ThunderAgent Lemma 4.1). The replica serves one turn at
   a time; per-turn costs are amortised, not batched.
 - **Resume uncertainty.** Whether a program issues another turn is drawn
-  when its tool call returns. A suspended program therefore holds KV that
+  when its tool call returns. A paused program therefore holds KV that
   may never be reused; this is what gives `p_i` a role in eviction.
 - **Eviction scope.** Programs in a tool call are evicted first, queued
   programs only if that is not enough. Policies: shortest-first,
