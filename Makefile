@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 export PATH := $(HOME)/.elan/bin:$(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
 
-.PHONY: setup seq lean refs paper sim figs report check preview clean
+.PHONY: setup seq lean refs paper lectures site sim figs report check preview clean
 
 setup:            ## install elan, rustup, tectonic, uv (user-local) and fetch Mathlib cache
 	scripts/setup.sh
@@ -15,6 +15,14 @@ refs:             ## every \leanref{} in the paper exists and is audited
 
 paper:            ## compile paper/main.pdf
 	cd paper && tectonic -X compile main.tex
+
+lectures:         ## compile lectures/*/notes.pdf
+	for d in lectures/*/; do (cd $$d && tectonic -X compile notes.tex) || exit 1; done
+
+site: paper lectures   ## the public page (www/, mkdocs.yml) with the PDFs, into site/
+	mkdir -p www/pdf && cp paper/main.pdf www/pdf/paper.pdf
+	for d in lectures/*/; do cp $$d/notes.pdf www/pdf/$$(basename $$d).pdf; done
+	uv run --quiet --with mkdocs-material==9.7.7 mkdocs build --strict
 
 sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests, report, tables/data staleness, figures
 	scripts/check_sim.sh
@@ -43,10 +51,11 @@ exp:              ## regenerate paper/exp/ from the testbed measurements (data/e
 report:           ## print the simulator validation report
 	cd libqueuingsim && cargo run --release --quiet --example validate
 
-check: seq lean refs paper sim   ## everything CI runs
+check: seq lean refs paper lectures sim   ## everything CI runs
 
 preview: paper    ## render PDF pages to PNG for visual inspection
 	cd paper && uv run --quiet --with pymupdf python -c "import pymupdf,os; d=pymupdf.open('main.pdf'); out=os.environ.get('OUT','/tmp/sqt-preview'); os.makedirs(out,exist_ok=True); [p.get_pixmap(dpi=75).save(f'{out}/page{i+1}.png') for i,p in enumerate(d)]; print(len(d),'pages ->',out)"
 
 clean:
-	rm -f paper/main.pdf lean/build.log lean/axioms.log libqueuingsim/validation-report.md
+	rm -f paper/main.pdf lectures/*/notes.pdf lean/build.log lean/axioms.log libqueuingsim/validation-report.md
+	rm -rf www/pdf site

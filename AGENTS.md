@@ -13,6 +13,8 @@ and eviction, program-aware routing). The deliverables are:
 | Path | Deliverable |
 |------|-------------|
 | `paper/main.tex` | ICML-2026-format paper draft (tectonic, two-column) |
+| `lectures/{queueing-primer,queueing-pd}/notes.tex` | two lecture-note courses on the paper's theory (tectonic); the PDFs are built by CD, never committed |
+| `www/`, `mkdocs.yml`, `.github/workflows/publish.yml` | the **public** page https://vrvrv.github.io/serving-queue-theory/ with the paper and lecture-note PDFs (`www/publishing.md`); `docs/` is internal and not published |
 | `lean/ServingQueueTheory/` | Lean 4 + Mathlib proofs of every proposition in the paper |
 | `libqueuingsim/` | Rust discrete-event simulator; seeded checks of each proposition in and beyond its model |
 | seQ (separate repo, pinned release) | the language in which a serving deployment is a program: interpreter and CLI `seq-lang`, example programs, the vLLM oracle and its A100 test vectors; https://github.com/vrvrv/seQ, used here as a Cargo git dependency and a checkout in `.seq/` (`docs/seq.md`). Its Lean model is here: `lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean` (syntax and pool semantics, executable semantics, the vLLM scenarios as theorems generated from seQ's vectors, serving order) and `Deployments.lean` (the paper's replicas as seQ programs) |

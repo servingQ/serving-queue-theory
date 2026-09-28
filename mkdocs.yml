@@ -1,0 +1,48 @@
+# The public page (https://vrvrv.github.io/serving-queue-theory/): the paper
+# and the lecture notes as PDFs, built and deployed by
+# .github/workflows/publish.yml. The pages are www/; docs/ is the internal
+# working notes and is not published.
+site_name: Serving Queue Theory
+site_description: Decision-faithful queueing models for agentic LLM serving, machine-checked in Lean 4
+site_url: https://vrvrv.github.io/serving-queue-theory/
+repo_url: https://github.com/vrvrv/serving-queue-theory
+repo_name: vrvrv/serving-queue-theory
+docs_dir: www
+site_dir: site
+exclude_docs: |
+  requirements.txt
+copyright: Serving Queue Theory Project
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.top
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Publishing this page: publishing.md
