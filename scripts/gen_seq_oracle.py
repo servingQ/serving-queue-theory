@@ -177,8 +177,8 @@ class Lean:
         step = st[0]["kind"]["Step"]
         if fold(step["cost"]) != 1:
             raise Fragment("the engine's iteration cost must be the constant 1 (the step clock)")
-        if step["serve"] != "Admission":
-            raise Fragment(f"serve {step['serve']}: the fragment serves residents in admission order")
+        if step["serve"] != {"By": []}:
+            raise Fragment(f"serve {step['serve']}: the fragment serves residents in admission order (`By([])`)")
         pools = []
         for i, p in enumerate(ir["pools"]):
             if p["evict"] != "Lru" or p["queue"] is not None or p["spill"] is not None:
