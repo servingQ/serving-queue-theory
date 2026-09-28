@@ -1,7 +1,7 @@
 # seQ: the serving-deployment language, and how this repository uses it
 
 seQ is the language in which a serving deployment is a program: memory
-pools and stages, a workload, and the route every session takes. Since
+pools and stages, a workload, and the program every session runs. Since
 2026-09-27 it is its own project, https://github.com/vrvrv/seQ (private).
 seQ holds the Rust interpreter and CLI (crate `seq-lang`, library `seq`,
 binary `seq-lang`), the example programs (`programs/*.seq`, incl. the vLLM
@@ -33,7 +33,7 @@ The pin is the `tag` in `libqueuingsim/Cargo.toml`. `scripts/fetch_seq.sh`
 ## Moving to a new seQ release
 
 1. In seQ: bump `version` in `Cargo.toml`, push, then
-   `git tag vX.Y.Z-devN && git push origin vX.Y.Z-devN` (or `vX.Y.Z`).
+   `git tag -a vX.Y.Z-rcN && git push origin vX.Y.Z-rcN` (or `vX.Y.Z`); the tag message body is the release notes.
    The release workflow runs the checks and publishes the GitHub release
    (a tag with a dash is a prerelease).
 2. Here: change the tag in `libqueuingsim/Cargo.toml`, run

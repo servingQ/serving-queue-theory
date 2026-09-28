@@ -33,7 +33,7 @@ namespace Oracle
 
 open Exec
 
-/-- The vLLM request program (seQ `programs/vllm_request.seq`), translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = prompt, 9 = o, 10 = arrive. Observations: 0 = first, 1 = done. Pools: 0 = slots, 1 = kv. Stages: 0 = engine, 1 = gate. -/
+/-- The vLLM request program (seQ `programs/vllm_request.seq`), translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = prompt, 9 = o, 10 = arrive. Observations: 0 = first, 1 = done. Pools: 0 = reqs, 1 = kv. Stages: 0 = engine, 1 = gate. -/
 def vllmRequest : Prog := [route|
   run 1 (x.attr 10);
   hold 0 (1), 1 (min (x.attr 8) x.budgetLeft) fits (x.attr 8) {
@@ -97,7 +97,7 @@ theorem vllm_seqcap :
 
 /-! ### A multi-turn scenario with a prefix cache -/
 
-/-- The vLLM replay program (seQ `programs/vllm_replay.seq`) on a unit step clock, translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = prev, 9 = prevout, 10 = t0, 11 = prompt, 12 = hitmax, 13 = c. Observations: 0 = cached_tokens, 1 = prefix, 2 = sent, 3 = ttft, 4 = latency. Pools: 0 = kv, 1 = slots. Stages: 0 = engine, 1 = front, 2 = gate, 3 = tool. -/
+/-- The vLLM replay program (seQ `programs/vllm_replay.seq`) on a unit step clock, translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = prev, 9 = prevout, 10 = t0, 11 = prompt, 12 = hitmax, 13 = c. Observations: 0 = cached_tokens, 1 = prefix, 2 = sent, 3 = ttft, 4 = latency. Pools: 0 = kv, 1 = reqs. Stages: 0 = engine, 1 = front, 2 = gate, 3 = tool. -/
 def vllmTurn : Prog := [route|
   run 2 (x.serial * 3);
   set 8 = 0;
