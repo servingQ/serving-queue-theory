@@ -23,7 +23,7 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 SEQ_SRC = os.environ.get("SEQ_SRC", os.path.join(ROOT, ".seq", "src"))
 ODIR = os.path.join(SEQ_SRC, "tools", "oracle")
 OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SeqOracle.lean")
-IR_VERSION = 3
+IR_VERSION = 4
 
 
 class Fragment(Exception):
@@ -177,8 +177,8 @@ class Lean:
         step = st[0]["kind"]["Step"]
         if fold(step["cost"]) != 1:
             raise Fragment("the engine's iteration cost must be the constant 1 (the step clock)")
-        if step["exclusive_prefill"] or step["decode_first"]:
-            raise Fragment("exclusive prefill / decode first")
+        if step["serve"] != "Admission":
+            raise Fragment(f"serve {step['serve']}: the fragment serves residents in admission order")
         pools = []
         for i, p in enumerate(ir["pools"]):
             if p["evict"] != "Lru" or p["queue"] is not None or p["spill"] is not None:
