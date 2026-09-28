@@ -23,7 +23,7 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 SEQ_SRC = os.environ.get("SEQ_SRC", os.path.join(ROOT, ".seq", "src"))
 ODIR = os.path.join(SEQ_SRC, "tools", "oracle")
 OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SeqOracle.lean")
-IR_VERSION = 2
+IR_VERSION = 3
 
 
 class Fragment(Exception):
@@ -235,17 +235,17 @@ def doc_tables(ir):
 
 
 def program(defname, names, source):
-    """A Lean program from the IR route of every named scenario; the routes
+    """A Lean program from the IR session program of every named scenario; the programs
     must be the same program (only constants in the deployment and the
     workload differ)."""
     progs = {}
     for name in names:
         ir, lean = load(name)
-        progs[name] = (lean.block(ir["route"], 1), doc_tables(ir))
+        progs[name] = (lean.block(ir["session"], 1), doc_tables(ir))
     body, tables = next(iter(progs.values()))
     for name, p in progs.items():
         if p != (body, tables):
-            raise Fragment(f"{name}: its route differs from the other scenarios'")
+            raise Fragment(f"{name}: its session program differs from the other scenarios'")
     return f"""/-- {source}, translated from its IR. {tables} -/
 def {defname} : Prog := [route|
 {body}]

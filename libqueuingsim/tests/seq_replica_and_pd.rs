@@ -18,7 +18,7 @@ fn step_prefill_alone_is_md1() {
         let a = 2e-5; let omega = 2e-4;
         stage engine : step {{ budget max(ndec, omega / a); cost max(omega, ntok * a); }}
         workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
-        route {{ run engine prefill (1 / a); observe sojourn = now - t0; end; }}
+        session {{ run engine prefill (1 / a); observe sojourn = now - t0; end; }}
         run {{ horizon 3000; warmup 300; seed 8; }}
         "#
     );
@@ -42,7 +42,7 @@ fn step_decode_is_infinite_server_at_zero_context() {
         let a = 2e-5; let omega = 2e-4;
         stage engine : step {{ budget max(ndec, omega / a); cost max(omega, ntok * a); }}
         workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
-        route {{ run engine decode (500); observe response = now - t0; end; }}
+        session {{ run engine decode (500); observe response = now - t0; end; }}
         run {{ horizon 2000; warmup 200; seed 9; }}
         "#
     );
@@ -132,7 +132,7 @@ fn ps_capacity_matches_batch_ps_server() {
         r#"
         stage svc : ps(min(n, 8));
         workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
-        route {{ run svc (~exp(1)); observe response = now - t0; end; }}
+        session {{ run svc (~exp(1)); observe response = now - t0; end; }}
         run {{ horizon 20000; warmup 1000; seed 4; }}
         "#
     );

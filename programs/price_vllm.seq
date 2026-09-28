@@ -38,7 +38,7 @@ workload {
   init { set u = ~uniform(0, 1); }
 }
 
-route {
+session {
   set t0 = now;
   set m = u < pmiss + delta ? missn : hitn;
   observe work = a * m + b * m * m / 2;

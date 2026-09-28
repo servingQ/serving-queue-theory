@@ -6,7 +6,7 @@ should happen: simulation first, then empirical measurement (§4). Update it whe
 changes. The paper (`paper/main.tex`) is the public statement. This file is
 the internal plan and may be blunter.
 
-Last updated: 2026-09-27.
+Last updated: 2026-09-28.
 
 ## 0. Where we are / next steps (read this first in a new session)
 
@@ -58,6 +58,16 @@ current at the end of every work block.
   the model's remaining error is the time model (two overhead constants),
   `seQ `docs/language.md`` §8. Review round with seQ:
   `docs/reviews/2026-09-27-seq-round1*.md`.
+- **seQ v0.1.0-rc0 pinned (2026-09-28).** The first release candidate:
+  the per-session block is `session { … }` (IR v3, field `session`), the
+  serving vocabulary (`admit … keep`, `prefill`, `decode`, `tool`,
+  `transfer`) and `branch with (p)` are sugar over the kernel, the vLLM
+  programs' request pool is `reqs`, and `seq-lang draw` exists. Here:
+  `programs/*_vllm.seq` and the inline test programs say `session`,
+  `scripts/gen_seq_oracle.py` reads IR v3, `SeqOracle.lean` regenerated
+  (only its doc comments changed: pool `reqs`); the paper's replicas in
+  `Deployments.lean` still use the kernel forms, and the Lean type and
+  quotation keep the name `Route`/`[route| … ]`.
   **Hypothesis H-pin (new):** pinning a queued turn's cached prefix (the
   vLLM rule leaves it evictable until the turn is scheduled) removes the
   wait channel of Lecture 5 and moves the cliff; in simulation of the A100
