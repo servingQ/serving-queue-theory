@@ -7,6 +7,35 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Which jobs a change needs. The simulator job regenerates the validation
+  # report and the paper's tables by simulation (16 minutes), so it runs only
+  # when something it reads changed: the crate, the seQ programs it runs, the
+  # tables it diffs against, the Lean names it checks, its scripts, or the
+  # workflow itself. A manual run (workflow_dispatch) runs everything.
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      sim: ${{ steps.filter.outputs.sim }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            sim:
+              - libqueuingsim/**
+              - programs/**
+              - paper/sim/**
+              - lean/**
+              - scripts/check_sim.sh
+              - scripts/plot_sim.py
+              - .github/workflows/ci.yml
+              - .github/actions/**
+
   lean:
     name: Lean proofs
     runs-on: ubuntu-latest
@@ -66,6 +95,8 @@ jobs:
 
   sim:
     name: Simulator (libqueuingsim)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.sim == 'true'
     # Pinned to the glibc the paper tables were generated with: a last-bit
     # difference in libm `ln` can change a simulated trajectory.
     runs-on: ubuntu-22.04
