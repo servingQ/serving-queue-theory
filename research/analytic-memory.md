@@ -3,7 +3,7 @@
 Status: 2026-09-27, analysis only, **not in the paper**. Lean:
 `lean/ServingQueueTheory/MissFeedback.lean` (in the axiom audit, 92 theorems
 audited in total). Data: `scripts/exp/analyze_feedback.py` →
-`data/exp/e2b/feedback.json`. Reviews: `docs/reviews/2026-09-27-feedback-round*.md`.
+`data/exp/e2b/feedback.json`. Reviews: `research/reviews/2026-09-27-feedback-round*.md`.
 
 ## Why
 
@@ -14,7 +14,7 @@ forcing 10 % of the turns to miss produced further, unforced misses at the
 higher load (52 and 62 in two seeds; none at the lower load). In the
 long-context replay, nearly all misses arrived while their rank already had a
 queue, with the same think times as the hits (observed); the replica model of
-`docs/memory-model.md` attributes them to evictions during the wait, but that
+`research/memory-model.md` attributes them to evictions during the wait, but that
 attribution is output of a post hoc model, not an observation. So misses
 change the conditions that decide later hits. This note writes that loop down
 as a map whose fixed points are the hit rates a replica can sustain.

@@ -14,9 +14,9 @@ paper/*.toc
 paper/*.synctex.gz
 *.log
 paper/main.pdf
-# built PDFs and the public page (.github/workflows/publish.yml, www/README.md)
+# built PDFs and the public page (.github/workflows/publish.yml, README.md)
 lectures/*/notes.pdf
-www/pdf/
+docs/pdf/
 /site/
 paper/_build/
 .claude/settings.local.json
@@ -24,7 +24,7 @@ paper/_build/
 # trace_html example output
 libqueuingsim/*.html
 
-# trace corpora (large, downloaded; see docs/trace-analysis.md)
+# trace corpora (large, downloaded; see research/trace-analysis.md)
 /data/
 
 # RBLN runtime dumps written into the cwd by the serving stack

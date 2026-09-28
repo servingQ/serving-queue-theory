@@ -1,8 +1,8 @@
-# Review: miss feedback (docs/analytic-memory.md, MissFeedback.lean), round 1
+# Review: miss feedback (research/analytic-memory.md, MissFeedback.lean), round 1
 
 Reviewer: queueing theory / applied probability (same reviewer as the
-earlier rounds). Date: 2026-09-27. Material: `docs/analytic-memory.md`,
-`lean/ServingQueueTheory/MissFeedback.lean`, with `docs/memory-model.md`,
+earlier rounds). Date: 2026-09-27. Material: `research/analytic-memory.md`,
+`lean/ServingQueueTheory/MissFeedback.lean`, with `research/memory-model.md`,
 `paper/main.tex` (§2.4, §3.3, §4.3), `data/exp/e2b/`.
 
 What I ran (throw-away scripts, scratchpad only; no repository file changed
@@ -168,7 +168,7 @@ not care which channel produces the slope. But:
 - **The comparative statics' signs are not unconditional in a closed
   loop.** "A shorter think time raises H" holds only with λ held fixed. In
   the closed loop λ = N/(Z + R), so a shorter Z also raises the turn rate.
-  `docs/memory-model.md` shows exactly that ("at the cap of 8 faster decode
+  `research/memory-model.md` shows exactly that ("at the cap of 8 faster decode
   gives **more** misses: the loop is closed"). The same caveat applies to
   "a lower arrival rate". Proposition 3 is correct as an abstract
   statement. The parenthetical list of changes that "raise the map" is
@@ -357,7 +357,7 @@ propositions.
 - m6. The corollary is headed "the price of a miss with feedback" but is
   first order in δ. Say "marginal" in the heading.
 - m7. The status line says "in the axiom audit": confirmed. Add
-  `docs/analytic-memory.md` to the `docs/research-plan.md` "where we are"
+  `research/analytic-memory.md` to the `research/research-plan.md` "where we are"
   list, so a fresh session knows it exists and that it is not in the
   paper.
 - m8. §3.3 of the paper already asserts the instability ("compete

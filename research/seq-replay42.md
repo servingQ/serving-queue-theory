@@ -15,8 +15,8 @@ in-process through the `seq` crate and `examples/paper_tables.rs` generates
 `tab:sim-trace-price`, `tab:sim-trace-split`; 20 seeds). The prose of
 `paper/simulation.tex` describes the engine rules and the partial misses.
 `replay_twostage.seq` is gone. The comparison below, with libqueuingsim's
-rules, was generated at commit 1fc3d27 (`docs/seq-replay42-tables.md`
-there); the current `docs/seq-replay42-tables.md` holds the ablations
+rules, was generated at commit 1fc3d27 (`research/seq-replay42-tables.md`
+there); the current `research/seq-replay42-tables.md` holds the ablations
 (`lru=1`, `keep=0`) next to the paper's configuration.
 
 ## Programs

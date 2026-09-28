@@ -1,8 +1,8 @@
-# Review: the decode-stretch step (docs/memory-model.md "Pre-registration" to end), round 4
+# Review: the decode-stretch step (research/memory-model.md "Pre-registration" to end), round 4
 
 Reviewer role: queueing theory / systems, ICML/SIGMETRICS area chair.
 Date 2026-09-26 (read 22:40-23:30 KST; system clock 22:52 when I first
-listed the files). I read docs/memory-model.md from "Pre-registration" to
+listed the files). I read research/memory-model.md from "Pre-registration" to
 the end, scripts/exp/probe_decode.py, analyze_decode.py and lockstep_model.py
 line by line (with memory_model.py, which it imports), data/exp/decode/*
 (probes.jsonl, probe.log, summary.json, fit_v1.json, fit_v2.json),
@@ -125,7 +125,7 @@ They do not test the prefill side of the lockstep (M5 table: s20c0 misses stay
 
 ### M2. The registration record cannot be verified, and it changed after the probes
 
-- docs/memory-model.md is untracked (`??` in git status). Round 3 asked for "a
+- research/memory-model.md is untracked (`??` in git status). Round 3 asked for "a
   section committed with the date and git hash" before the first run. Nothing
   was committed, so the 22:10 registration time rests on the authors' word.
   probes.jsonl carries only perf_counter-relative times and no wall clock.
@@ -418,7 +418,7 @@ as the thresholds.
      - pass a new registered held-out test;
      - port it to libqueuingsim's replay model and report it in §4.2 through
        simulation.tex, labelled "model with probe-derived costs".
-   - docs/memory-model.md: v2 may be described as "a post hoc model, not
+   - research/memory-model.md: v2 may be described as "a post hoc model, not
      validated, that is consistent with the long-context replays within the
      tolerances of the table and fails the saturated short-context arm", with
      the corrections below. The model-based price of a miss (round-3 action

@@ -98,7 +98,7 @@ open ServingQueueTheory
 #print axioms threshold_rule_optimal
 #print axioms threshold_rule_optimal_byte_seconds
 #print axioms density_prefix_plus_one
--- docs/analytic-memory.md: miss feedback (not yet in the paper)
+-- research/analytic-memory.md: miss feedback (not yet in the paper)
 #print axioms feedback_map_monotone
 #print axioms feedback_equilibrium_above
 #print axioms feedback_equilibrium_exists
@@ -117,7 +117,7 @@ open ServingQueueTheory
 #print axioms pkFeedback_collapse
 #print axioms feedback_map_monotone_two_channel
 #print axioms pkFeedback_absorbing
--- seQ, the serving-deployment language (Seq*.lean; docs/seq.md)
+-- seQ, the serving-deployment language (Seq*.lean; research/seq.md)
 -- syntax and pool semantics (Seq.lean)
 #print axioms SeqLang.Step.invariant
 #print axioms SeqLang.Step.nonneg

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Step-level lockstep replica model: memory_model.py with the decode durations
-computed instead of measured (pre-registered in docs/memory-model.md).
+computed instead of measured (pre-registered in research/memory-model.md).
 
 The memory side is that of memory_model.py (51 blocks per rank, block-level
 LRU with sub-block copies, prompt-only reuse, strict FCFS admission of whole

@@ -1,7 +1,7 @@
 # Simulator design (`libqueuingsim`)
 
 Design and status of the discrete-event simulator. Read
-`docs/research-plan.md` first: the simulator is the first validation
+`research/research-plan.md` first: the simulator is the first validation
 phase, and the empirical programme (E1–E6) follows it.
 
 Status (2026-09-27, later): libqueuingsim's `TwoStage` server (the §2.2
@@ -14,7 +14,7 @@ with the testbed's cost model; the propositions' in-model checks use
 their own closed-form queues (M/G/1, PS).
 
 Status (2026-09-27): since this date the scenarios can be written as
-seQ programs (seQ, a pinned release: `docs/seq.md`; spec seQ
+seQ programs (seQ, a pinned release: `research/seq.md`; spec seQ
 `docs/language.md`); `libqueuingsim` depends on seQ's crate `seq-lang` and `make sim` runs the programs next to
 the hand-written models (`libqueuingsim/tests/seq_*.rs`). The vLLM
 engine (seQ `programs/vllm.seq`) and its A100 replay

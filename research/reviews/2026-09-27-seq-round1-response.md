@@ -51,7 +51,7 @@ prefill's tokens in a step, with `\provedby{serve_preserves_shape,
 serve_eq_decode_first, chunk_cap_breaks_shape}` (`SeqServe.lean`).
 
 C2. Not in the paper: the pinning result is a simulation. It is recorded as
-hypothesis H-pin in `docs/research-plan.md` with the testbed experiment
+hypothesis H-pin in `research/research-plan.md` with the testbed experiment
 that would test it (touch a waiting request's cached blocks at enqueue in
 vLLM, replay 3.0 s and 2.5 s).
 

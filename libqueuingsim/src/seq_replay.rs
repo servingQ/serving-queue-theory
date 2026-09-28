@@ -11,7 +11,7 @@
 //! the budget left, a whole-prompt admission gate with chunk-wise KV growth
 //! and LIFO preemption, 16-token blocks evicted from an entry's tail, reuse
 //! bounded by the previous turn's computed full blocks, and a finished
-//! session's blocks kept (`docs/seq-replay42.md`). The rows are the ones of
+//! session's blocks kept (`research/seq-replay42.md`). The rows are the ones of
 //! `validation::trace_row` and `validation::trace_price_row`, computed with
 //! the same definitions from the program's per-turn observations: a turn
 //! hits iff it reuses its whole reusable prefix (else it is a miss, often a

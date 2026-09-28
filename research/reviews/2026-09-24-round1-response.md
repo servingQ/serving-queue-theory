@@ -31,6 +31,6 @@ Disagreements / deferred:
 - The finite-source price (item 6) is the next theoretical task; the
   M/M/1//N closed form is tractable in Lean, the M/G/1//N case is not.
 
-Harness comparison added to the workload evidence (docs/trace-analysis.md):
+Harness comparison added to the workload evidence (research/trace-analysis.md):
 append CV² Claude Code production 32, Claude Code SWE-bench Pro 6.8,
 terminus-2 2.3, mini-swe-agent 1.9; reuse 97–99 % for all.

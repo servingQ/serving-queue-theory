@@ -52,7 +52,7 @@ if _path:
     except Exception as e:  # never break the server
         print("steptrace: disabled:", e)
 
-# Hypothesis H-pin (docs/research-plan.md): see pinpatch.py.
+# Hypothesis H-pin (research/research-plan.md): see pinpatch.py.
 if os.environ.get("PIN_WAITING"):
     try:
         import vllm.v1.core.sched.scheduler as _sm2

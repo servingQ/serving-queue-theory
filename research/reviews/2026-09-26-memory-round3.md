@@ -1,9 +1,9 @@
-# Review: "Memory as a queue" (docs/memory-model.md, scripts/exp/memory_model.py), round 3
+# Review: "Memory as a queue" (research/memory-model.md, scripts/exp/memory_model.py), round 3
 
 Reviewer role: queueing theory / systems, ICML/SIGMETRICS area chair.
 Date 2026-09-26. I read my round-2 report, the authors' response
-(docs/reviews/2026-09-26-memory-round2-response.md), the rewritten
-docs/memory-model.md, docs/testbed.md l. 105-160 (including the uncommitted
+(research/reviews/2026-09-26-memory-round2-response.md), the rewritten
+research/memory-model.md, research/testbed.md l. 105-160 (including the uncommitted
 diff), scripts/exp/memory_model.py line by line, paper/main.tex (abstract,
 intro l. 175-185, §4.3 l. 785-830), scripts/exp/analyze_e2.py l. 222-252, and
 the engine: vllm_rbln/v1/core/rbln_scheduler.py (l. 190-470, 470-800, 860-910,
@@ -164,7 +164,7 @@ count is an upper bound and not comparable one to one.
 
 ### R3-7. Prefill stretch: one range, one source, and it is the s15 remainder
 
-memory-model.md says 1.07-1.23×, docs/testbed.md l. 157 says 1.10-1.23×. Give
+memory-model.md says 1.07-1.23×, research/testbed.md l. 157 says 1.10-1.23×. Give
 one range and the script that prints it. The sensitivity is worth one line in
 the doc. With the E1 fit scaled by 1.15:
 
@@ -179,7 +179,7 @@ in-sample and must not be adopted as a fitted factor. It is a prediction the
 lockstep model should reproduce without being told (see the plan below; s15
 stays held out).
 
-### R3-8. docs/testbed.md (uncommitted diff) overstates the s15 mechanism
+### R3-8. research/testbed.md (uncommitted diff) overstates the s15 mechanism
 
 "about half the misses followed a 29-30 s gap; the rest arrived to a queue and
 lost their prefix while waiting". In the model only 39 % of s15 non-hits had
@@ -307,7 +307,7 @@ with the bracket of `prop:price`.
 6. Call the model's preemption count an upper bound (R3-6).
 7. One prefill-stretch range with its source; add the ×1.15 sensitivity line
    (R3-7).
-8. docs/testbed.md: replace "the rest ... lost their prefix while waiting"
+8. research/testbed.md: replace "the rest ... lost their prefix while waiting"
    for s15 (R3-8); put the "335 of 681" computation in a script.
 9. Name the approximations of R3-9 once in the caveats.
 10. Ask the user whether rule 7 of AGENTS.md should admit model output from

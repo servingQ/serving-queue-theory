@@ -1,7 +1,7 @@
 /-
 # Miss feedback: the hit rate depends on the wait, and the wait on the hit rate
 
-Analytic extension suggested by the testbed replays (docs/analytic-memory.md):
+Analytic extension suggested by the testbed replays (research/analytic-memory.md):
 a returning turn finds its prefix with a probability that falls with its
 absence, the think time plus its own wait, because the admissions ahead of it
 evict least recently used blocks; the wait in turn falls with the hit rate.
@@ -86,7 +86,7 @@ theorem feedback_equilibrium_exists (H : ℝ → ℝ)
 /-- Comparative statics via the intermediate value theorem: if `x` is an
 equilibrium of `H`, `K x ≥ H x` and `K` is continuous on `[x, 1]` into `[., 1]`,
 then `K` has an equilibrium at or above `x`. Which changes raise the map
-depends on the loop being open or closed (docs/analytic-memory.md); the
+depends on the loop being open or closed (research/analytic-memory.md); the
 continuity-free version is `unit_feedback_greatest_mono`. -/
 theorem feedback_comparative_statics (H K : ℝ → ℝ) (x : ℝ) (hx1 : x ≤ 1)
     (hfix : H x = x) (hle : H x ≤ K x) (hc : ContinuousOn K (Icc x 1)) (hK1 : K 1 ≤ 1) :

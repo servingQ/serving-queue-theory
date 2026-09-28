@@ -7,7 +7,7 @@ Claude Code and Codex.
 Write the informal statement first. Ask: is this a theorem about the
 *model* (provable) or a claim about *workloads* (empirical)? Only the
 former becomes a `proposition`; the latter goes to §4 (experiments) and
-`docs/research-plan.md`, or is hedged in prose. If the result is an
+`research/research-plan.md`, or is hedged in prose. If the result is an
 established theorem from the literature, state it as a cited `theorem`
 instead (no Lean needed; mark the bib entry `UNVERIFIED` if you did not
 read the source).
@@ -45,7 +45,7 @@ Formal statement, items with \begin{enumerate}[nosep,leftmargin=1.6em,label=(\ro
 - If the result bears on a published claim, discuss it in the same
   section under "The claim" / "Reading the claim", with the exact
   section/figure of the source.
-- Update the status table in `docs/research-plan.md`.
+- Update the status table in `research/research-plan.md`.
 
 ## 4. Simulate (if the model can be run)
 Add a check to `libqueuingsim/src/validation.rs` and its name to

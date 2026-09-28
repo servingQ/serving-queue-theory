@@ -35,7 +35,7 @@ git config core.hooksPath .githooks   # pre-push: fast-forward only + make check
 ## Working with coding agents
 
 `AGENTS.md` is the shared instruction file (Codex reads it directly, `CLAUDE.md`
-imports it). `docs/add-proposition.md` is the step-by-step workflow for a new
+imports it). `research/add-proposition.md` is the step-by-step workflow for a new
 result. `make check` is the one command every agent runs before reporting.
 
 ## Local build
@@ -43,7 +43,7 @@ result. `make check` is the one command every agent runs before reporting.
 ```bash
 make setup   # one-time: elan + rustup + tectonic + uv + Mathlib cache
 make check   # lean + refs + paper + lectures + sim
-make site    # the public page with the PDFs, into site/ (www/publishing.md)
+make site    # the public page with the PDFs, into site/ (see "What CD publishes")
 ```
 
 Or by hand:
@@ -82,13 +82,34 @@ close to the prose to make it tractable.
 
 ## What CD publishes (`.github/workflows/publish.yml`)
 
-The paper and the two lecture notes are compiled from their sources on
-every push to `main` that touches them, uploaded as workflow artifacts
-(`paper-pdf`, `lecture-notes`) and served from the **public** page
-<https://vrvrv.github.io/serving-queue-theory/>, built with mkdocs from
-`www/`. No PDF is committed (`paper/main.pdf`, `lectures/*/notes.pdf` are
-gitignored). A pull request builds the artifacts and stops before
-deploying. `www/publishing.md` has the details and how to unpublish.
+The paper and the two lecture notes are compiled from their sources and
+served from the **public** page <https://vrvrv.github.io/serving-queue-theory/>,
+built with mkdocs from `docs/` (`mkdocs.yml`). Anyone can read the page and
+download the PDFs, and search engines index them, although the repository
+is private: treat everything reachable from the page as published.
+
+Every push to `main` that touches `paper/`, `lectures/`, `docs/` or
+`mkdocs.yml` (and `workflow_dispatch`) runs:
+
+1. **pdfs**: tectonic compiles `paper/main.tex` and every
+   `lectures/*/notes.tex`; the PDFs are uploaded as the workflow artifacts
+   `paper-pdf` and `lecture-notes` (kept 90 days).
+2. **site**: the PDFs land in `docs/pdf/` (gitignored) and
+   `mkdocs build --strict` builds the page, which links them relatively, so
+   a missing PDF fails the build; the site is uploaded as the artifact `site`.
+3. **deploy**: on `main` only, `actions/deploy-pages` publishes the site.
+
+A pull request touching the same paths runs steps 1 and 2 and stops, so a
+reviewer downloads the artifacts from the run. No PDF is committed:
+`paper/main.pdf`, `lectures/*/notes.pdf` and `docs/pdf/` are gitignored
+(the figures under `paper/sim/` and `paper/exp/` are generated data the
+paper `\input`s, and stay tracked). Locally, `make site` builds the same
+page into `site/`. To unpublish:
+`gh api -X DELETE repos/vrvrv/serving-queue-theory/pages` (caches and search
+results keep what they have for a while).
+
+The internal working notes live in `research/` (plan, testbed, the seQ pin,
+design notes, review rounds) and are not part of the site.
 
 ## Status / TODO
 

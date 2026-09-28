@@ -1,8 +1,8 @@
-# Review: "Memory as a queue" (docs/memory-model.md, scripts/exp/slot_model.py), round 1
+# Review: "Memory as a queue" (research/memory-model.md, scripts/exp/slot_model.py), round 1
 
 Reviewer role: queueing theory / systems, ICML/SIGMETRICS area chair.
-Date 2026-09-26. Read: AGENTS.md, the round-5 review, docs/memory-model.md,
-scripts/exp/slot_model.py (line by line), docs/testbed.md, paper §4.3
+Date 2026-09-26. Read: AGENTS.md, the round-5 review, research/memory-model.md,
+scripts/exp/slot_model.py (line by line), research/testbed.md, paper §4.3
 (main.tex 780–815), data/exp/e2/*/{rounds,metrics}.jsonl, params.json,
 meta.json, data/exp/e1/fit.json, data/exp/slot/*, the server log
 data/exp/serve_m27_v7_hosttensor.log, the replayer
@@ -52,7 +52,7 @@ decode stretch has to be named as the part it does not explain.
 ### M1. The model follows the wrong scheduler; the cited lines did not run
 
 memory-model.md §"The serving system", the docstring of slot_model.py and
-docs/testbed.md l. 118–119 all cite `vllm_rbln/v1/core/optimum_scheduler.py`
+research/testbed.md l. 118–119 all cite `vllm_rbln/v1/core/optimum_scheduler.py`
 (l. 341–347, 376–378, 419–435, "Allocation -> Caching"). The measurement
 server logged, on every engine:
 
@@ -93,7 +93,7 @@ actually ran:
 
 Resolution: rewrite §"The serving system" and the docstring against
 rbln_scheduler.py and upstream allocate_slots, with the correct line
-numbers. Fix docs/testbed.md l. 118–119 too. Its claim about the scheduler
+numbers. Fix research/testbed.md l. 118–119 too. Its claim about the scheduler
 may still be true, but the citation is wrong.
 
 ### M2. The pool is 51 allocatable blocks, not 52; with 51 the reported model over-predicts by ~45 %
@@ -231,7 +231,7 @@ of the result that input is.
   5253 s uncapped).
 - **"The binding resource is the pool, not the prefill server (per-rank
   prefill utilisation 0.03–0.39)" uses the wrong statistic.** The DP ranks
-  step in lockstep (docs/testbed.md), so what stalls decode is *any* rank
+  step in lockstep (research/testbed.md), so what stalls decode is *any* rank
   prefilling. Recomputed from the replays, some rank is prefilling 67 %,
   58 %, 31 % and 31 % of the time. The causal chain the data support is:
   prefill on any rank stretches every rank's decode; stretched decodes hold
@@ -315,7 +315,7 @@ available, and it tests the model's state, not just its output.
    cap-8 misses go from 19 at B = 51 to 0 at B = 56. Show B = 50–54 in
    single steps.
 5. **E2b.** "M1 = M0 in every run (blocks never bind)" is true of running
-   holdings. But docs/testbed.md attributes the s15 thrash to the pool
+   holdings. But research/testbed.md attributes the s15 thrash to the pool
    evicting cached prefixes. The document should say that in E2b the pool
    acts through the cache, which the model takes as data. The LRU extension
    of M4 is the test for that run.
@@ -328,7 +328,7 @@ available, and it tests the model's state, not just its output.
 ## Action list for the authors
 
 1. Replace every optimum_scheduler.py citation (memory-model.md,
-   slot_model.py docstring, docs/testbed.md 118–119) with the
+   slot_model.py docstring, research/testbed.md 118–119) with the
    RBLNScheduler / upstream allocate_slots lines that ran (M1).
 2. Set B = 51 allocatable blocks (the null block) and re-run everything
    (M2).

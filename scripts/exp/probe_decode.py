@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decode-stretch probe on an idle server (pre-registered in docs/memory-model.md).
+"""Decode-stretch probe on an idle server (pre-registered in research/memory-model.md).
 
 Each experiment launches a set of streaming requests, each pinned to a DP rank
 (X-data-parallel-rank), with random unique prompts (no prefix hits) and
