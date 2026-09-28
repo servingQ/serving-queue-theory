@@ -1,0 +1,133 @@
+name: Publish
+
+# The paper and the two lecture notes as PDFs, and the public page that
+# links to them (https://vrvrv.github.io/serving-queue-theory/).
+#
+# No PDF is committed: every run compiles them from the sources with
+# tectonic, uploads them as workflow artifacts (paper-pdf, lecture-notes),
+# and the run on main copies them into the mkdocs site it deploys to GitHub
+# Pages. A pull request builds everything and stops before deploying, so a
+# reviewer downloads the artifacts (www/publishing.md).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - paper/**
+      - lectures/**
+      - www/**
+      - mkdocs.yml
+      - .github/workflows/publish.yml
+  pull_request:
+    paths:
+      - paper/**
+      - lectures/**
+      - www/**
+      - mkdocs.yml
+      - .github/workflows/publish.yml
+  workflow_dispatch:
+
+# One deployment at a time per ref; a newer commit on main supersedes an
+# in-flight one.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  TECTONIC: "0.17.0"
+
+jobs:
+  pdfs:
+    name: Paper and lecture notes (PDF)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tectonic
+        run: |
+          curl -sSL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40$TECTONIC/tectonic-$TECTONIC-x86_64-unknown-linux-musl.tar.gz" \
+            | tar xz -C /usr/local/bin tectonic
+          tectonic --version
+      - name: Compile the paper
+        working-directory: paper
+        run: tectonic -X compile main.tex --keep-logs
+      - name: Compile the lecture notes
+        run: |
+          for d in lectures/*/; do
+            (cd "$d" && tectonic -X compile notes.tex --keep-logs)
+          done
+      - name: Collect the PDFs
+        # one name each, the names the site links (www/index.md)
+        run: |
+          mkdir -p pdf
+          cp paper/main.pdf pdf/paper.pdf
+          for d in lectures/*/; do
+            cp "$d/notes.pdf" "pdf/$(basename "$d").pdf"
+          done
+          ls -l pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paper-pdf
+          path: pdf/paper.pdf
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lecture-notes
+          path: |
+            pdf/queueing-pd.pdf
+            pdf/queueing-primer.pdf
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdf
+          path: pdf
+          retention-days: 1
+
+  site:
+    name: Build the site
+    needs: pdfs
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: www/requirements.txt
+      - run: pip install -r www/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: pdf
+          path: www/pdf
+      # www/pdf is gitignored; the PDFs are served next to the pages. The
+      # index links them relatively, so --strict fails if one is missing.
+      - run: mkdocs build --strict
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site
+          retention-days: 30
+      - if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    # The page is public. Only main publishes; a pull request builds and
+    # uploads the artifacts and stops there.
+    if: github.event_name != 'pull_request'
+    needs: site
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

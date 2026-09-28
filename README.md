@@ -42,7 +42,8 @@ result. `make check` is the one command every agent runs before reporting.
 
 ```bash
 make setup   # one-time: elan + rustup + tectonic + uv + Mathlib cache
-make check   # lean + refs + paper + sim
+make check   # lean + refs + paper + lectures + sim
+make site    # the public page with the PDFs, into site/ (www/publishing.md)
 ```
 
 Or by hand:
@@ -53,8 +54,9 @@ curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh
 cd lean && lake exe cache get && cd ..
 scripts/check_lean.sh          # build + sorry check + axiom audit
 
-# Paper (tectonic downloads TeX packages on demand)
+# Paper and lecture notes (tectonic downloads TeX packages on demand)
 cd paper && tectonic -X compile main.tex
+cd lectures/queueing-primer && tectonic -X compile notes.tex   # and queueing-pd
 
 # Paper ↔ Lean consistency
 scripts/check_lean_refs.sh
@@ -77,6 +79,16 @@ scripts/check_lean_refs.sh
 CI does **not** check that a Lean statement faithfully formalises the informal
 proposition. That step is a human review; statements are kept deliberately
 close to the prose to make it tractable.
+
+## What CD publishes (`.github/workflows/publish.yml`)
+
+The paper and the two lecture notes are compiled from their sources on
+every push to `main` that touches them, uploaded as workflow artifacts
+(`paper-pdf`, `lecture-notes`) and served from the **public** page
+<https://vrvrv.github.io/serving-queue-theory/>, built with mkdocs from
+`www/`. No PDF is committed (`paper/main.pdf`, `lectures/*/notes.pdf` are
+gitignored). A pull request builds the artifacts and stops before
+deploying. `www/publishing.md` has the details and how to unpublish.
 
 ## Status / TODO
 

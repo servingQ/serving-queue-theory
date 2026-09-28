@@ -14,6 +14,10 @@ paper/*.toc
 paper/*.synctex.gz
 *.log
 paper/main.pdf
+# built PDFs and the public page (.github/workflows/publish.yml, www/README.md)
+lectures/*/notes.pdf
+www/pdf/
+/site/
 paper/_build/
 .claude/settings.local.json
 
