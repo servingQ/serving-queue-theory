@@ -74,7 +74,11 @@ scripts/check_lean_refs.sh
 4. **sim** — `scripts/check_sim.sh`: every Lean theorem cited by a simulator
    check exists; `cargo fmt --check`, `clippy -D warnings`, `cargo test`;
    the validation report (`libqueuingsim/validation-report.md`) is uploaded
-   and posted to the job summary. See `libqueuingsim/README.md`.
+   and posted to the job summary. See `libqueuingsim/README.md`. This job
+   regenerates the report and `paper/sim/` by simulation (about 16 minutes),
+   so it runs only when a path it reads changed (`libqueuingsim/`,
+   `programs/`, `paper/sim/`, `lean/`, its scripts, the workflow); a manual
+   `workflow_dispatch` runs it regardless.
 
 CI does **not** check that a Lean statement faithfully formalises the informal
 proposition. That step is a human review; statements are kept deliberately
