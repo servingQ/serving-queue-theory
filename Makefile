@@ -19,9 +19,9 @@ paper:            ## compile paper/main.pdf
 lectures:         ## compile lectures/*/notes.pdf
 	for d in lectures/*/; do (cd $$d && tectonic -X compile notes.tex) || exit 1; done
 
-site: paper lectures   ## the public page (www/, mkdocs.yml) with the PDFs, into site/
-	mkdir -p www/pdf && cp paper/main.pdf www/pdf/paper.pdf
-	for d in lectures/*/; do cp $$d/notes.pdf www/pdf/$$(basename $$d).pdf; done
+site: paper lectures   ## the public page (docs/, mkdocs.yml) with the PDFs, into site/
+	mkdir -p docs/pdf && cp paper/main.pdf docs/pdf/paper.pdf
+	for d in lectures/*/; do cp $$d/notes.pdf docs/pdf/$$(basename $$d).pdf; done
 	uv run --quiet --with mkdocs-material==9.7.7 mkdocs build --strict
 
 sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests, report, tables/data staleness, figures
@@ -58,4 +58,4 @@ preview: paper    ## render PDF pages to PNG for visual inspection
 
 clean:
 	rm -f paper/main.pdf lectures/*/notes.pdf lean/build.log lean/axioms.log libqueuingsim/validation-report.md
-	rm -rf www/pdf site
+	rm -rf docs/pdf site

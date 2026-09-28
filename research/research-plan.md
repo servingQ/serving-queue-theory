@@ -40,11 +40,11 @@ current at the end of every work block.
   (`seq-lang`), the example programs and the vLLM oracle with its test
   vectors are https://github.com/vrvrv/seQ (release v0.1.0-dev3); this
   repository uses the pinned release as a Cargo git dependency and through
-  `.seq/` (`docs/seq.md`). The Lean model of the language stays here
+  `.seq/` (`research/seq.md`). The Lean model of the language stays here
   (`lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean`, the oracle
   theorems generated from seQ's IR files by `scripts/gen_seq_oracle.py`),
   as do the paper's replica programs (`Deployments.lean`). CI reads seQ
-  with a read-only deploy key (secret `SEQ_DEPLOY_KEY`, `docs/seq.md`).
+  with a read-only deploy key (secret `SEQ_DEPLOY_KEY`, `research/seq.md`).
 - **seQ, second pass (2026-09-27).** The vLLM program now reproduces
   the real scheduler request for request on the full short-context trace
   (3 321/3 321; six semantic gaps found by differential replay and fixed in
@@ -57,7 +57,7 @@ current at the end of every work block.
   miss under-prediction (117 vs 426) was these semantic gaps; with them fixed
   the model's remaining error is the time model (two overhead constants),
   `seQ `docs/language.md`` §8. Review round with seQ:
-  `docs/reviews/2026-09-27-seq-round1*.md`.
+  `research/reviews/2026-09-27-seq-round1*.md`.
 - **seQ v0.1.0-rc0 pinned (2026-09-28).** The first release candidate:
   the per-session block is `session { … }` (IR v3, field `session`), the
   serving vocabulary (`admit … keep`, `prefill`, `decode`, `tool`,
@@ -82,7 +82,7 @@ current at the end of every work block.
   `seQ `docs/language.md`` §8. The Lambda instance was terminated after
   the runs. Candidate for the paper's §3.3 admission step (needs a same-day
   unpinned 2.5 s rerun with the tracer and seeds before it goes in).
-  **§4.2 replay in seQ (done 2026-09-27, `docs/seq-replay42.md`,
+  **§4.2 replay in seQ (done 2026-09-27, `research/seq-replay42.md`,
   `programs/replay_{twostage,vllm}.seq`, `scripts/exp/seq_replay42.py`):**
   the qualitative conclusions stay (open replica all hits; the admission
   cap decides thrashing under every rule set; priced ≤ LRU in TTFT); the
@@ -153,7 +153,7 @@ current at the end of every work block.
   the eviction under-prediction on the A100 (117 vs 426 misses at
   3.5 s).
 - Paper v0.13 (2026-09-26, after the user's feedback and a clarity
-  review `docs/reviews/2026-09-26-clarity.md`): §4 renamed "Results"
+  review `research/reviews/2026-09-26-clarity.md`): §4 renamed "Results"
   (4.1 real-world traces, 4.2 simulation, 4.3 testbed); a "Background"
   paragraph opens §2 (prefill, decode, KV cache, prefix hit/miss,
   chunked prefill); abstract and contributions rewritten in plain
@@ -169,7 +169,7 @@ current at the end of every work block.
 - Testbed: MiniMax-M2.7 fp8, DP4+EP on RBLN-CR13 ×4, block 4096,
   sub-block (512-token) prefix cache, max-num-seqs 8, host-tensor
   mode; the server has been up since 2026-09-24 (port 8010). How to
-  launch, what failed and why: `docs/testbed.md`.
+  launch, what failed and why: `research/testbed.md`.
 - E1 (prefill cost model): a = 0.194 ms/token, b = 6.51 ns/token²,
   c0 = 44 ms, K_c ≈ 30k, MAPE 3.4 %.
 - E2 (50k-context replays, four runs, `paper/exp/tab-e2.tex`): a
@@ -218,7 +218,7 @@ current at the end of every work block.
   the rise is inside the bracket in all three tests; per rank
   ΔL_P / lo 0.86–1.36.
   This is the measurement of Φ_i the round-4 review asked for.
-  Two failures worth knowing (details in `docs/testbed.md`): with
+  Two failures worth knowing (details in `research/testbed.md`): with
   `out ≤ 32` the decode batch cap bound (ITL 0.02 s idle → 0.3 s
   loaded, running = 8); at 1.5 s spacing the pool's 4096-token blocks
   filled at ~20 live sessions per rank, LRU evicted the prefixes with
@@ -227,9 +227,9 @@ current at the end of every work block.
   step is exclusive and has priority over decode, and the DP+EP ranks
   step in lockstep, so ITL rises 100× under prefill load (0.017 s idle,
   0.10 s when a peer rank prefills, 0.17–0.25 s when the own rank does;
-  `docs/testbed.md`). The paper's "prefill from the budget decode
+  `research/testbed.md`). The paper's "prefill from the budget decode
   leaves" is reversed here; §6 says so.
-- Review round 5 (2026-09-26, `docs/reviews/2026-09-26-round5.md`,
+- Review round 5 (2026-09-26, `research/reviews/2026-09-26-round5.md`,
   verdict "minor revision") and the response (`-round5-response.md`,
   v0.14): every miss the change caused is priced, per-rank rows and the
   three findings (HOL share, bystanders, finite-source wait closest /
@@ -240,8 +240,8 @@ current at the end of every work block.
 - Simulator recalibrated on E1/E2 (`CAL_*`), ω = 0.057 s; `make sim`
   OK (35 checks).
 - **Memory model (2026-09-26, three review rounds, accepted).**
-  `scripts/exp/memory_model.py`, `docs/memory-model.md`,
-  `docs/reviews/2026-09-26-memory-round{1,2,3}*.md`, outputs
+  `scripts/exp/memory_model.py`, `research/memory-model.md`,
+  `research/reviews/2026-09-26-memory-round{1,2,3}*.md`, outputs
   `data/exp/memory/`. A closed-loop replica model of the testbed:
   strict FCFS admission of whole prompts from 51 allocatable blocks per
   rank, block-level LRU with the engine's sub-block copy semantics
@@ -258,7 +258,7 @@ current at the end of every work block.
   from `analyze_e2.py`); no model output is in the paper (rule 7).
 
 - **Miss feedback (2026-09-27, analysis only, not in the paper).**
-  `docs/analytic-memory.md`, Lean `MissFeedback.lean` (Tarski extremal
+  `research/analytic-memory.md`, Lean `MissFeedback.lean` (Tarski extremal
   equilibria, comparative statics, bistability, the PK instance, the
   forced-miss multiplier), `scripts/exp/analyze_feedback.py`. The hit
   rate is a fixed point `h = E[G(Z + W(h); h)]`; in the short-context
@@ -274,7 +274,7 @@ current at the end of every work block.
    (`data/exp/decode/`, `probe_decode.py`, `analyze_decode.py`); lockstep
    replica model `scripts/exp/lockstep_model.py`. The pre-registered
    validation **failed** (v1 deviated from the registered max rule and
-   charged c0 as engine time; see docs/memory-model.md "Deviations and
+   charged c0 as engine time; see research/memory-model.md "Deviations and
    corrections"). Post hoc, the registered max rule on probes A+B with c0
    fixed meets every threshold on the long-context runs and s15's miss
    count, but not metric 1 in the short-context arms. Next, in order:
@@ -295,7 +295,7 @@ current at the end of every work block.
    own rank prefills, and the prefill stretch measured directly.
    (c) A step-level lockstep model on one clock for all ranks, a
    preemption frees its victim. (d) Pre-register the validation in
-   docs/memory-model.md (date, git hash) before the first run: s10c8 and
+   research/memory-model.md (date, git hash) before the first run: s10c8 and
    s15_base held out, s15 reproduced without a prefill-stretch factor, no
    parameter from E2/E2b. (e) Then the model-based price of a miss at
    50k contexts (force single turns to miss, measure the added summed
@@ -491,11 +491,11 @@ has to measure.
    The hypotheses and the quantities each experiment must record are
    those that phase 1 showed to decide the outcome.
 3. **Calibrated simulation, after E1.** Plug the E1 fits into the
-   simulator (M5 in `docs/simulation-design.md`) and score it with the
+   simulator (M5 in `research/simulation-design.md`) and score it with the
    analytical model against the testbed (E6).
 
 Platform codes: T = NPU testbed, S = simulator (`libqueuingsim`,
-`docs/simulation-design.md`), O = offline on traces.
+`research/simulation-design.md`), O = offline on traces.
 
 ### 4.1 Phase 1: simulation (uncalibrated)
 
@@ -537,8 +537,8 @@ rule 5).
 
 | ID | Question | Tests | Where | Needs (incl. from phase 1) | Status |
 |----|----------|-------|-------|----------------------------|--------|
-| E1 | Fit `S_prefill(L,K,B)`, `S_decode(B,KV)`, `T_transfer(bytes)` | calibration | T | profiling harness | **prefill fit done 2026-09-24** (paper §4.3, `tab:e1`): MiniMax-M2.7 fp8, DP4+EP, block 4096, sub-block prefix cache on, no LMCache (`scripts/exp/serve_m27.sh`, `docs/testbed.md`); 45 probes pinned to one DP rank, `P(n,K)=c0+an+bn(K+n/2)` with a=0.194 ms/token, b=6.51 ns/token², K_c≈30k tokens, MAPE 3.4 % (held-out cold→append 3.7 %); generated by `make exp`. Decode step time, transfer and φ(n) not yet measured |
-| E2 | How does per-turn Var[S] split between the append and the hit/miss mixture, and does the mixture's share grow under eviction from the trace baseline (Weka: 57 % at p = 0.96, linear cost; `docs/trace-analysis.md`)? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces (Weka sequences), interarrival CV², miss injection | trace baseline done (2026-09-23); replayed in simulation 2026-09-24 (`tab:sim-trace`, `tab:sim-trace-price`); testbed run in progress 2026-09-24 (`scripts/exp/run_e2.sh`: open-loop replay of fsw-415 cc_traj_50k with a live-session cap; `analyze_e2.py`) |
+| E1 | Fit `S_prefill(L,K,B)`, `S_decode(B,KV)`, `T_transfer(bytes)` | calibration | T | profiling harness | **prefill fit done 2026-09-24** (paper §4.3, `tab:e1`): MiniMax-M2.7 fp8, DP4+EP, block 4096, sub-block prefix cache on, no LMCache (`scripts/exp/serve_m27.sh`, `research/testbed.md`); 45 probes pinned to one DP rank, `P(n,K)=c0+an+bn(K+n/2)` with a=0.194 ms/token, b=6.51 ns/token², K_c≈30k tokens, MAPE 3.4 % (held-out cold→append 3.7 %); generated by `make exp`. Decode step time, transfer and φ(n) not yet measured |
+| E2 | How does per-turn Var[S] split between the append and the hit/miss mixture, and does the mixture's share grow under eviction from the trace baseline (Weka: 57 % at p = 0.96, linear cost; `research/trace-analysis.md`)? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces (Weka sequences), interarrival CV², miss injection | trace baseline done (2026-09-23); replayed in simulation 2026-09-24 (`tab:sim-trace`, `tab:sim-trace-price`); testbed run in progress 2026-09-24 (`scripts/exp/run_e2.sh`: open-loop replay of fsw-415 cc_traj_50k with a live-session cap; `analyze_e2.py`) |
 | E3 | Is priced offloading never below never-offload? When is always-offload below it? | option value (§3.3) | T, S | E1, tier bandwidth, fetch mode (sync/async) | not started |
 | E4 | SF vs price per byte vs guarded vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs price | `prop:guarded`, `prop:blind` | O, S | traces with resume events, spread of `p_i`, a regime with mean wait comparable to a miss | not started |
 | (PD) | Does the PD inequality predict the winner? What is the latency cost at equal capacity? (follow-up paper, see §4.2b) | `prop:pd` | T | E1, measured `I, g_P, g_D` | not started |
@@ -586,7 +586,7 @@ is now E1–E6 (PD experiment removed with App. B; see §4.2b).
 | Quantity | Value |
 |---|---|
 | Per-turn prefill CV² | TBD |
-| Share of Var[S]: hit/miss mixture (trace baseline, no eviction: 57 % at p = 0.96 linear, 35 % at K_c = 100K; `docs/trace-analysis.md`) | TBD |
+| Share of Var[S]: hit/miss mixture (trace baseline, no eviction: 57 % at p = 0.96 linear, 35 % at K_c = 100K; `research/trace-analysis.md`) | TBD |
 | Share: output-length spread | TBD |
 | Share: context-length spread | TBD |
 | Prefill wait measured / PK, ρ_P = 0.5 / 0.7 / 0.9 (blocking) | TBD |
@@ -677,7 +677,7 @@ fill the "Simulator" columns of `tab:scorecard`; they replace nothing in
   per-migration transfer time and bytes (E6).
 
 ### Decisions about the simulator
-The simulator is `libqueuingsim` (Rust); `docs/simulation-design.md`
+The simulator is `libqueuingsim` (Rust); `research/simulation-design.md`
 has its design, status and roadmap. It serves E2 (hit-rate sweeps), E3,
 E4 (end-to-end), E5 and E6. E1 and the PD experiment are testbed-only; E4's cost/OPT
 column is offline. Milestones M0 to M4 are built on synthetic workloads

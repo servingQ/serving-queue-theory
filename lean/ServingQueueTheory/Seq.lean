@@ -4,7 +4,7 @@
 seQ is the language in which a serving deployment is a program: a
 *deployment* of memory pools and stages, a *workload*, and a *route* that
 every session follows (seQ `docs/language.md`; the Rust interpreter, crate `seq-lang`, is the
-reference implementation, this module is the formal one; see `docs/seq.md`). This
+reference implementation, this module is the formal one; see `research/seq.md`). This
 module formalises:
 
 * the syntax of routes (`Route Env V`) and the well-formedness condition

@@ -1,6 +1,6 @@
 # Response to the memory-model review, round 4 (2026-09-26)
 
-All findings are accepted. What was done is in docs/memory-model.md,
+All findings are accepted. What was done is in research/memory-model.md,
 "Deviations and corrections (review round 4)".
 
 | Item | Done |
@@ -11,6 +11,6 @@ All findings are accepted. What was done is in docs/memory-model.md,
 | c0 charged as engine time | fixed: c0 is client/frontend latency on the first-token and completion times; the model and fits frozen before the post hoc runs (hashes in data/exp/lockstep/freeze_c0.txt) |
 | Probe G | in the doc; the stretch table is now computed net of c0 |
 | Prefix-cache contamination, rep drift, inline CV searches | disclosed |
-| New probes, engine step log, fresh saturated held-out replay with ensemble thresholds | planned in docs/research-plan.md §0; not run (need a committed registration first) |
+| New probes, engine step log, fresh saturated held-out replay with ensemble thresholds | planned in research/research-plan.md §0; not run (need a committed registration first) |
 | Probe measurements into §4.3 / App. D via make exp | not yet |
 | Table 1 "budget the decode batch leaves" | left: Table 1 states the model, and §6 already says that on this stack the roles are reversed |

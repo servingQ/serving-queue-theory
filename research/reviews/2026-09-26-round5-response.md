@@ -26,7 +26,7 @@ same night (`data/exp/e2b/s25_base_s1`, `s25_m10_s1`).
 
 Not done: 7(b) a 5 % forced share and 7(c) the real gaps (no 30 s cap);
 both are one replay each and are the first entries of "next steps" in
-`docs/research-plan.md`.
+`research/research-plan.md`.
 
 Verdict trajectory: round 4 "major, for the right reason" → round 5
 "minor revision": the requested experiment was run and reproduced from

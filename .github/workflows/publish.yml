@@ -7,7 +7,7 @@ name: Publish
 # tectonic, uploads them as workflow artifacts (paper-pdf, lecture-notes),
 # and the run on main copies them into the mkdocs site it deploys to GitHub
 # Pages. A pull request builds everything and stops before deploying, so a
-# reviewer downloads the artifacts (www/publishing.md).
+# reviewer downloads the artifacts (README.md, "What CD publishes").
 
 on:
   push:
@@ -15,14 +15,14 @@ on:
     paths:
       - paper/**
       - lectures/**
-      - www/**
+      - docs/**
       - mkdocs.yml
       - .github/workflows/publish.yml
   pull_request:
     paths:
       - paper/**
       - lectures/**
-      - www/**
+      - docs/**
       - mkdocs.yml
       - .github/workflows/publish.yml
   workflow_dispatch:
@@ -61,7 +61,7 @@ jobs:
             (cd "$d" && tectonic -X compile notes.tex --keep-logs)
           done
       - name: Collect the PDFs
-        # one name each, the names the site links (www/index.md)
+        # one name each, the names the site links (docs/index.md)
         run: |
           mkdir -p pdf
           cp paper/main.pdf pdf/paper.pdf
@@ -97,13 +97,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: www/requirements.txt
-      - run: pip install -r www/requirements.txt
+          cache-dependency-path: docs/requirements.txt
+      - run: pip install -r docs/requirements.txt
       - uses: actions/download-artifact@v4
         with:
           name: pdf
-          path: www/pdf
-      # www/pdf is gitignored; the PDFs are served next to the pages. The
+          path: docs/pdf
+      # docs/pdf is gitignored; the PDFs are served next to the pages. The
       # index links them relatively, so --strict fails if one is missing.
       - run: mkdocs build --strict
       - uses: actions/upload-artifact@v4

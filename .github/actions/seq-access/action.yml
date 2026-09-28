@@ -16,7 +16,7 @@ runs:
         KEY: ${{ inputs.deploy-key }}
       run: |
         if [ -z "$KEY" ]; then
-          echo "::error::secret SEQ_DEPLOY_KEY is not set (see docs/seq.md)"; exit 1
+          echo "::error::secret SEQ_DEPLOY_KEY is not set (see research/seq.md)"; exit 1
         fi
         mkdir -p ~/.ssh && printf '%s\n' "$KEY" > ~/.ssh/seq && chmod 600 ~/.ssh/seq
         ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null

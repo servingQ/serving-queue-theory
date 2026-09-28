@@ -129,7 +129,7 @@ def lstsq(X, y):
 
 
 def fit_step_model_v2(summary):
-    """Post hoc (after v1 failed; see docs/memory-model.md), from probes A, B, F
+    """Post hoc (after v1 failed; see research/memory-model.md), from probes A, B, F
     only: tau = alpha + beta * max_r bucket(b_r) + gamma * max_r sum_i K_i
     + delta * (active ranks - 1); leave-one-configuration-out CV MAPE 0.044,
     the best of six forms. All ranks pad to the largest bucket; attention is

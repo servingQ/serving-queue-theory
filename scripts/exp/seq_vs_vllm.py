@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare a seQ replay of the GPU testbed (`.seq/src/programs/vllm_replay.seq`)
 with the measured vLLM runs (`data/exp/gpu/e2b/<run>/rounds.jsonl`,
-docs/testbed-gpu.md), turn by turn.
+research/testbed-gpu.md), turn by turn.
 
     python3 scripts/exp/seq_vs_vllm.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b \
         --seq .seq/src --out data/exp/seq/gpu.txt s50_base s42_base s35_base s30_base s25_base s35_m10

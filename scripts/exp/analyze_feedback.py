@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Miss feedback in the short-context price test (docs/analytic-memory.md).
+"""Miss feedback in the short-context price test (research/analytic-memory.md).
 
 For each pair (baseline arm, forced-miss arm) of the short-context replay:
 

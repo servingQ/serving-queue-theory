@@ -4,7 +4,7 @@ replays (long-context replay E2, short-context replay E2b).
 
 What it models (the engine that served the replays is vllm-rbln's
 RBLNScheduler on upstream vLLM 0.26 block management; see
-docs/memory-model.md for the code lines):
+research/memory-model.md for the code lines):
 
   client   session i arrives at t0 + i * spacing and passes a FIFO gate that
            admits at most `cap` live sessions (0 = no gate); within a session,

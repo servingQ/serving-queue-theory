@@ -1,4 +1,4 @@
-"""Hypothesis H-pin (docs/research-plan.md): a waiting request's cached
+"""Hypothesis H-pin (research/research-plan.md): a waiting request's cached
 prefix is pinned (its blocks touched) when the request arrives and released
 once the scheduler has admitted it, or when it finishes unscheduled, so
 that it cannot be evicted while it waits. vLLM itself leaves it evictable

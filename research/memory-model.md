@@ -2,7 +2,7 @@
 
 Status: 2026-09-26, analysis only (not in the paper). Script:
 `scripts/exp/memory_model.py`; outputs: `data/exp/memory/*.{txt,json}` (every
-number below is printed there). Reviews: `docs/reviews/2026-09-26-memory-round*.md`.
+number below is printed there). Reviews: `research/reviews/2026-09-26-memory-round*.md`.
 
 ## Question
 
@@ -327,7 +327,7 @@ progress per prefill.
 
 ## Deviations and corrections (review round 4, 2026-09-26 23:06 KST)
 
-The round-4 review (`docs/reviews/2026-09-26-memory-round4.md`) found the
+The round-4 review (`research/reviews/2026-09-26-memory-round4.md`) found the
 following, all confirmed:
 
 1. **v1 was not the registered model.** The registration names a step equal to

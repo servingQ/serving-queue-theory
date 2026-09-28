@@ -9,7 +9,7 @@
 | 5 | Idle reading; no-cross-rank counterfactual | yes | `--decode nocross` (own-rank prefill pauses computed in the model, decodes shifted by each admitted prefill); table of three decode variants; the closed-loop "more misses at cap 8" stated |
 | 6 | Running blocks as consistency check; partial class | yes | results bullets |
 | 7 | Causal chain, FCFS tolerance, eviction order, provenance, assertions | yes | links 3–5; inversions counted with no tolerance (0–1 per long-context run, 9–65 per short-context run); hashless tail to the front; the think times, arrive-to-queue shares and resident-at-send share are now computed by memory_model.py (observed and model); assertions on contiguous session and round indices (they caught 2–9 short-context turns without a recorded first token, now simulated and excluded from the TTFT comparison) |
-| 8 | Paper corrections; docs/testbed.md | testbed yes; paper pending | docs/testbed.md: 30 s gap sentence (335/681 = 49 % in s15), 51 allocatable, the ITL source ("read off the replays"). The paper edits (ratio sentence, 51 blocks, any-rank prefill share) are listed in memory-model.md "Note on the paper" for the authors' decision |
+| 8 | Paper corrections; research/testbed.md | testbed yes; paper pending | research/testbed.md: 30 s gap sentence (335/681 = 49 % in s15), 51 allocatable, the ITL source ("read off the replays"). The paper edits (ratio sentence, 51 blocks, any-rank prefill share) are listed in memory-model.md "Note on the paper" for the authors' decision |
 | 9 | make exp integration | not yet | only needed before a number enters the paper |
 | 10 | Decode probe and lockstep model | planned | needs the NPU server |
 | 11 | Model-based price at 50k | after 10 | |

@@ -1,10 +1,10 @@
-# Review: "Memory as a queue" (docs/memory-model.md, scripts/exp/memory_model.py), round 2
+# Review: "Memory as a queue" (research/memory-model.md, scripts/exp/memory_model.py), round 2
 
 Reviewer role: queueing theory / systems, ICML/SIGMETRICS area chair.
 Date 2026-09-26. Read: my round-1 report, the authors' response
-(docs/reviews/2026-09-26-memory-round1-response.md), the rewritten
-docs/memory-model.md, scripts/exp/memory_model.py (line by line),
-docs/testbed.md (the rewritten l. 116-135), paper/main.tex (abstract,
+(research/reviews/2026-09-26-memory-round1-response.md), the rewritten
+research/memory-model.md, scripts/exp/memory_model.py (line by line),
+research/testbed.md (the rewritten l. 116-135), paper/main.tex (abstract,
 intro, §2.2 l. 336-346, §4.3 l. 785-815), paper/simulation.tex, the replayer
 (~/icp-serving-workload-analysis/replayer/replay_text_trace.py), and the engine:
 vllm_rbln/v1/core/rbln_scheduler.py, rbln_kv_cache_manager.py, and upstream
@@ -120,7 +120,7 @@ On s15 the per-rank misses become 311 / 121 / 104 / 140 against 269 / 162 / 106 
 143, where they were 158 / 31 / 17 / 29. The waiting series on rank 3 moves
 from 1.57 to 3.39 (observed 4.39). What remains of the s15 gap is on ranks 1
 and 3 (waiting 2.5 against 5.4) and in the hit TTFT (2.8 against 4.4 s). The
-prefill stretch under concurrency (1.10-1.23× E1, docs/testbed.md) is the
+prefill stretch under concurrency (1.10-1.23× E1, research/testbed.md) is the
 first candidate for that remainder (minor 10). So the statement "the saturated
 arm is not reproduced ... its decode stalls hold the batch cap" (memory-model.md
 l. 102-105) is contradicted, and so is "the rest are unforced misses the model
@@ -221,7 +221,7 @@ validation.
 - §4.3 l. 800-801: "The per-rank utilisation stays at ...". Under DP
   lockstep the statistic that matters is the share of time any rank
   prefills (67 / 58 / 31 / 31 %).
-- docs/testbed.md l. 125-133 says of s15 that "every miss followed a 30 s
+- research/testbed.md l. 125-133 says of s15 that "every miss followed a 30 s
   gap". Measured: 49 % of s15 misses followed a gap of at least 29 s (mean
   gap 19.8 s against 3.0 s for hits). In s25 it is 29/29. So in E2b the gap
   story is largely right, and in E2 it is wrong (hit 5.9-6.6 s, miss
@@ -269,12 +269,12 @@ it contradicts.
    are allocated chunk by chunk (kv_cache_manager.py l. 412-470,
    `num_tokens_need_slot = computed + chunk`). The model holds them all from
    admission. Negligible with exclusive prefill, but say it.
-9. **docs/testbed.md**: besides the 30-s-gap sentence (N6), "the pool is 52
+9. **research/testbed.md**: besides the 30-s-gap sentence (N6), "the pool is 52
    blocks" should say 51 allocatable. The ITLs quoted there (0.10 s with a
    peer prefilling, 0.17-0.25 s with own prefills pending) need a source. If
    they come from the replays, say so; they are the numbers the decode probe
    must reproduce independently.
-10. **Prefill stretch.** docs/testbed.md measures the server's prefill at
+10. **Prefill stretch.** research/testbed.md measures the server's prefill at
     1.10-1.23× E1 under concurrency (lockstep: a step lasts as long as the
     slowest rank). The model uses unstretched E1. Name it as a second omission
     next to decode.
@@ -416,7 +416,7 @@ compared with the bracket, in the manner of the short-context price test.
    model): reword the hit/miss ratio in abstract l. 98-100, intro l. 179-181
    and §4.3 l. 791-797 so that it is not read as the price of a miss. Say 51
    allocatable blocks (l. 787). Replace "per-rank utilisation" (l. 800-801)
-   with the share of time any rank prefills. In docs/testbed.md fix "every
+   with the share of time any rank prefills. In research/testbed.md fix "every
    miss followed a 30 s gap" (49 % in s15), 52 → 51, and the ITL source
    (N6, minor 9).
 9. Add memory_model.py to `make exp` and generate its tables and macros

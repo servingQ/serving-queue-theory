@@ -2,11 +2,11 @@
 
 The open-loop model (`slot_model.py`, `data/exp/slot/`) is deleted and
 replaced by `scripts/exp/memory_model.py` (closed loop, block-level LRU pool,
-growth during decode, B = 51). `docs/memory-model.md` is rewritten.
+growth during decode, B = 51). `research/memory-model.md` is rewritten.
 
 | # | Action | Done | Where / result |
 |---|--------|------|----------------|
-| 1 | Cite the scheduler that ran | yes | memory-model.md §"The serving system" (RBLNScheduler l. 198–205, 335–390, 535, 718–746; upstream single_type_kv_cache_manager l. 135–221, 503; block_pool l. 190); script docstring; docs/testbed.md l. 116–124 rewritten (the optimum_scheduler citation removed) |
+| 1 | Cite the scheduler that ran | yes | memory-model.md §"The serving system" (RBLNScheduler l. 198–205, 335–390, 535, 718–746; upstream single_type_kv_cache_manager l. 135–221, 503; block_pool l. 190); script docstring; research/testbed.md l. 116–124 rewritten (the optimum_scheduler citation removed) |
 | 2 | B = 51 | yes | default `--blocks 51` |
 | 3 | Closed replay | yes | session i at t0 + i·spacing, FIFO gate of `cap`, next send = model done + trace gap; door waits 513/623/757 s against 498/636/770 observed |
 | 4 | Endogenous class via LRU | yes | hit agreement 0.93–0.98; per-rank miss counts match; table in memory-model.md |

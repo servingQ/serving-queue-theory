@@ -1,9 +1,9 @@
-# Review: miss feedback (docs/analytic-memory.md, MissFeedback.lean), round 2
+# Review: miss feedback (research/analytic-memory.md, MissFeedback.lean), round 2
 
 Reviewer: queueing theory / applied probability (same reviewer as round 1).
 Date: 2026-09-27. Material: my round-1 report, the response
 (`2026-09-27-feedback-round1-response.md`), the rewritten
-`docs/analytic-memory.md`, `lean/ServingQueueTheory/MissFeedback.lean`,
+`research/analytic-memory.md`, `lean/ServingQueueTheory/MissFeedback.lean`,
 `scripts/exp/analyze_feedback.py`, `data/exp/e2b/`, and `paper/main.tex`
 §3.3 / §4.3 for m8.
 
@@ -105,7 +105,7 @@ clause does not imply the second.
   `H(0) = 0`. Exact collapse then requires the all-miss pool to flush
   faster than the shortest absence. Otherwise the bad equilibrium is a
   low-hit one, and the Tarski statements cover both cases.
-- The same correction applies to `docs/research-plan.md` if it repeats the
+- The same correction applies to `research/research-plan.md` if it repeats the
   sentence.
 
 ### R3. The data section: numbers right, uncertainty and pool test wrong
@@ -207,7 +207,7 @@ What is wrong or missing:
      median with a mean. Using means for both, or medians for both, the
      baseline ratio is 50–75×, not 10–20×. Say "one to two orders of
      magnitude".
-   - `docs/research-plan.md` says "carried by the pool channel … not the
+   - `research/research-plan.md` says "carried by the pool channel … not the
      wait". Write instead: "not the wait (excluded); the pool channel is
      indicated by the insertion association, but no constant-capacity
      pool model fits (overshoots 1.6–2.2× at 2.5 s, fails at 3.5 s)".

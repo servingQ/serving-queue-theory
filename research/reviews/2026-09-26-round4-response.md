@@ -13,14 +13,14 @@ from the data on disk; no server time was used.
 | 5 | ω = 0.125 s is the loaded ITL | yes | `CAL_DECODE_STEP = 0.057` (cap-8 ITL); the range 0.057–0.122 s is a macro (`\eTwoItlLo/Hi`); §4.2 says so; tables regenerated (`make sim` OK) |
 | 6 | TTFT ratio called "the price of a miss" | yes | abstract: "waits X to Y times longer for its first token ... almost all for KV blocks"; contribution 3 and §6: "the price Φ_i itself is not yet measured, only the wait a miss incurs" |
 | 7 | Stale K_c after recalibration | yes | §2.4 refers to the synthetic cost model (App. B, K_c = 50k); the replay caption prints K_c from the calibrated constants (≈30k) |
-| 8 | Fourth-reviewer attacks | partly | think-time cap and the CRC imbalance are stated in §4.3/§6 (single stack and workload, single seeds); trace provenance: "a coding-agent trace" (not "production") in §4.3 and the abstract; host-tensor mode and sub-block rounding are in `docs/testbed.md`, not the paper (page budget) |
+| 8 | Fourth-reviewer attacks | partly | think-time cap and the CRC imbalance are stated in §4.3/§6 (single stack and workload, single seeds); trace provenance: "a coding-agent trace" (not "production") in §4.3 and the abstract; host-tensor mode and sub-block rounding are in `research/testbed.md`, not the paper (page budget) |
 | minor | Table 18 caption, resume-table `\\,s`, legends, appendix naming | yes | caption rewritten by the generator; `trace_stats_weka.py` label fixed and traces regenerated; E2 figure legends placed in free space; AGENTS.md: App. D testbed tables, App. E design |
 | minor | Figure 4 annotations, App. B overfull, empty pages 16–17, unused macros, Table 11 ρ'=0.83 next to "ρ' ≥ 1" | not yet | round 5 |
 
 Not done (needs testbed time): action item 7, the short-context run
 (≤ 12k tokens, cap 32, real gaps, ρ ≈ 0.5–0.7, optional 5 % forced
 misses) that would reach the PK regime and measure Φ_i. It is the first
-entry of "next steps" in `docs/research-plan.md`.
+entry of "next steps" in `research/research-plan.md`.
 
 Verdict trajectory: round 3 "minor, border of major" → round 4 "major,
 for the right reason" (analysis errors in the new section). Items 1–7

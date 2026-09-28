@@ -14,8 +14,8 @@ asks two questions the proofs cannot answer:
    with integer splits, and heuristic controllers instead of the optimum.
 
 Design, validation-ladder status and the roadmap to the calibrated
-simulator are in `docs/simulation-design.md`; where this phase sits in
-the validation plan is in `docs/research-plan.md` §4.
+simulator are in `research/simulation-design.md`; where this phase sits in
+the validation plan is in `research/research-plan.md` §4.
 
 Results come from synthetic workloads. They are not measurements of a
 serving system and must not fill the `\tbd{}` cells of paper §4.2 (see

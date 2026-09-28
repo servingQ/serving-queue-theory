@@ -3,7 +3,7 @@
 Status as of 2026-09-26. Experiment names: cost fit (was E1), long-context
 replay (E2), short-context replay and price test (E2b); the codes survive
 in directory and macro names only. A GPU (A100) testbed is next; see
-`docs/research-plan.md` §0 and `scripts/exp/serve_gpu.sh`. This file records how the measurement server is
+`research/research-plan.md` §0 and `scripts/exp/serve_gpu.sh`. This file records how the measurement server is
 launched and every configuration that did not work, so nobody re-runs the
 bisection.
 
@@ -79,14 +79,14 @@ The replayer is `~/icp-serving-workload-analysis/replayer/replay_text_trace.py`
 were validated end to end against the tiny model on one NPU (port 8020).
 
 Results go into the paper only through generated tables (never typed by
-hand); see `docs/research-plan.md` §4.2a for the table layouts.
+hand); see `research/research-plan.md` §4.2a for the table layouts.
 
 ## Runs so far (2026-09-24/26)
 
 | Run | What | Result |
 |-----|------|--------|
 | E1 `data/exp/e1/probes.jsonl` | 18 cold + 27 pinned append probes | `fit.json`: a = 0.194 ms/token, b = 6.51 ns/token², c0 = 44 ms, K_c ≈ 30k, MAPE 3.4 % |
-| E2 `s20c0`, `s20c16`, `s20c8`, `s10c8` | 37 sessions × 10 turns, pinned, caps ∞/16/8/8 | `paper/exp/tab-e2.tex`; summary in `docs/research-plan.md` §0 |
+| E2 `s20c0`, `s20c16`, `s20c8`, `s10c8` | 37 sessions × 10 turns, pinned, caps ∞/16/8/8 | `paper/exp/tab-e2.tex`; summary in `research/research-plan.md` §0 |
 | `data/exp/e2_partial/s20c16_diskfull_partial` | first cap-16 attempt | killed by ENOSPC at 279/369; not used |
 | `data/exp/e1/probes_unpinned.jsonl` | first append sweep without DP pinning | 2 of 27 hits; not used |
 
@@ -126,13 +126,13 @@ What did not work:
   from 0.017 s idle to 0.10 s when a *peer* rank prefills, 0.17–0.25 s
   when the own rank has prefills pending, and 1.5 s at saturation (read
   off the replays, not probed on an idle server; the decode probe planned
-  in `docs/memory-model.md` must reproduce them independently); the
+  in `research/memory-model.md` must reproduce them independently); the
   4-token decodes then hold the 8 running slots for seconds; (ii) the pool is 52 blocks of 4096 tokens
   per rank (51 allocatable: one is vLLM's null block), so a 5k-token session holds 2 blocks and ~20 live sessions
   per rank fill it; LRU then evicts the prefixes with the longest gap
   (49 % of the misses followed a gap of 29 s or more and 91 % arrived to
   a queue on their rank; `scripts/exp/memory_model.py`, see
-  `docs/memory-model.md`), the misses re-prefill 4–6k tokens,
+  `research/memory-model.md`), the misses re-prefill 4–6k tokens,
   and TTFT rises over the run (0.6 s → 3.6 s). `kv_cache_usage_perc`
   counts only running requests' blocks (20–35 %), not cached ones.
 - Sub-block granularity is 512 tokens: `cached_tokens` is rounded down
