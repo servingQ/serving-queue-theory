@@ -10,7 +10,7 @@ publish = false
 rand = "0.9"
 # seQ defines the serving deployments and provides the shared distributions
 # used by the independent queueing reference models.
-seq = { package = "seq-lang", git = "https://github.com/vrvrv/seQ", tag = "v0.1.0-rc3" }
+seq = { package = "seq-lang", git = "https://github.com/vrvrv/seQ", tag = "v0.1.0-rc4" }
 
 # Statistical tests simulate millions of customers; run them optimised.
 [profile.test]

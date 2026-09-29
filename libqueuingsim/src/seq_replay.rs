@@ -25,7 +25,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use seq::{Overrides, Report, parser};
+use seq::{Overrides, Report, frontend::parser};
 
 use crate::analytic::{finite_source_price, miss_price};
 use crate::models::agentic::EvictionPolicy;
@@ -75,6 +75,7 @@ fn run(c: &Cell, seed: u64) -> Report {
         seed: Some(seed),
         horizon: Some(TRACE_HORIZON),
         warmup: Some(TRACE_WARMUP),
+        arrivals: None,
         trace: c.trace.clone(),
     };
     let path = Path::new(PROGRAM);

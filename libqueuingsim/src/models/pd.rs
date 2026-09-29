@@ -12,13 +12,10 @@
 //! equal capacity can have different queueing delay. Memory caps
 //! (`μ_{P,mem}`, `μ_{D,mem}`) are not simulated.
 
-use std::collections::VecDeque;
-
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use std::path::Path;
 
 use crate::Dist;
-use crate::engine::{Model, Scheduler, run};
+use crate::seq_adapter::sample_expr;
 use crate::stats::{Estimate, Welford, batch_means};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -103,157 +100,195 @@ pub struct PdReport {
     pub latency_stats: Welford,
 }
 
-#[derive(Clone, Copy)]
-struct Job {
-    arrival: f64,
-    prefill: f64,
-    decode: f64,
-    kv: f64,
-}
-
-struct Station {
-    servers: usize,
-    busy: usize,
-    queue: VecDeque<Job>,
-    busy_time: f64,
-}
-
-enum Ev {
-    Arrival,
-    Done { station: usize, job: Job },
-}
-
-struct Pd {
-    cfg: PdConfig,
-    rng: StdRng,
-    stations: Vec<Station>,
-    completed: usize,
-    t_warm: f64,
-    latencies: Vec<f64>,
-}
-
-impl Pd {
-    fn new_job(&mut self, now: f64) -> Job {
-        Job {
-            arrival: now,
-            prefill: self.cfg.prefill.sample(&mut self.rng),
-            decode: self.cfg.decode.sample(&mut self.rng),
-            kv: self.cfg.kv_tokens.sample(&mut self.rng),
-        }
-    }
-
-    fn service(&self, station: usize, j: &Job) -> f64 {
-        match (self.cfg.mode, station) {
-            (Mode::Aggregated, _) => j.prefill + j.decode + self.cfg.interference,
-            (Mode::Disaggregated { .. }, 0) => j.prefill / self.cfg.gain_prefill,
-            (Mode::Disaggregated { .. }, 1) => j.kv / self.cfg.b_net,
-            (Mode::Disaggregated { .. }, _) => j.decode / self.cfg.gain_decode,
-        }
-    }
-
-    fn arrive_at(&mut self, station: usize, job: Job, s: &mut Scheduler<Ev>) {
-        if self.stations[station].busy < self.stations[station].servers {
-            let d = self.service(station, &job);
-            let st = &mut self.stations[station];
-            st.busy += 1;
-            if self.completed >= self.cfg.warmup {
-                st.busy_time += d;
-            }
-            s.after(d, Ev::Done { station, job });
-        } else {
-            self.stations[station].queue.push_back(job);
-        }
-    }
-
-    fn enter(&mut self, s: &mut Scheduler<Ev>) {
-        let job = self.new_job(s.now());
-        self.arrive_at(0, job, s);
-    }
-}
-
-impl Model for Pd {
-    type Event = Ev;
-
-    fn handle(&mut self, ev: Ev, s: &mut Scheduler<Ev>) {
-        let now = s.now();
-        match ev {
-            Ev::Arrival => {
-                if let Load::Poisson { rate } = self.cfg.load {
-                    s.after(Dist::exp(1.0 / rate).sample(&mut self.rng), Ev::Arrival);
-                }
-                self.enter(s);
-            }
-            Ev::Done { station, job } => {
-                self.stations[station].busy -= 1;
-                if let Some(next) = self.stations[station].queue.pop_front() {
-                    self.arrive_at(station, next, s);
-                }
-                if station + 1 < self.stations.len() {
-                    self.arrive_at(station + 1, job, s);
-                    return;
-                }
-                self.completed += 1;
-                if self.completed == self.cfg.warmup {
-                    self.t_warm = now;
-                } else if self.completed > self.cfg.warmup {
-                    self.latencies.push(now - job.arrival);
-                }
-                if let Load::Saturated { .. } = self.cfg.load {
-                    self.enter(s);
-                }
-            }
-        }
-    }
-
-    fn finished(&self) -> bool {
-        self.completed >= self.cfg.warmup + self.cfg.requests
-    }
-}
-
 pub fn simulate(cfg: &PdConfig) -> PdReport {
-    let station = |servers| Station {
-        servers,
-        busy: 0,
-        queue: VecDeque::new(),
-        busy_time: 0.0,
+    if let Load::Saturated { jobs } = cfg.load {
+        return simulate_saturated_seq(cfg, jobs);
+    }
+    simulate_poisson_seq(cfg)
+}
+
+/// The saturated tandem model is defined by the packaged `pd_tandem.seq`
+/// program. Keep this module as the Rust configuration/report adapter.
+fn simulate_saturated_seq(cfg: &PdConfig, jobs: usize) -> PdReport {
+    let prefill_devices = match cfg.mode {
+        // `pd_tandem.seq` declares all three stations even on the aggregate
+        // path; keep both split pools positive because seQ checks the model
+        // declarations before it sees the branch.
+        Mode::Aggregated => 1,
+        Mode::Disaggregated { prefill_devices } => prefill_devices,
     };
-    let stations = match cfg.mode {
-        Mode::Aggregated => vec![station(cfg.devices)],
+    let (mut source, path) = {
+        let path = seq::program_path("pd_tandem");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        (source, path)
+    };
+    for (pattern, replacement) in [
+        ("~exp(sP)", sample_expr(&cfg.prefill)),
+        ("~exp(sD)", sample_expr(&cfg.decode)),
+        ("~exp(K)", sample_expr(&cfg.kv_tokens)),
+    ] {
+        assert!(source.contains(pattern), "pd_tandem.seq lacks {pattern}");
+        source = source.replacen(pattern, &replacement, 1);
+    }
+
+    let split = matches!(cfg.mode, Mode::Disaggregated { .. });
+    let mean_sp = cfg.prefill.mean() / cfg.gain_prefill;
+    let mean_sd = cfg.decode.mean() / cfg.gain_decode;
+    let capacity = if split {
+        (prefill_devices as f64 / mean_sp)
+            .min((cfg.devices - prefill_devices) as f64 / mean_sd)
+            .min(cfg.b_net / cfg.kv_tokens.mean())
+    } else {
+        cfg.devices as f64 / (cfg.prefill.mean() + cfg.decode.mean() + cfg.interference)
+    };
+    let measured = cfg.requests.max(1) as f64;
+    let horizon = 1.2 * (cfg.warmup as f64 + measured) / capacity.max(f64::MIN_POSITIVE) + 1.0;
+    let number = |x: f64| {
+        seq::frontend::parser::parse_expr(&format!("{x:.17e}"))
+            .unwrap_or_else(|e| panic!("invalid seQ number {x}: {e}"))
+    };
+    let overrides = seq::Overrides {
+        lets: vec![
+            ("N".into(), number(cfg.devices as f64)),
+            ("NP".into(), number(prefill_devices as f64)),
+            ("sP".into(), number(cfg.prefill.mean())),
+            ("sD".into(), number(cfg.decode.mean())),
+            ("I".into(), number(cfg.interference)),
+            ("gP".into(), number(cfg.gain_prefill)),
+            ("gD".into(), number(cfg.gain_decode)),
+            ("bnet".into(), number(cfg.b_net)),
+            ("K".into(), number(cfg.kv_tokens.mean())),
+            ("jobs".into(), number(jobs as f64)),
+            ("mode".into(), number(if split { 1.0 } else { 0.0 })),
+        ],
+        seed: Some(cfg.seed),
+        warmup: Some(0.0),
+        horizon: Some(horizon),
+        ..Default::default()
+    };
+    let report = seq::run_source(&source, &overrides, Path::new(&path).parent())
+        .unwrap_or_else(|e| panic!("pd_tandem.seq: {e}"));
+    let observed = report.observe("latency").expect("PD latency observation");
+    let start = cfg.warmup.min(observed.samples.len());
+    let end = (start + cfg.requests).min(observed.samples.len());
+    assert!(end > start, "pd_tandem.seq produced no measured requests");
+    let latencies = observed.samples[start..end].to_vec();
+    let times = &observed.records[start..end];
+    let span = if times.len() > 1 {
+        times[times.len() - 1].0 - times[0].0
+    } else {
+        horizon
+    };
+    let mut latency_stats = Welford::new();
+    for &latency in &latencies {
+        latency_stats.push(latency);
+    }
+    let station_utilization = if split {
+        ["prefill", "link", "decode"]
+            .iter()
+            .map(|name| report.stage(name).map_or(0.0, |stage| stage.utilization))
+            .collect()
+    } else {
+        vec![report.stage("agg").map_or(0.0, |stage| stage.utilization)]
+    };
+    PdReport {
+        throughput: latencies.len() as f64 / span.max(f64::MIN_POSITIVE),
+        latency: batch_means(&latencies, 20),
+        latencies,
+        station_utilization,
+        latency_stats,
+    }
+}
+
+/// Open arrivals run the seQ program `pd_open.seq`; this adapter only maps
+/// the Rust configuration and seQ observations onto the compatibility report.
+fn simulate_poisson_seq(cfg: &PdConfig) -> PdReport {
+    let Load::Poisson { rate } = cfg.load else {
+        unreachable!()
+    };
+    let (prefill_devices, split) = match cfg.mode {
+        Mode::Aggregated => (1, false),
         Mode::Disaggregated { prefill_devices } => {
             assert!(0 < prefill_devices && prefill_devices < cfg.devices);
-            vec![
-                station(prefill_devices),
-                station(1),
-                station(cfg.devices - prefill_devices),
-            ]
+            (prefill_devices, true)
         }
     };
-    let mut m = Pd {
-        cfg: cfg.clone(),
-        rng: StdRng::seed_from_u64(cfg.seed),
-        stations,
-        completed: 0,
-        t_warm: 0.0,
-        latencies: Vec::with_capacity(cfg.requests),
-    };
-    let mut s = Scheduler::new();
-    match cfg.load {
-        Load::Saturated { jobs } => (0..jobs).for_each(|_| m.enter(&mut s)),
-        Load::Poisson { .. } => s.at(0.0, Ev::Arrival),
+    let path = seq::program_path("pd_open");
+    let mut source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    for (pattern, replacement) in [
+        ("~exp(sP)", sample_expr(&cfg.prefill)),
+        ("~exp(sD)", sample_expr(&cfg.decode)),
+        ("~exp(K)", sample_expr(&cfg.kv_tokens)),
+    ] {
+        assert!(source.contains(pattern), "pd_open.seq lacks {pattern}");
+        source = source.replacen(pattern, &replacement, 1);
     }
-    let end = run(&mut m, &mut s, f64::INFINITY);
-    let span = end - m.t_warm;
+    let number = |x: f64| {
+        seq::frontend::parser::parse_expr(&format!("{x:.17e}"))
+            .unwrap_or_else(|e| panic!("invalid seQ number {x}: {e}"))
+    };
+    let horizon = 1.5 * (cfg.warmup + cfg.requests).max(1) as f64 / rate + 100.0;
+    let overrides = seq::Overrides {
+        lets: vec![
+            ("N".into(), number(cfg.devices as f64)),
+            ("NP".into(), number(prefill_devices as f64)),
+            ("Lambda".into(), number(rate)),
+            ("sP".into(), number(cfg.prefill.mean())),
+            ("sD".into(), number(cfg.decode.mean())),
+            ("I".into(), number(cfg.interference)),
+            ("gP".into(), number(cfg.gain_prefill)),
+            ("gD".into(), number(cfg.gain_decode)),
+            ("bnet".into(), number(cfg.b_net)),
+            ("K".into(), number(cfg.kv_tokens.mean())),
+            ("mode".into(), number(if split { 1.0 } else { 0.0 })),
+        ],
+        seed: Some(cfg.seed),
+        warmup: Some(0.0),
+        horizon: Some(horizon),
+        ..Default::default()
+    };
+    let report = seq::run_source(&source, &overrides, Path::new(&path).parent())
+        .unwrap_or_else(|e| panic!("pd_open.seq: {e}"));
+    let observed = report.observe("latency").expect("PD latency observation");
+    let start = cfg.warmup.min(observed.samples.len());
+    let end = (start + cfg.requests).min(observed.samples.len());
+    assert!(end > start, "pd_open.seq produced no measured requests");
+    let latencies = observed.samples[start..end].to_vec();
+    let times = &observed.records[start..end];
+    let span = if times.len() > 1 {
+        times[times.len() - 1].0 - times[0].0
+    } else {
+        horizon
+    };
     let mut latency_stats = Welford::new();
-    m.latencies.iter().for_each(|&x| latency_stats.push(x));
+    for &latency in &latencies {
+        latency_stats.push(latency);
+    }
+    let station_utilization = if split {
+        [
+            ("prefill", prefill_devices),
+            ("link", 1),
+            ("decode", cfg.devices - prefill_devices),
+        ]
+        .iter()
+        .map(|(name, servers)| {
+            report.stage(name).map_or(0.0, |stage| {
+                (stage.throughput * stage.mean_service / *servers as f64).min(1.0)
+            })
+        })
+        .collect()
+    } else {
+        vec![report.stage("agg").map_or(0.0, |stage| {
+            (stage.throughput * stage.mean_service / cfg.devices as f64).min(1.0)
+        })]
+    };
     PdReport {
-        throughput: cfg.requests as f64 / span,
-        latency: batch_means(&m.latencies, 20),
-        station_utilization: m
-            .stations
-            .iter()
-            .map(|st| st.busy_time / (span * st.servers as f64))
-            .collect(),
-        latencies: m.latencies,
+        throughput: latencies.len() as f64 / span.max(f64::MIN_POSITIVE),
+        latency: batch_means(&latencies, 20),
+        latencies,
+        station_utilization,
         latency_stats,
     }
 }
@@ -290,5 +325,31 @@ mod tests {
         let r = simulate(&cfg);
         assert!((r.throughput - 1.0).abs() < 0.02, "{}", r.throughput);
         assert!(r.station_utilization[0] > 0.99);
+    }
+
+    #[test]
+    fn open_poisson_load_uses_the_seq_program() {
+        let mut cfg = PdConfig::from_means(
+            8,
+            Mode::Disaggregated { prefill_devices: 2 },
+            Load::Poisson { rate: 1.5 },
+            1.0,
+            3.0,
+            0.0,
+            (1.0, 1.0),
+            f64::INFINITY,
+            1.0,
+        );
+        cfg.requests = 5_000;
+        cfg.warmup = 500;
+        let report = simulate(&cfg);
+        assert_eq!(report.latencies.len(), cfg.requests);
+        assert!(report.throughput > 1.2 && report.throughput < 1.8);
+        assert!(
+            report
+                .station_utilization
+                .iter()
+                .all(|u| *u >= 0.0 && *u <= 1.0)
+        );
     }
 }

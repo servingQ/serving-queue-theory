@@ -1,10 +1,10 @@
 //! # libqueuingsim
 //!
-//! A discrete-event simulator for the models in `paper/main.tex`. The Lean
-//! proofs in `lean/` establish the propositions *inside* their model; this
-//! crate asks whether the decisions they imply survive once the model's
-//! simplifications are dropped (non-Poisson arrivals, closed programs with
-//! tool time, finite KV memory, tandem PD pools, load-dependent routing).
+//! Validation and report generation for the models in `paper/main.tex`. The
+//! Lean proofs in `lean/` establish the propositions *inside* their model;
+//! this crate checks whether the decisions they imply survive once the
+//! model's simplifications are dropped (non-Poisson arrivals, closed programs
+//! with tool time, finite KV memory, tandem PD pools, load-dependent routing).
 //!
 //! | Module | Paper result it exercises |
 //! |--------|---------------------------|
@@ -26,13 +26,14 @@
 //! are not measurements of a real serving system.
 //!
 //! Serving deployments and their workloads are specified in seQ programs.
-//! `models::routing` delegates to its seQ program; the remaining Rust models
-//! are independent queueing references used to check formulas and compare
-//! scenarios. Distribution sampling and moments come from seQ's `Dist` API.
+//! Queue, PD, and routing checks run those programs. The remaining Rust
+//! simulations are independent references for cross-checking during their
+//! migration. Distribution sampling and moments come from seQ's `Dist` API.
 
 pub mod analytic;
 pub mod engine;
 pub mod models;
+mod seq_adapter;
 pub mod seq_open;
 pub mod seq_price;
 pub mod seq_replay;

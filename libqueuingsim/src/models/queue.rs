@@ -9,14 +9,12 @@
 //! differ only in the service distribution see the same arrival sequence
 //! (common random numbers).
 
-use std::collections::VecDeque;
-
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 use crate::Dist;
-use crate::engine::{Model, Scheduler, run};
-use crate::stats::{Estimate, TimeAverage, Welford, batch_means};
+use crate::seq_adapter::sample_expr;
+use crate::stats::{Estimate, Welford, batch_means};
 
 #[derive(Clone, Debug)]
 pub struct QueueConfig {
@@ -74,115 +72,6 @@ impl QueueReport {
     }
 }
 
-enum Ev {
-    Arrival,
-    Departure { server: usize },
-}
-
-struct Customer {
-    idx: usize,
-    arrival: f64,
-    service: f64,
-}
-
-struct Ggc {
-    cfg: QueueConfig,
-    arr_rng: StdRng,
-    svc_rng: StdRng,
-    total: usize,
-    arrived: usize,
-    queue: VecDeque<Customer>,
-    busy: Vec<Option<Customer>>,
-    waits: Vec<f64>,
-    sojourns: Vec<f64>,
-    service: Welford,
-    in_system: TimeAverage,
-    busy_servers: TimeAverage,
-    window: Option<(f64, f64)>,
-    snapshot: (f64, f64),
-}
-
-impl Ggc {
-    fn new(cfg: QueueConfig) -> Self {
-        let total = cfg.warmup + cfg.customers;
-        let (arr_rng, svc_rng) = streams(cfg.seed);
-        Self {
-            busy: (0..cfg.servers).map(|_| None).collect(),
-            cfg,
-            arr_rng,
-            svc_rng,
-            total,
-            arrived: 0,
-            queue: VecDeque::new(),
-            waits: vec![0.0; total],
-            sojourns: vec![0.0; total],
-            service: Welford::new(),
-            in_system: TimeAverage::new(0.0, 0.0),
-            busy_servers: TimeAverage::new(0.0, 0.0),
-            window: None,
-            snapshot: (0.0, 0.0),
-        }
-    }
-
-    fn start(&mut self, server: usize, c: Customer, s: &mut Scheduler<Ev>) {
-        let now = s.now();
-        self.waits[c.idx] = now - c.arrival;
-        s.after(c.service, Ev::Departure { server });
-        self.busy[server] = Some(c);
-        self.busy_servers.add(now, 1.0);
-    }
-}
-
-impl Model for Ggc {
-    type Event = Ev;
-
-    fn handle(&mut self, ev: Ev, s: &mut Scheduler<Ev>) {
-        let now = s.now();
-        match ev {
-            Ev::Arrival => {
-                let idx = self.arrived;
-                self.arrived += 1;
-                if idx == self.cfg.warmup {
-                    self.in_system.reset(now);
-                    self.busy_servers.reset(now);
-                    self.window = Some((now, now));
-                }
-                let service = self.cfg.service.sample(&mut self.svc_rng);
-                if idx >= self.cfg.warmup {
-                    self.service.push(service);
-                }
-                self.in_system.add(now, 1.0);
-                let c = Customer {
-                    idx,
-                    arrival: now,
-                    service,
-                };
-                match self.busy.iter().position(Option::is_none) {
-                    Some(server) => self.start(server, c, s),
-                    None => self.queue.push_back(c),
-                }
-                if self.arrived < self.total {
-                    s.after(self.cfg.interarrival.sample(&mut self.arr_rng), Ev::Arrival);
-                } else {
-                    // Close the measurement window at the last arrival so the
-                    // drain-out does not bias L and utilisation.
-                    self.window = self.window.map(|(a, _)| (a, now));
-                    self.snapshot = (self.in_system.mean(now), self.busy_servers.mean(now));
-                }
-            }
-            Ev::Departure { server } => {
-                let c = self.busy[server].take().expect("busy server");
-                self.sojourns[c.idx] = now - c.arrival;
-                self.in_system.add(now, -1.0);
-                self.busy_servers.add(now, -1.0);
-                if let Some(next) = self.queue.pop_front() {
-                    self.start(server, next, s);
-                }
-            }
-        }
-    }
-}
-
 fn streams(seed: u64) -> (StdRng, StdRng) {
     (
         StdRng::seed_from_u64(seed),
@@ -190,28 +79,136 @@ fn streams(seed: u64) -> (StdRng, StdRng) {
     )
 }
 
-/// Simulate the queue and report steady-state estimates (20 batch means).
+/// Simulate through the packaged `mg1.seq` program and adapt its observations
+/// to the existing queue report. `arrivals` stops the finite input stream and
+/// drains the customers before producing the report.
 pub fn simulate(cfg: &QueueConfig) -> QueueReport {
     assert!(cfg.servers >= 1 && cfg.customers >= 20);
-    let mut m = Ggc::new(cfg.clone());
-    let mut s = Scheduler::new();
-    s.after(m.cfg.interarrival.sample(&mut m.arr_rng), Ev::Arrival);
-    run(&mut m, &mut s, f64::INFINITY);
+    let total = cfg.warmup + cfg.customers;
+    let path = seq::program_path("mg1");
+    let mut source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    source = source.replace(
+        "stage svc : fifo;",
+        &format!("stage svc : fifo({});", cfg.servers),
+    );
+    assert!(
+        source.contains("arrive poisson(lam);"),
+        "mg1.seq arrival declaration changed"
+    );
+    source = source.replace(
+        "arrive poisson(lam);",
+        &format!("arrive renewal({});", sample_expr(&cfg.interarrival)),
+    );
+    let start = source
+        .find("    set s = law ==")
+        .expect("mg1 service sampler");
+    let tail = &source[start..];
+    let end = tail.find(';').expect("mg1 service sampler terminator") + start + 1;
+    source.replace_range(
+        start..end,
+        &format!("    set s = {};", sample_expr(&cfg.service)),
+    );
 
-    let w0 = cfg.warmup;
-    let waits = m.waits[w0..].to_vec();
-    let sojourns = m.sojourns[w0..].to_vec();
-    let (t0, t1) = m.window.expect("window opened");
+    let rho = cfg.offered_load();
+    let drain = if rho < 1.0 {
+        20.0 * cfg.service.mean() / (1.0 - rho).max(0.01)
+    } else {
+        20.0 * total as f64 * cfg.interarrival.mean()
+    };
+    let margin = (10.0 * (total as f64).sqrt()).max(100.0);
+    let mut horizon = cfg.interarrival.mean() * (total as f64 + margin) + drain;
+    let mut attempts = 0;
+    let report = loop {
+        let overrides = seq::Overrides {
+            seed: Some(cfg.seed),
+            warmup: Some(0.0),
+            horizon: Some(horizon),
+            arrivals: Some(total),
+            ..Default::default()
+        };
+        match seq::run_source(&source, &overrides, path.parent()) {
+            Ok(report) => break report,
+            Err(error) => {
+                // IR 6 rejects partial finite runs; replay the same seed with a
+                // longer deadline only when arrival generation or drain timed out.
+                let deadline = error.contains("reached before requested arrivals")
+                    || error.contains("failed to drain");
+                attempts += 1;
+                assert!(deadline && attempts < 8, "mg1.seq: {error}");
+            }
+        }
+        horizon *= 2.0;
+        assert!(
+            horizon.is_finite(),
+            "mg1.seq could not generate the requested arrivals"
+        );
+    };
+    let waits = by_arrival(report.observe("wait").expect("queue wait observation"));
+    let sojourn_observation = report
+        .observe("sojourn")
+        .expect("queue sojourn observation");
+    let sojourns = by_arrival(sojourn_observation);
+    let completions = completion_times_by_arrival(sojourn_observation);
+    let services = by_arrival(
+        report
+            .observe("service")
+            .expect("queue service observation"),
+    );
+    assert!(
+        waits.len() >= total && sojourns.len() >= total && services.len() >= total,
+        "mg1.seq did not drain all requested arrivals: {} arrivals, {} waits, {} sojourns, {} services",
+        report.arrivals,
+        waits.len(),
+        sojourns.len(),
+        services.len()
+    );
+    let start = completions[cfg.warmup] - sojourns[cfg.warmup];
+    let end = completions[total - 1] - sojourns[total - 1];
+    let span = end - start;
+    let overlap = |a: f64, b: f64| (b.min(end) - a.max(start)).max(0.0);
+    let mean_in_system = (0..total)
+        .map(|i| overlap(completions[i] - sojourns[i], completions[i]))
+        .sum::<f64>()
+        / span;
+    let utilization = (0..total)
+        .map(|i| overlap(completions[i] - services[i], completions[i]))
+        .sum::<f64>()
+        / span
+        / cfg.servers as f64;
+    let waits = waits[cfg.warmup..total].to_vec();
+    let sojourns = sojourns[cfg.warmup..total].to_vec();
+    let services = &services[cfg.warmup..total];
+    let mut service = Welford::new();
+    services.iter().for_each(|&s| service.push(s));
+    let arrival_rate = (cfg.customers - 1) as f64 / span;
     QueueReport {
         wait: batch_means(&waits, 20),
         sojourn: batch_means(&sojourns, 20),
         waits,
         sojourns,
-        mean_in_system: m.snapshot.0,
-        arrival_rate: (cfg.customers - 1) as f64 / (t1 - t0),
-        utilization: m.snapshot.1 / cfg.servers as f64,
-        service: m.service,
+        mean_in_system,
+        arrival_rate,
+        utilization,
+        service,
     }
+}
+
+fn by_arrival(observation: &seq::engine::report::ObserveReport) -> Vec<f64> {
+    let mut samples: Vec<_> = observation
+        .records
+        .iter()
+        .zip(&observation.samples)
+        .map(|(record, &value)| (record.1, value))
+        .collect();
+    samples.sort_unstable_by_key(|(serial, _)| *serial);
+    samples.into_iter().map(|(_, value)| value).collect()
+}
+
+fn completion_times_by_arrival(observation: &seq::engine::report::ObserveReport) -> Vec<f64> {
+    let mut records = observation.records.clone();
+    records.sort_unstable_by_key(|record| record.1);
+    records.into_iter().map(|record| record.0).collect()
 }
 
 /// Waiting times of a single-server FIFO queue by Lindley's recursion
