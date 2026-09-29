@@ -24,6 +24,10 @@
 //! is what lets the statistical tests in `tests/` run in CI without flaking.
 //! Simulated numbers are results *under the stated synthetic workload*; they
 //! are not measurements of a real serving system.
+//!
+//! Serving deployments and their workloads are specified in seQ programs.
+//! The Rust `models` and `dist` modules are independent reference models used
+//! to check queueing formulas and compare selected scenarios with seQ.
 
 pub mod analytic;
 pub mod dist;
