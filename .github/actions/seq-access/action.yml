@@ -1,9 +1,9 @@
 name: Access seQ
 description: >
-  Read access to the private seQ repository (a pinned release is a Cargo
-  git dependency of validation; scripts/fetch_seq.sh checks it out for
-  the Lean oracle check) through a read-only deploy key, for git and Cargo
-  (git-fetch-with-cli).
+  Read access to the private seQ repository (scripts/fetch_seq.sh checks out
+  the release pinned in validation/pyproject.toml and builds its CLI, which
+  the validation package runs and the Lean oracle check reads) through a
+  read-only deploy key.
 inputs:
   deploy-key:
     description: private half of the read-only deploy key on vrvrv/seQ (secret SEQ_DEPLOY_KEY)

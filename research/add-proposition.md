@@ -48,8 +48,8 @@ Formal statement, items with \begin{enumerate}[nosep,leftmargin=1.6em,label=(\ro
 - Update the status table in `research/research-plan.md`.
 
 ## 4. Simulate (if the model can be run)
-Add a check to `validation/src/validation.rs` and its name to
-`validation/tests/propositions.rs`. Write an in-model check (the closed
+Add a check to `validation/src/validation/checks.py` and to its `ALL`
+list (`tests/test_propositions.py` picks it up). Write an in-model check (the closed
 form is reproduced) and, where possible, a beyond-model check (the decision
 survives when an assumption is dropped). Cite only Lean theorems whose
 statement the check exercises. See `validation/README.md`.

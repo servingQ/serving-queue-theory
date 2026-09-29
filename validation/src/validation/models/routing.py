@@ -1,0 +1,121 @@
+"""Routing follow-up turns across replicas (paper §3.3, Prop. routing).
+
+The executable deployment is seQ's `routing.seq`; this module keeps the
+configuration and report types used by the paper tables.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from enum import Enum
+
+from .. import seq
+from ..dist import Uniform, exp
+from ..fmt import number, rround
+from ..stats import Estimate, Welford
+from .agentic import CostModel, ProgramClass
+
+
+class RoutePolicy(Enum):
+    Affinity = 0  # always the replica holding the KV
+    LeastLoaded = 1  # least unfinished work, ignoring the KV
+    LeastLoadedFetch = 2  # least unfinished work; fetch the state when cheaper
+    Myopic = 3  # min_j W_j + S_j
+    Lookahead = 4  # min_j W_j + S_j + M_j + F_j, F_j = 0
+
+
+@dataclass
+class RoutingConfig:
+    replicas: int
+    program_rate: float
+    cls: ProgramClass
+    cost: CostModel
+    policy: RoutePolicy
+    hot_fraction: float  # share of new programs placed on replica 0
+    migrate_bandwidth: float  # tokens/s
+    warmup: float
+    horizon: float
+    seed: int
+
+    @classmethod
+    def example(cls, program_rate: float, policy: RoutePolicy) -> RoutingConfig:
+        """Four replicas, half of the new programs on replica 0 (illustrative)."""
+        return cls(
+            replicas=4,
+            program_rate=program_rate,
+            cls=ProgramClass(
+                1.0, 0.9, Uniform(5_000.0, 15_000.0), exp(500.0), exp(200.0), exp(2.0)
+            ),
+            cost=CostModel(0.005, 2.0e-5, 2.0e-9, 2.0e-4, 0.0),
+            policy=policy,
+            hot_fraction=0.5,
+            migrate_bandwidth=2.0e6,
+            warmup=500.0,
+            horizon=10_500.0,
+            seed=1,
+        )
+
+    def copy(self, **kw) -> RoutingConfig:
+        return replace(self, **kw)
+
+
+@dataclass
+class RoutingReport:
+    turns: int
+    responses: list[float]
+    response: Estimate
+    p99: float
+    hit_rate: float
+    migrations: int
+    recomputes: int
+    utilization: list[float]
+    service: Welford
+    mean_context: float
+    link_utilization: float
+
+
+def simulate(cfg: RoutingConfig) -> RoutingReport:
+    assert cfg.replicas == 4, "routing.seq currently declares four replicas"
+    src = seq.program_path("routing").read_text()
+    for pattern, repl in [
+        ("~uniform(5000, 15000)", cfg.cls.initial_tokens.sample_expr()),
+        ("~exp(500)", cfg.cls.new_tokens.sample_expr()),
+        ("~exp(200)", cfg.cls.output_tokens.sample_expr()),
+        ("~exp(Z)", cfg.cls.tool_time.sample_expr()),
+    ]:
+        assert pattern in src, f"routing.seq lacks {pattern}"
+        src = src.replace(pattern, repl, 1)
+    c = cfg.cost
+    sets = {
+        "J": str(cfg.replicas),
+        "rate": number(cfg.program_rate),
+        "hot": number(cfg.hot_fraction),
+        "policy": str(cfg.policy.value),
+        "s0": number(c.overhead),
+        "a": number(c.prefill_linear),
+        "b": number(c.prefill_quadratic),
+        "d": number(c.decode_per_token),
+        "dv": number(c.decode_kv),
+        "p": number(cfg.cls.resume_prob),
+        "bw": number(cfg.migrate_bandwidth),
+    }
+    r = seq.run(source=src, sets=sets, seed=cfg.seed, warmup=cfg.warmup, horizon=cfg.horizon)
+    response, hitrate = r.observe("response"), r.observe("hitrate")
+    migration = r.observe("migration")
+    hits = int(rround(hitrate.mean * hitrate.count))
+    service = r.observe("service")
+    context = r.observe("context")
+    link = r.stage("link")
+    return RoutingReport(
+        turns=r.turns,
+        responses=response.samples,
+        response=Estimate(response.mean, response.ci),
+        p99=response.p99,
+        hit_rate=hitrate.mean,
+        migrations=migration.count if migration else 0,
+        recomputes=max(hitrate.count - hits, 0),
+        utilization=[s.utilization for s in r.stages_named("rep")],
+        service=Welford(service.samples if service else []),
+        mean_context=context.mean if context else 0.0,
+        link_utilization=link.utilization if link else 0.0,
+    )

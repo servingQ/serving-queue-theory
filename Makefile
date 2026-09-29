@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 export PATH := $(HOME)/.elan/bin:$(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
 
-.PHONY: setup seq lean refs paper lectures site sim figs report check preview clean
+.PHONY: setup seq lean refs paper lectures site sim tables figs report check preview clean
 
 setup:            ## install elan, rustup, tectonic, uv (user-local) and fetch Mathlib cache
 	scripts/setup.sh
@@ -24,13 +24,16 @@ site: paper lectures   ## the public page (docs/, mkdocs.yml) with the PDFs, int
 	for d in lectures/*/; do cp $$d/notes.pdf docs/pdf/$$(basename $$d).pdf; done
 	uv run --quiet --with mkdocs-material==9.7.7 mkdocs build --strict
 
-sim:              ## validation: Lean-name check, fmt, clippy, tests and validation report
+sim:              ## validation: Lean-name check, ruff, pytest and validation report
 	scripts/check_sim.sh
 
-seq:              ## the seQ release pinned in validation/Cargo.toml: .seq/src (programs, oracle vectors) and the CLI .seq/bin/seq-lang
+seq:              ## the seQ release pinned in validation/pyproject.toml: .seq/src (programs, oracle vectors) and the CLI .seq/bin/seq-lang
 	scripts/fetch_seq.sh
 
-figs:             ## redraw paper/sim/fig-*.pdf from paper/sim/data/*.csv (written by paper_tables)
+tables:           ## regenerate paper/sim/*.tex and paper/sim/data/*.csv (validation.paper_tables)
+	cd validation && uv run --locked --quiet python -m validation.paper_tables
+
+figs:             ## redraw paper/sim/fig-*.pdf from paper/sim/data/*.csv (written by `make tables`)
 	uv run --quiet --with matplotlib python scripts/plot_sim.py
 
 WEKA ?= data/cc-traces-weka/traces.jsonl
@@ -49,7 +52,7 @@ exp:              ## regenerate paper/exp/ from the testbed measurements (data/e
 	uv run --quiet --with matplotlib python scripts/exp/plot_exp.py --prices data/exp/e2b/price_*.json
 
 report:           ## print the simulator validation report
-	cd validation && cargo run --release --quiet --example validate
+	cd validation && uv run --locked --quiet python -m validation.report
 
 check: seq lean refs paper lectures sim   ## everything CI runs
 

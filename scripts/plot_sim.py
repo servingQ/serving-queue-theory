@@ -3,8 +3,8 @@
 
     uv run --quiet --with matplotlib python scripts/plot_sim.py [--data DIR] [--out DIR]
 
-The CSV files are written by `cargo run --release --example paper_tables`
-(validation/), the same run that writes the tables, so every figure
+The CSV files are written by `make tables` (validation.paper_tables),
+the same run that writes the tables, so every figure
 shows exactly the numbers of the table it accompanies. `make figs`
 regenerates the PDFs; `scripts/check_sim.sh` checks the data files are
 current and re-runs this script. Numbers are from synthetic workloads

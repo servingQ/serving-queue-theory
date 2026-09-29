@@ -1,12 +1,13 @@
 # validation
 
-Paper-specific validation and report generation for `paper/main.tex`. seQ is the simulation engine.
+Paper-specific validation and report generation for `paper/main.tex`, in
+Python. seQ is the simulation engine: every simulated system is a seQ
+program (`programs/*.seq` here, the general ones in seQ's `examples/`), run
+by the CLI of the release pinned in `pyproject.toml` (`[tool.seq]`). This
+package holds the configurations, the analytic references, the offline
+eviction instances, the statistics and the table generation.
 
-Serving deployments and their workloads are specified in seQ programs. The Rust modules retain configurations, analytic references, and paper-specific
-metrics. Queue, PD, routing, agentic and batch execution uses the seQ
-interpreter and programs in `programs/`.
-
-The Lean proofs establish each proposition *inside* its model. This crate
+The Lean proofs establish each proposition *inside* its model. This package
 asks two questions the proofs cannot answer:
 
 1. **In-model:** does a simulation that satisfies a proposition's
@@ -21,72 +22,81 @@ Design, validation-ladder status and the roadmap to the calibrated
 simulator are in `research/simulation-design.md`; where this phase sits in
 the validation plan is in `research/research-plan.md` §4.
 
-Results come from synthetic workloads. They are not measurements of a
-serving system and must not fill the `\tbd{}` cells of paper §4.2 (see
-AGENTS.md rule 5).
+Results come from synthetic workloads or replayed traces on a simulated
+replica. They are not measurements of a serving system and must not fill
+the `\tbd{}` cells of the paper (AGENTS.md rule 7).
 
 ## Run
 
 ```bash
-make sim      # from the repo root: Lean-name check, fmt, clippy, tests, report
+make seq      # from the repo root: the pinned seQ CLI into .seq/bin/seq-lang
+make sim      # Lean-name check, ruff, pytest, validation report
 make report   # print the validation report only
+make tables   # regenerate ../paper/sim/*.tex and ../paper/sim/data/*.csv
+make figs     # redraw ../paper/sim/fig-*.pdf from the data files
 
 cd validation
-cargo test --release                            # all tests (~12 s)
-cargo run --release --example validate          # Markdown report to stdout
-cargo run --release --example validate -- r.md  # also write it to a file
-cargo run --release --example paper_tables      # regenerate ../paper/sim/*.tex and data/*.csv (~20 s)
-make figs                                       # from the repo root: redraw ../paper/sim/fig-*.pdf
+uv sync                                        # the Python environment (uv.lock)
+uv run pytest -m "not checks"                  # units, Lean instances, seQ adapters
+uv run pytest -m checks                        # one test per named check (slow)
+uv run python -m validation.report r.md        # Markdown report, also written to r.md
+uv run python -m validation.paper_tables       # the paper's simulation tables
+uv run python -m validation.inversion_explore  # affinity vs always-move by rate and link
 ```
 
 `paper/simulation.tex` (the paper's simulation section) takes every number
-from `paper/sim/*.tex`, which `examples/paper_tables.rs` generates. The
-same run writes `paper/sim/data/*.csv` (one file per figure: the
-admission-cap sweep, the open-session eviction table, the LPS comparison,
-the offline eviction ratios with their per-instance samples), from which
-`scripts/plot_sim.py` draws `paper/sim/fig-*.pdf`; a figure therefore
-shows exactly the numbers of its table. In the policy-comparison tables
-the best value per row or per group is bold (`\textbf` / `\mathbf`),
-computed at the printed precision with ties all bold.
-`check_sim.sh` regenerates tables and data and fails if the committed
-copies are stale, then redraws the figures (PDF bytes are not diffed), so
-after changing a model or scenario, rerun `paper_tables`, `make figs`, and
-reread the prose in `simulation.tex` against the new tables. The CI job
-runs on `ubuntu-22.04` so that libm matches the machine that generated
-the tables.
+from `paper/sim/*.tex`, which `validation.paper_tables` generates. The same
+run writes `paper/sim/data/*.csv` (one file per figure), from which
+`scripts/plot_sim.py` draws `paper/sim/fig-*.pdf`; a figure therefore shows
+exactly the numbers of its table. In the policy-comparison tables the best
+value per row or per group is bold (`\textbf` / `\mathbf`), computed at the
+printed precision with ties all bold. After changing a model or scenario,
+rerun `make tables` and `make figs`, and reread the prose in
+`simulation.tex` against the new tables.
 
-The toolchain is pinned in `rust-toolchain.toml`. `make setup` installs
-rustup user-locally if it is missing.
+The package reproduces the Rust crate it replaced bit for bit:
+`validation.rng` is rand 0.9's `StdRng` (ChaCha12) with its range samplers,
+`validation.fmt` is Rust's float formatting and `f64::round`, and sums run
+left to right (`fmt.ssum`), so the offline eviction instances, the
+footprint Monte Carlo and every generated file are unchanged. seQ's
+trajectories depend on the platform's libm; the CI job runs on
+`ubuntu-22.04` so that libm matches the machine that generated the tables.
 
 ## Layout
 
 | Module | Model | Paper |
 |--------|-------|-------|
-| `seq-lang` | parser, event scheduler, distribution sampling, and simulation reports | all |
-| `stats` | Welford moments and batch-means intervals for paper tables | |
+| `seq` | runs a seQ program with the pinned CLI (`--json --dump`) and reads its report | all |
+| `stats` | Welford moments, batch-means and replication intervals | |
 | `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `missPrice`, `psNum`, `psPrice`, `stationaryMean`, `expFit`, `pdFullCapacity`, …) | |
-| `models::queue` | seQ G/G/c FIFO program and Lindley cross-check | §2.1–2.2 |
-| `models::batch` | seQ sampled-work FIFO, PS and exact LPS session checks; `fifo_admitted` for footprint | §2, Props. price, decode, footprint |
-| `seq_price`, `seq_open`, `seq_replay` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: seQ programs `programs/{price,open,replay}_vllm.seq` run in-process by the `seq` crate (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
-| `models::agentic` | programs cycling queue → service → tool on one single-turn replica with finite KV; eviction and offload policies, including the congestion-priced ones (`Priced`, price of a miss from online estimates) | §2.2–2.3, §3.1–3.2 |
-| `models::eviction` | offline eviction instances with an exact DP optimum; SF, density and guarded density greedy, on `p c²` or arbitrary weights | §3.1 |
-| `models::pd` | aggregated pool vs prefill → KV link → decode tandem | App. B |
-| `models::routing` | replicas with per-program KV locality; affinity, myopic, lookahead routing | §3.3 |
-| `validation` | the named checks; each cites paper labels and Lean theorems | all |
+| `dist` | the scenarios' laws: exact moments, seQ sampler expressions | |
+| `rng`, `fmt` | rand 0.9's `StdRng` and Rust's number formatting | |
+| `models.queue` | seQ's `mg1.seq` as a G/G/c FIFO queue, and the Lindley cross-check | §2.1–2.2 |
+| `models.batch` | `programs/batch_sampled.seq`: sampled-work FIFO, PS and exact LPS session checks; `fifo_admitted` for footprint | §2, Props. price, decode, footprint |
+| `seq_price`, `seq_open`, `seq_replay` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: `programs/{price,open,replay}_vllm.seq` (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
+| `models.agentic` | `programs/agentic_model.seq`: programs cycling queue → service → tool on one replica with finite KV; eviction and offload policies, including the congestion-priced ones | §2.2–2.3, §3.1–3.2 |
+| `models.eviction` | offline eviction instances with an exact DP optimum; SF, density and guarded density greedy, on `p c²` or arbitrary weights | §3.1 |
+| `models.pd` | seQ's `pd_tandem.seq`, `pd_open.seq`: aggregated pool vs prefill → KV link → decode tandem | App. B |
+| `models.routing` | seQ's `routing.seq`: affinity, myopic, lookahead routing | §3.3 |
+| `checks` | the named checks; each cites paper labels and Lean theorems | all |
+| `constants` | the calibrated cost model and the scenario grids | |
 
 ## Tests
 
-- `src/**` unit tests cover analytic helpers, the eviction DP against
-  brute force, and seQ model results against queueing reference formulas.
-- `tests/lean_examples.rs` evaluates `analytic` at every numeric instance
-  proved in Lean.
-- `tests/propositions.rs` runs one test per `validation` check.
+- `tests/test_units.py` covers the RNG port, the laws, the formatting, the
+  statistics, the trace parser and the eviction DP against brute force.
+- `tests/test_lean_examples.py` evaluates `analytic` at every numeric
+  instance proved in Lean.
+- `tests/test_seq_models.py` runs seQ programs against queueing reference
+  formulas and the adapters against alternate seQ scenarios.
+- `tests/test_propositions.py` runs one test per named check (marker
+  `checks`; `scripts/check_sim.sh` runs them through the report instead).
 - `scripts/check_sim.sh` also fails if a check cites a Lean name that does
   not exist in `lean/ServingQueueTheory`.
 
 ## Modelling choices that matter
 
-- **Service cost.** `CostModel::turn` is `overhead + a·new + b·new·(cached +
+- **Service cost.** `CostModel.turn` is `overhead + a·new + b·new·(cached +
   new/2) + out·(d + β·K)`. A miss re-prefills what is not resident, so a
   full miss costs quadratic in context length, as in ThunderAgent
   Lemma 4.1. The decode term grows with the context `K` through
@@ -131,11 +141,9 @@ rustup user-locally if it is missing.
 
 ## Adding a check
 
-1. Write `pub fn my_check() -> Check` in `src/validation.rs` and add it to
-   `all()`.
-2. Add `my_check` to the `checks!` list in `tests/propositions.rs`. The
-   `every_check_has_a_test` test fails if you forget.
-3. List only Lean theorems whose *statement* the check exercises.
-   `check_sim.sh` verifies that they exist.
-4. Keep seeds fixed and tolerances explicit in `expected`. If a check
+1. Write `def my_check() -> Check` in `src/validation/checks.py` and add it
+   to `ALL`; `tests/test_propositions.py` picks it up.
+2. List only Lean theorems whose *statement* the check exercises, as the
+   third argument of `Check`. `check_sim.sh` verifies that they exist.
+3. Keep seeds fixed and tolerances explicit in `expected`. If a check
    needs a wide tolerance to pass, report it as an `Observation` instead.

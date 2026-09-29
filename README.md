@@ -7,7 +7,7 @@ whose paper ↔ proof correspondence is enforced by CI.
 ```
 paper/   ICML-2026-format LaTeX draft (main.tex, refs.bib, icml2026.sty); proofs in Appendix A
 lean/    Lean 4 project `ServingQueueTheory` (Mathlib v4.34.0)
-validation/  Rust validation and report generation using seQ for simulation
+validation/  Python validation and report generation; seQ runs every simulation
 scripts/ CI checks (see below)
 ```
 
@@ -72,10 +72,12 @@ scripts/check_lean_refs.sh
    Lean declaration, and every referenced theorem is in the axiom audit.
 3. **paper** — the ICML PDF compiles; uploaded as an artifact.
 4. **sim** — `scripts/check_sim.sh`: every Lean theorem cited by a simulation
-   check exists; `cargo fmt --check`, `clippy -D warnings`, `cargo test`;
+   check exists; `ruff format --check`, `ruff check`, `pytest`, and the
+   validation report, which runs every named check;
    the validation report (`validation/validation-report.md`) is uploaded
    and posted to the job summary. See `validation/README.md`. This job
-   regenerates the report and `paper/sim/` by simulation (about 16 minutes),
+   builds the pinned seQ CLI (cached by the pin) and regenerates the report
+   by simulation (about 5 minutes),
    so it runs only when a path it reads changed (`validation/`,
    `programs/`, `paper/sim/`, `lean/`, its scripts, the workflow); a manual
    `workflow_dispatch` runs it regardless.

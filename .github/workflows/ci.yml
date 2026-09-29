@@ -9,7 +9,7 @@ on:
 jobs:
   # Which jobs a change needs. The simulator job runs simulator checks and
   # regenerates the validation report, so it runs only
-  # when something it reads changed: the crate, the seQ programs it runs, the
+  # when something it reads changed: the package, the seQ programs it runs, the
   # E1 calibration, the Lean names it checks, its scripts, or the
   # workflow itself. A manual run (workflow_dispatch) runs everything.
   changes:
@@ -32,6 +32,7 @@ jobs:
               - data/exp/e1/**
               - lean/**
               - scripts/check_sim.sh
+              - scripts/fetch_seq.sh
               - .github/workflows/ci.yml
               - .github/actions/**
 
@@ -104,13 +105,21 @@ jobs:
       - uses: ./.github/actions/seq-access
         with:
           deploy-key: ${{ secrets.SEQ_DEPLOY_KEY }}
-      - name: Install pinned Rust toolchain (validation/rust-toolchain.toml)
-        working-directory: validation
-        run: rustup toolchain install && cargo --version
-      - uses: Swatinem/rust-cache@v2
+      # The seQ CLI is built from the pinned release with seQ's own Rust
+      # toolchain; cache it by the pin.
+      - uses: actions/cache@v4
         with:
-          workspaces: validation
-      - name: Lean names, fmt, clippy, tests and validation report
+          path: .seq
+          key: seq-${{ runner.os }}-${{ hashFiles('validation/pyproject.toml') }}
+      - name: seQ CLI (the release pinned in validation/pyproject.toml)
+        run: scripts/fetch_seq.sh
+      - uses: astral-sh/setup-uv@v6
+        with:
+          working-directory: validation
+      - name: Python environment
+        working-directory: validation
+        run: uv sync --locked
+      - name: Lean names, ruff, pytest and validation report
         run: scripts/check_sim.sh
       - name: Publish report to job summary
         if: always()
