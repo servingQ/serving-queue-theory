@@ -2,11 +2,10 @@
 
 A seeded discrete-event simulator for the models in `paper/main.tex`.
 
-Serving deployments and their workloads are specified in seQ programs under
-`../programs/`. The Rust `models` and `dist` modules are independent reference
-implementations used to check queueing formulas and compare selected scenarios
-with seQ; they are not a second source of deployment definitions. The
-`seq_*` modules run the paper's serving scenarios through the seQ interpreter.
+Serving deployments and their workloads are specified in seQ programs. The
+Rust model modules retain queueing references and paper-specific metrics; the
+routing model runs seQ's `programs/routing.seq` through the shared interpreter.
+The `seq_*` modules run the paper's serving scenarios through seQ as well.
 
 The Lean proofs establish each proposition *inside* its model. This crate
 asks two questions the proofs cannot answer:
