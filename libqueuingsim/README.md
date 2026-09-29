@@ -1,11 +1,10 @@
 # libqueuingsim
 
-A seeded discrete-event simulator for the models in `paper/main.tex`.
+Paper-specific validation and report generation for `paper/main.tex`. seQ is the simulation engine.
 
-Serving deployments and their workloads are specified in seQ programs. The
-Rust model modules retain queueing references and paper-specific metrics; the
-routing model runs seQ's `programs/routing.seq` through the shared interpreter.
-The `seq_*` modules run the paper's serving scenarios through seQ as well.
+Serving deployments and their workloads are specified in seQ programs. The Rust modules retain configurations, analytic references, and paper-specific
+metrics. Queue, PD, routing, agentic and batch execution uses the seQ
+interpreter and programs in `programs/`.
 
 The Lean proofs establish each proposition *inside* its model. This crate
 asks two questions the proofs cannot answer:
@@ -63,12 +62,11 @@ rustup user-locally if it is missing.
 
 | Module | Model | Paper |
 |--------|-------|-------|
-| `engine` | event list, clock, `Model` trait; ties broken by insertion order | |
-| `dist` | Sampling laws and exact moments used by the independent queueing reference models | |
-| `stats` | Welford moments, time averages, batch-means and replication CIs | |
+| `seq-lang` | parser, event scheduler, distribution sampling, and simulation reports | all |
+| `stats` | Welford moments and batch-means intervals for paper tables | |
 | `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `missPrice`, `psNum`, `psPrice`, `stationaryMean`, `expFit`, `pdFullCapacity`, …) | |
-| `models::queue` | independent open G/G/c FIFO reference; cross-checked against Lindley's recursion | §2.1–2.2 |
-| `models::batch` | batching replica: open sessions (Poisson `Λ`, closed loop turn → tool → resume w.p. `p` inside, optional cap on live sessions) or a closed population; servers `Ps { φ }` (one PS station), `BlockingPrefill { φ }`, `Fifo`; exact limited PS (batch cap `B`, KV-memory admission, FIFO with head-of-line blocking); KV-dependent decode cost; resident KV as a prefix of the context; SF/LRU/Density/Priced/PricedMemory/PricedMemoryBlocks eviction with the price of the server mode; `fifo_admitted` for the footprint proposition | §2 (batch, sessions), Props. price, decode, memory, footprint |
+| `models::queue` | seQ G/G/c FIFO program and Lindley cross-check | §2.1–2.2 |
+| `models::batch` | seQ sampled-work FIFO, PS and exact LPS session checks; `fifo_admitted` for footprint | §2, Props. price, decode, footprint |
 | `seq_price`, `seq_open`, `seq_replay` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: seQ programs `programs/{price,open,replay}_vllm.seq` run in-process by the `seq` crate (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
 | `models::agentic` | programs cycling queue → service → tool on one single-turn replica with finite KV; eviction and offload policies, including the congestion-priced ones (`Priced`, price of a miss from online estimates) | §2.2–2.3, §3.1–3.2 |
 | `models::eviction` | offline eviction instances with an exact DP optimum; SF, density and guarded density greedy, on `p c²` or arbitrary weights | §3.1 |
@@ -78,14 +76,8 @@ rustup user-locally if it is missing.
 
 ## Tests
 
-- `src/**` unit tests cover the engine, distribution moments, the DP
-  optimum against brute force, the batching replica (`Fifo` against
-  `agentic`, KV and batch-cap invariants for every server and the block
-  policy, `ps_mean_number` against M/M/1 and M/M/∞, block eviction freeing
-  tail blocks only), the
-  guarded density greedy's factor 2 against brute force on random
-  general-weight instances, the Rust `shortest_first_lean` against the
-  Lean definition, and DES against Lindley.
+- `src/**` unit tests cover analytic helpers, the eviction DP against
+  brute force, and seQ model results against queueing reference formulas.
 - `tests/lean_examples.rs` evaluates `analytic` at every numeric instance
   proved in Lean.
 - `tests/propositions.rs` runs one test per `validation` check.
@@ -112,33 +104,17 @@ rustup user-locally if it is missing.
 - **Resume uncertainty.** Whether a program issues another turn is drawn
   when its tool call returns. A suspended program therefore holds KV that
   may never be reused, which is what gives `p_i` meaning in eviction.
-- **Eviction scope.** Programs in a tool call are evicted first. Queued
-  programs are evicted only if that does not free enough memory. Resident
-  KV is a prefix of the context; whole-session policies drop it entirely,
-  `PricedMemoryBlocks` drops 512-token tail blocks, and the next turn
-  re-prefills only what is missing (a turn is a hit iff its whole context
-  was resident).
-- **Prices.** `Priced` orders by `q_i Φ_i / c_i` with `Φ_i` the price of a
-  miss of the server mode: under `Ps` it is `ΔS·L'(ρ̂)` (the `Density`
-  order, Prop. decode); under `BlockingPrefill` and `Fifo` the M/G/1
-  price of Prop. price with the head-of-line term, from online `λ̂, ρ̂, Ŵ`
-  of the FIFO part. `PricedMemory` divides by the expected remaining
-  suspension `τ_i` (class mean tool time) so the order is per
-  byte-second, the threshold rule of Prop. memory; `PricedMemoryBlocks`
-  applies the same price to tail blocks with `ΔP = a·m + b·m·(K - m/2)`.
+- **Eviction scope.** The agentic seQ program evicts suspended programs
+  first, then queued ones when needed. The vLLM scenarios use separate seQ
+  programs with block-level KV and admission rules.
+- **Prices.** The agentic seQ program uses its stage's online miss price for
+  `Priced` and `PricedMemory` eviction.
 - **Fetch mode (`agentic`).** `Async` fetches finish before the turn
   queues. `Blocking` fetches hold the replica for the tier wait plus the
   transfer, as when KV loading sits on the batch's critical path.
-- **Batching (`Ps`, `BlockingPrefill`).** Work is in seconds at rate 1.
-  Under `Ps { φ }` every admitted turn gets `φ(n)/n`; the simulation
-  tracks the service attained by every batch member (one virtual clock),
-  so rate changes cost `O(log n)`. Under `BlockingPrefill { φ }` a prefill
-  runs alone at `φ(1)` with priority over decode and freezes the decode
-  batch. The theory models a batch cap by `φ` flattened at `B`;
-  `batch_cap` is the exact rule, and `tab-lps` measures the gap. A turn is
-  admitted only if its KV fits after evicting suspended sessions (tool
-  calls first, then waiting ones); batch members are never evicted, and a
-  turn that does not fit blocks the ones behind it.
+- **Batching (`Ps`).** The sampled-work seQ program gives each admitted
+  turn `φ(n)/n` service under PS. `batch_cap` limits concurrent admission;
+  `tab-lps` compares that exact rule with a saturating `φ`.
 - **Thrashing and the admission cap.** With finite KV, once misses start,
   turns pin KV longer, which evicts more suspended sessions. On the
   single-PS replica this made single seeds bistable. On the two-resource

@@ -1,0 +1,41 @@
+// Paper's open/closed sampled-work queue with session feedback. The adapter
+// chooses the arrival law, service law, capacity curve and exact batch cap.
+let Lambda = 0.7;
+let N = 16;
+let p = 0;
+let B = inf;
+let beta = 0;
+let phi_cap = inf;
+let service_rate = 1;
+
+pool batch { cap B; }
+stage svc : ps(service_rate);
+stage tool : delay;
+
+workload {
+  arrive poisson(Lambda);
+  turn {
+    set prefill = ~exp(1);
+    set decode = ~det(0);
+  }
+}
+
+session {
+  loop {
+    turn;
+    set ready = now;
+    set work = prefill + decode;
+    hold batch (1) {
+      observe wait = now - ready;
+      run svc (prefill);
+      observe ttft = now - ready;
+      branch (decode > 0) { run svc (decode); }
+    }
+    observe response = now - ready;
+    observe work = work;
+    run tool (~det(0));
+    branch with (p) { } else { end; }
+  }
+}
+
+run { horizon 100000; warmup 5000; seed 1; }

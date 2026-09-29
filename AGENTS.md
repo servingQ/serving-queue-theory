@@ -18,7 +18,7 @@ and eviction, program-aware routing). The deliverables are:
 | `docs/`, `mkdocs.yml`, `.github/workflows/publish.yml` | the **public** page https://vrvrv.github.io/serving-queue-theory/ with the paper and lecture-note PDFs (README, "What CD publishes") |
 | `research/` | internal working notes: plan, testbed, seQ pin, design notes, review rounds; not published |
 | `lean/ServingQueueTheory/` | Lean 4 + Mathlib proofs of every proposition in the paper |
-| `libqueuingsim/` | Rust discrete-event simulator; seeded checks of each proposition in and beyond its model |
+| `libqueuingsim/` | Rust validation and report crate; seeded checks of each proposition using seQ as the simulation engine |
 | seQ (separate repo, pinned release) | the language in which a serving deployment is a program: interpreter and CLI `seq-lang`, example programs, the vLLM oracle and its A100 test vectors; https://github.com/vrvrv/seQ, used here as a Cargo git dependency and a checkout in `.seq/` (`research/seq.md`). Its Lean model is here: `lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean` (syntax and pool semantics, executable semantics, the vLLM scenarios as theorems generated from seQ's vectors, serving order) and `Deployments.lean` (the paper's replicas as seQ programs) |
 | `scripts/` | CI checks that bind the two together |
 | `.github/workflows/ci.yml` | Runs the checks on push/PR |

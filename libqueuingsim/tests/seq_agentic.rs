@@ -1,6 +1,5 @@
-//! The same scenarios in seQ and in `libqueuingsim`'s hand-written
-//! models. The two use different random streams, so they are compared
-//! statistically over seeds.
+//! Compare the paper-specific agentic seQ program with an alternate seQ
+//! scenario over independent random streams.
 
 use libqueuingsim::models::agentic::{self, AgenticConfig};
 use seq::{Overrides, run_file};
@@ -11,7 +10,7 @@ fn mean(xs: &[f64]) -> f64 {
 }
 
 #[test]
-fn agentic_replica_matches_hand_written_model() {
+fn agentic_programs_agree_statistically() {
     for (programs, kv) in [(16usize, 1.0e9), (32, 3.0e5), (48, 3.0e5)] {
         let mut ours = (vec![], vec![], vec![]);
         let mut theirs = (vec![], vec![], vec![]);

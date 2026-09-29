@@ -2129,7 +2129,6 @@ pub fn finite_source_scenario() -> Vec<FiniteSourceRow> {
             cfg.population = Population::Closed { programs: n };
             cfg.classes[0].resume_prob = 1.0;
             cfg.classes[0].tool_time = Dist::exp(1.0 / nu);
-            cfg.max_context = f64::INFINITY;
             let r = batch::simulate(&cfg);
             let rho = x / mu;
             FiniteSourceRow {
