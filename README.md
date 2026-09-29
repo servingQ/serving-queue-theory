@@ -34,8 +34,8 @@ git config core.hooksPath .githooks   # pre-push: fast-forward only + make check
 
 ## Working with coding agents
 
-`AGENTS.md` is the shared instruction file (Codex reads it directly, `CLAUDE.md`
-imports it). `research/add-proposition.md` is the step-by-step workflow for a new
+`AGENTS.md` is the single instruction file for every agent (`CLAUDE.md` is a
+symlink to it, so Codex and Claude Code read the same text). `research/add-proposition.md` is the step-by-step workflow for a new
 result. `make check` is the one command every agent runs before reporting.
 
 ## Local build
