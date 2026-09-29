@@ -58,13 +58,17 @@ current at the end of every work block.
   the model's remaining error is the time model (two overhead constants),
   `seQ `docs/language.md`` §8. Review round with seQ:
   `research/reviews/2026-09-27-seq-round1*.md`.
-- **seQ v0.1.0-rc0 pinned (2026-09-28).** The first release candidate:
+- **seQ v0.1.0-rc1 pinned (2026-09-29).** This release advances the oracle
+  vectors to IR v5. `scripts/gen_seq_oracle.py` and `SeqOracle.lean` read the
+  new version; the three simulator programs use `reserve` for admission,
+  and the open-session program declares its probabilistic branch.
+- **seQ v0.1.0-rc0 first pinned (2026-09-28).** The first release candidate:
   the per-session block is `session { … }` (IR v3, field `session`), the
   serving vocabulary (`admit … keep`, `prefill`, `decode`, `tool`,
   `transfer`) and `branch with (p)` are sugar over the kernel, the vLLM
   programs' request pool is `reqs`, and `seq-lang draw` exists. Here:
   `programs/*_vllm.seq` and the inline test programs say `session`,
-  `scripts/gen_seq_oracle.py` reads IR v3, `SeqOracle.lean` regenerated
+  `scripts/gen_seq_oracle.py` read IR v3, `SeqOracle.lean` was regenerated
   (only its doc comments changed: pool `reqs`); the paper's replicas in
   `Deployments.lean` still use the kernel forms, and the Lean type and
   quotation keep the name `Route`/`[route| … ]`.

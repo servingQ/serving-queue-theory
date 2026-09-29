@@ -42,7 +42,7 @@ session {
   set t0 = now;
   set m = u < pmiss + delta ? missn : hitn;
   observe work = a * m + b * m * m / 2;
-  hold slots (1), kv (min(m, budget_left(engine))) fits (m) {
+  hold slots (1), kv (min(m, budget_left(engine))) reserve (m) {
     run engine prefill (m) growing kv;
     observe ttft = now - t0;
     run engine decode (o - 1) growing kv;

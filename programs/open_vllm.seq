@@ -88,7 +88,7 @@ session {
       set hm0 = cold ? 0 : floor(min(K - 1, prompt - 1) / bs) * bs;
       hold slots (1), kv (min(cachedin(kv), hm0)
                           + min(prompt - min(cachedin(kv), hm0), budget_left(engine)))
-                      fits (prompt)
+                      reserve (prompt)
            reuse (hm0) {
         set c = cached;
         set m = prompt - c;
@@ -106,7 +106,7 @@ session {
       set cold = 0;
       branch (K > maxctx) { branch (keep) { end; } else { drop kv; end; } }
       run tool (~exp(Z));
-      branch (p) { } else { branch (keep) { end; } else { drop kv; end; } }
+      branch with (p) { } else { branch (keep) { end; } else { drop kv; end; } }
     }
   }
 }
