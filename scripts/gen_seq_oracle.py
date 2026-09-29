@@ -23,7 +23,9 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 SEQ_SRC = os.environ.get("SEQ_SRC", os.path.join(ROOT, ".seq", "src"))
 ODIR = os.path.join(SEQ_SRC, "tools", "oracle")
 OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SeqOracle.lean")
-IR_VERSION = 4
+# 5 added the statements `Release` and `Load` (a KV transfer between two pools),
+# which are outside the fragment: a program that uses them fails below.
+IR_VERSION = 5
 
 
 class Fragment(Exception):
