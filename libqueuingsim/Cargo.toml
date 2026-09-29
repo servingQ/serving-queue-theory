@@ -8,10 +8,9 @@ publish = false
 
 [dependencies]
 rand = "0.9"
-# seQ, the serving-deployment language (a pinned release; scripts/fetch_seq.sh
-# checks out the same tag): the validation checks run its programs next to
-# the hand-written models.
-seq = { package = "seq-lang", git = "https://github.com/vrvrv/seQ", tag = "v0.1.0-rc1" }
+# seQ defines the serving deployments and provides the shared distributions
+# used by the independent queueing reference models.
+seq = { package = "seq-lang", git = "https://github.com/vrvrv/seQ", tag = "v0.1.0-rc2" }
 
 # Statistical tests simulate millions of customers; run them optimised.
 [profile.test]
