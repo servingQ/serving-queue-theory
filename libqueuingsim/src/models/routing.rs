@@ -1,26 +1,12 @@
 //! Routing follow-up turns across replicas (paper §3.3, Prop. routing).
 //!
-//! `J` single-server FIFO replicas with unbounded KV memory. A program's KV
-//! lives on the replica that served its last turn. For each follow-up turn
-//! a [`RoutePolicy`] picks a replica; a turn served away from the KV either
-//! recomputes the prefix (a miss) or, if the policy allows, migrates the KV
-//! over a shared FIFO link first.
-//!
-//! New programs are placed with a skew (`hot_fraction` of them on replica
-//! 0), standing in for tenant or prefix-hash affinity. Under strict session
-//! affinity that skew is permanent, which is the situation Prop. routing
-//! (ii) is about.
-//!
-//! Queue waits are exact: a FIFO single server's wait is its unfinished
-//! work, tracked as the time it next becomes idle.
-
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+//! The executable deployment is `programs/routing.seq` in seQ. This module
+//! keeps the Rust configuration and report types used by the paper tables,
+//! then delegates simulation to the shared seQ interpreter.
 
 use crate::Dist;
-use crate::analytic::{lookahead_cost, myopic_cost};
 use crate::models::agentic::{CostModel, ProgramClass};
-use crate::stats::{Estimate, Welford, batch_means, quantile};
+use crate::stats::{Estimate, Welford};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RoutePolicy {
@@ -29,15 +15,24 @@ pub enum RoutePolicy {
     /// Least unfinished work, ignoring where the KV is.
     LeastLoaded,
     /// Least unfinished work; off-home the state is fetched over the link
-    /// when that is cheaper than recomputing it (a shared KV store). The
-    /// "always move" alternative of Prop. routing (i), against which the
-    /// inversion load `ρ*` is defined.
+    /// when that is cheaper than recomputing it.
     LeastLoadedFetch,
     /// KV-aware myopic: `min_j W_j + S_j`, with `S_j` a miss off-home.
     Myopic,
-    /// `min_j W_j + S_j + M_j + F_j` with `F_j = 0`, where moving may
-    /// either recompute or migrate the KV (whichever is cheaper).
+    /// `min_j W_j + S_j + M_j + F_j` with `F_j = 0`.
     Lookahead,
+}
+
+impl RoutePolicy {
+    fn code(self) -> u8 {
+        match self {
+            Self::Affinity => 0,
+            Self::LeastLoaded => 1,
+            Self::LeastLoadedFetch => 2,
+            Self::Myopic => 3,
+            Self::Lookahead => 4,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -105,260 +100,144 @@ pub struct RoutingReport {
     /// Busy fraction per replica.
     pub utilization: Vec<f64>,
     pub service: Welford,
-    /// Mean context (tokens) of follow-up turns at their routing decision:
-    /// what a migration would move.
+    /// Mean context (tokens) of follow-up turns at their routing decision.
     pub mean_context: f64,
     /// Busy fraction of the migration link.
     pub link_utilization: f64,
 }
 
-struct Prog {
-    home: usize,
-    context: f64,
+fn number(x: f64) -> String {
+    format!("{x:.17e}")
 }
 
-#[derive(Clone, Copy)]
-enum Choice {
-    Hit,
-    Recompute,
-    Migrate,
-}
-
-pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
-    use crate::engine::{Model, Scheduler, run};
-
-    struct Sim {
-        cfg: RoutingConfig,
-        rng: StdRng,
-        progs: Vec<Prog>,
-        free_at: Vec<f64>,
-        link_free_at: f64,
-        ready_at: Vec<f64>,
-        first: Vec<bool>,
-        responses: Vec<f64>,
-        busy: Vec<f64>,
-        follow_ups: u64,
-        hits: u64,
-        migrations: u64,
-        recomputes: u64,
-        service: Welford,
-        turns: u64,
-        context: Welford,
-        link_busy: f64,
-    }
-
-    impl Sim {
-        fn place(&mut self) -> usize {
-            if self.rng.random::<f64>() < self.cfg.hot_fraction {
-                0
-            } else {
-                self.rng.random_range(0..self.cfg.replicas)
-            }
+/// Render a `Dist` as a seQ sampling expression. Categorical mixtures are
+/// represented by nested Bernoulli choices, so sampling stays in seQ.
+fn sample_expr(dist: &Dist) -> String {
+    match dist {
+        Dist::Deterministic(x) => format!("~det({})", number(*x)),
+        Dist::Exponential { mean } => format!("~exp({})", number(*mean)),
+        Dist::Erlang { k, mean } => format!("~erlang({k}, {})", number(*mean)),
+        Dist::HyperExp { p, mean1, mean2 } => format!(
+            "(~bernoulli({}) ? ~exp({}) : ~exp({}))",
+            number(*p),
+            number(*mean1),
+            number(*mean2)
+        ),
+        Dist::Uniform { lo, hi } => {
+            format!("~uniform({}, {})", number(*lo), number(*hi))
         }
-
-        fn wait(&self, j: usize, now: f64) -> f64 {
-            (self.free_at[j] - now).max(0.0)
-        }
-
-        fn route(&mut self, id: usize, now: f64, new: f64, out: f64) -> (usize, Choice, f64) {
-            let c = self.progs[id].context;
-            let home = self.progs[id].home;
-            let hit_s = self.cfg.cost.turn(new, c, out);
-            let miss_s = self.cfg.cost.turn(c + new, 0.0, out);
-            let link_wait = (self.link_free_at - now).max(0.0);
-            let migrate = link_wait + c / self.cfg.migrate_bandwidth;
-            let j_range = 0..self.cfg.replicas;
-            let pick = |cost: &dyn Fn(usize) -> (f64, Choice)| {
-                j_range
-                    .clone()
-                    .map(|j| (j, cost(j)))
-                    .min_by(|a, b| a.1.0.total_cmp(&b.1.0).then(a.0.cmp(&b.0)))
-                    .map(|(j, (_, ch))| (j, ch))
-                    .expect("replicas > 0")
-            };
-            let (j, choice) = match self.cfg.policy {
-                RoutePolicy::Affinity => (home, Choice::Hit),
-                RoutePolicy::LeastLoaded => {
-                    let (j, _) = pick(&|j| (self.wait(j, now), Choice::Hit));
-                    (
-                        j,
-                        if j == home {
-                            Choice::Hit
-                        } else {
-                            Choice::Recompute
-                        },
-                    )
-                }
-                RoutePolicy::LeastLoadedFetch => {
-                    let (j, _) = pick(&|j| (self.wait(j, now), Choice::Hit));
-                    if j == home {
-                        (j, Choice::Hit)
-                    } else if migrate < miss_s - hit_s {
-                        (j, Choice::Migrate)
-                    } else {
-                        (j, Choice::Recompute)
-                    }
-                }
-                RoutePolicy::Myopic => pick(&|j| {
-                    if j == home {
-                        (myopic_cost(self.wait(j, now), hit_s), Choice::Hit)
-                    } else {
-                        (myopic_cost(self.wait(j, now), miss_s), Choice::Recompute)
-                    }
-                }),
-                RoutePolicy::Lookahead => pick(&|j| {
-                    let w = self.wait(j, now);
-                    if j == home {
-                        (lookahead_cost(w, hit_s, 0.0, 0.0), Choice::Hit)
-                    } else {
-                        // Migration overlaps the queue wait at the target.
-                        let mig = w.max(migrate) + hit_s;
-                        let rec = lookahead_cost(w, miss_s, 0.0, 0.0);
-                        if mig < rec {
-                            (mig, Choice::Migrate)
-                        } else {
-                            (rec, Choice::Recompute)
-                        }
-                    }
-                }),
-            };
-            let s = match choice {
-                Choice::Hit => hit_s,
-                Choice::Recompute => miss_s,
-                Choice::Migrate => hit_s,
-            };
-            (j, choice, s)
-        }
-    }
-
-    enum Ev {
-        Arrival,
-        Ready(usize),
-        Done(usize),
-    }
-
-    impl Model for Sim {
-        type Event = Ev;
-
-        fn handle(&mut self, ev: Ev, s: &mut Scheduler<Ev>) {
-            let now = s.now();
-            let warm = now >= self.cfg.warmup;
-            match ev {
-                Ev::Arrival => {
-                    s.after(
-                        Dist::exp(1.0 / self.cfg.program_rate).sample(&mut self.rng),
-                        Ev::Arrival,
+        Dist::Discrete { values, probs } => {
+            assert!(!values.is_empty() && values.len() == probs.len());
+            let mut tail = number(*values.last().expect("nonempty"));
+            let mut suffix_probability = *probs.last().expect("nonempty");
+            for (&value, &prob) in values.iter().zip(probs).rev().skip(1) {
+                suffix_probability += prob;
+                if prob > 0.0 {
+                    let conditional = prob / suffix_probability;
+                    tail = format!(
+                        "(~bernoulli({}) ? {} : {})",
+                        number(conditional),
+                        number(value),
+                        tail
                     );
-                    let home = self.place();
-                    self.progs.push(Prog { home, context: 0.0 });
-                    self.ready_at.push(now);
-                    self.first.push(true);
-                    let id = self.progs.len() - 1;
-                    s.at(now, Ev::Ready(id));
-                }
-                Ev::Ready(id) => {
-                    self.ready_at[id] = now;
-                    let first = self.first[id];
-                    let cls = &self.cfg.class;
-                    let new = if first {
-                        cls.initial_tokens.sample(&mut self.rng)
-                    } else {
-                        cls.new_tokens.sample(&mut self.rng)
-                    };
-                    let out = cls.output_tokens.sample(&mut self.rng);
-                    let (j, choice, svc, start) = if first {
-                        let j = self.progs[id].home;
-                        let svc = self.cfg.cost.turn(new, 0.0, out);
-                        (j, Choice::Recompute, svc, self.free_at[j].max(now))
-                    } else {
-                        if warm {
-                            self.context.push(self.progs[id].context);
-                        }
-                        let (j, choice, svc) = self.route(id, now, new, out);
-                        let mut ready = now;
-                        if let Choice::Migrate = choice {
-                            let c = self.progs[id].context;
-                            let st = self.link_free_at.max(now);
-                            self.link_free_at = st + c / self.cfg.migrate_bandwidth;
-                            ready = self.link_free_at;
-                            if warm {
-                                self.link_busy += c / self.cfg.migrate_bandwidth;
-                            }
-                        }
-                        (j, choice, svc, self.free_at[j].max(ready))
-                    };
-                    self.free_at[j] = start + svc;
-                    if warm {
-                        self.busy[j] += svc;
-                        self.service.push(svc);
-                        if !first {
-                            self.follow_ups += 1;
-                            match choice {
-                                Choice::Hit => self.hits += 1,
-                                Choice::Migrate => {
-                                    self.hits += 1;
-                                    self.migrations += 1
-                                }
-                                Choice::Recompute => self.recomputes += 1,
-                            }
-                        }
-                    }
-                    let p = &mut self.progs[id];
-                    p.home = j;
-                    p.context += new + out;
-                    s.at(self.free_at[j], Ev::Done(id));
-                }
-                Ev::Done(id) => {
-                    let first = std::mem::replace(&mut self.first[id], false);
-                    if warm {
-                        self.turns += 1;
-                        if !first {
-                            self.responses.push(now - self.ready_at[id]);
-                        }
-                    }
-                    if self.rng.random::<f64>() < self.cfg.class.resume_prob {
-                        let z = self.cfg.class.tool_time.sample(&mut self.rng);
-                        s.after(z, Ev::Ready(id));
-                    }
                 }
             }
+            tail
+        }
+        Dist::HitMiss { p_hit, hit, miss } => format!(
+            "(~bernoulli({}) ? {} : {})",
+            number(*p_hit),
+            number(*hit),
+            number(*miss)
+        ),
+        Dist::Bernoulli { p } => format!("~bernoulli({})", number(*p)),
+    }
+}
+
+/// Simulate by loading `programs/routing.seq` and running it in seQ.
+pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
+    assert_eq!(
+        cfg.replicas, 4,
+        "routing.seq currently declares four replicas"
+    );
+    let path = seq::program_path("routing");
+    let mut source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    for (pattern, replacement) in [
+        (
+            "~uniform(5000, 15000)",
+            sample_expr(&cfg.class.initial_tokens),
+        ),
+        ("~exp(500)", sample_expr(&cfg.class.new_tokens)),
+        ("~exp(200)", sample_expr(&cfg.class.output_tokens)),
+        ("~exp(Z)", sample_expr(&cfg.class.tool_time)),
+    ] {
+        assert!(source.contains(pattern), "routing.seq lacks {pattern}");
+        source = source.replacen(pattern, &replacement, 1);
+    }
+    let lets = vec![
+        ("J", cfg.replicas.to_string()),
+        ("rate", number(cfg.program_rate)),
+        ("hot", number(cfg.hot_fraction)),
+        ("policy", cfg.policy.code().to_string()),
+        ("s0", number(cfg.cost.overhead)),
+        ("a", number(cfg.cost.prefill_linear)),
+        ("b", number(cfg.cost.prefill_quadratic)),
+        ("d", number(cfg.cost.decode_per_token)),
+        ("dv", number(cfg.cost.decode_kv)),
+        ("p", number(cfg.class.resume_prob)),
+        ("bw", number(cfg.migrate_bandwidth)),
+    ]
+    .into_iter()
+    .map(|(name, value)| {
+        (
+            name.to_string(),
+            seq::parser::parse_expr(&value).unwrap_or_else(|e| panic!("{name}={value}: {e}")),
+        )
+    })
+    .collect::<Vec<_>>();
+    let overrides = seq::Overrides {
+        lets,
+        seed: Some(cfg.seed),
+        warmup: Some(cfg.warmup),
+        horizon: Some(cfg.horizon),
+        ..Default::default()
+    };
+    let r =
+        seq::run_source(&source, &overrides, None).unwrap_or_else(|e| panic!("routing.seq: {e}"));
+
+    let response = r.observe("response").expect("routing response observation");
+    let hitrate = r.observe("hitrate").expect("routing hitrate observation");
+    let migrations = r.observe("migration").map_or(0, |o| o.count);
+    let hits = (hitrate.mean * hitrate.count as f64).round() as u64;
+    let mut service = Welford::new();
+    if let Some(samples) = r.observe("service") {
+        for &x in &samples.samples {
+            service.push(x);
         }
     }
+    let mean_context = r.observe("context").map_or(0.0, |o| o.mean);
+    let utilization = r
+        .stages_named("rep")
+        .iter()
+        .map(|s| s.utilization)
+        .collect();
+    let link_utilization = r.stage("link").map_or(0.0, |s| s.utilization);
 
-    let mut m = Sim {
-        cfg: cfg.clone(),
-        rng: StdRng::seed_from_u64(cfg.seed),
-        progs: vec![],
-        free_at: vec![0.0; cfg.replicas],
-        link_free_at: 0.0,
-        ready_at: vec![],
-        first: vec![],
-        responses: vec![],
-        busy: vec![0.0; cfg.replicas],
-        follow_ups: 0,
-        hits: 0,
-        migrations: 0,
-        recomputes: 0,
-        service: Welford::new(),
-        turns: 0,
-        context: Welford::new(),
-        link_busy: 0.0,
-    };
-    let mut s = Scheduler::new();
-    s.at(0.0, Ev::Arrival);
-    run(&mut m, &mut s, cfg.horizon);
-    let span = cfg.horizon - cfg.warmup;
     RoutingReport {
-        turns: m.turns,
-        response: batch_means(&m.responses, 20),
-        p99: quantile(&m.responses, 0.99),
-        responses: m.responses,
-        hit_rate: m.hits as f64 / m.follow_ups.max(1) as f64,
-        migrations: m.migrations,
-        recomputes: m.recomputes,
-        utilization: m.busy.iter().map(|b| b / span).collect(),
-        service: m.service,
-        mean_context: m.context.mean(),
-        link_utilization: m.link_busy / span,
+        turns: r.turns,
+        responses: response.samples.clone(),
+        response: Estimate {
+            mean: response.mean,
+            half_width: response.ci.half_width,
+        },
+        p99: response.p99,
+        hit_rate: hitrate.mean,
+        migrations,
+        recomputes: hitrate.count.saturating_sub(hits),
+        utilization,
+        service,
+        mean_context,
+        link_utilization,
     }
 }

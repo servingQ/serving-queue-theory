@@ -1,5 +1,7 @@
-//! `programs/routing.seq` against `libqueuingsim::models::routing`.
+//! Adapter coverage for `models::routing`, which delegates to seQ's
+//! `programs/routing.seq`.
 
+use libqueuingsim::Dist;
 use libqueuingsim::models::routing::{self, RoutePolicy, RoutingConfig};
 use seq::run_program;
 
@@ -59,4 +61,27 @@ fn affinity_breaks_at_high_load() {
         .mean;
     assert!(aff.windows(2).all(|w| w[1] > w[0]), "{aff:?}");
     assert!(aff[3] > 10.0 * look, "{aff:?} vs lookahead {look}");
+}
+
+#[test]
+fn routing_adapter_renders_distribution_samples_in_seq() {
+    let mut cfg = RoutingConfig::example(0.6, RoutePolicy::Lookahead);
+    cfg.class.initial_tokens = Dist::discrete(vec![5_000.0, 15_000.0], vec![0.25, 0.75]);
+    cfg.class.new_tokens = Dist::HitMiss {
+        p_hit: 0.8,
+        hit: 100.0,
+        miss: 1_000.0,
+    };
+    cfg.class.output_tokens = Dist::Bernoulli { p: 0.5 };
+    cfg.class.tool_time = Dist::HyperExp {
+        p: 0.25,
+        mean1: 0.5,
+        mean2: 4.5,
+    };
+    let r = routing::simulate(&cfg);
+    assert_eq!(r.utilization.len(), cfg.replicas);
+    assert!(r.turns > 0);
+    assert!(r.response.mean.is_finite());
+    assert!(r.service.mean().is_finite());
+    assert!(r.mean_context > 0.0);
 }
