@@ -2,6 +2,12 @@
 
 A seeded discrete-event simulator for the models in `paper/main.tex`.
 
+Serving deployments and their workloads are specified in seQ programs under
+`../programs/`. The Rust `models` and `dist` modules are independent reference
+implementations used to check queueing formulas and compare selected scenarios
+with seQ; they are not a second source of deployment definitions. The
+`seq_*` modules run the paper's serving scenarios through the seQ interpreter.
+
 The Lean proofs establish each proposition *inside* its model. This crate
 asks two questions the proofs cannot answer:
 
@@ -59,10 +65,10 @@ rustup user-locally if it is missing.
 | Module | Model | Paper |
 |--------|-------|-------|
 | `engine` | event list, clock, `Model` trait; ties broken by insertion order | |
-| `dist` | D, Exp, Erlang, H2, Uniform, Discrete, HitMiss, each with exact moments | |
+| `dist` | Sampling laws and exact moments used by the independent queueing reference models | |
 | `stats` | Welford moments, time averages, batch-means and replication CIs | |
 | `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `missPrice`, `psNum`, `psPrice`, `stationaryMean`, `expFit`, `pdFullCapacity`, …) | |
-| `models::queue` | open G/G/c FIFO, cross-checked against Lindley's recursion | §2.1–2.2 |
+| `models::queue` | independent open G/G/c FIFO reference; cross-checked against Lindley's recursion | §2.1–2.2 |
 | `models::batch` | batching replica: open sessions (Poisson `Λ`, closed loop turn → tool → resume w.p. `p` inside, optional cap on live sessions) or a closed population; servers `Ps { φ }` (one PS station), `BlockingPrefill { φ }`, `Fifo`; exact limited PS (batch cap `B`, KV-memory admission, FIFO with head-of-line blocking); KV-dependent decode cost; resident KV as a prefix of the context; SF/LRU/Density/Priced/PricedMemory/PricedMemoryBlocks eviction with the price of the server mode; `fifo_admitted` for the footprint proposition | §2 (batch, sessions), Props. price, decode, memory, footprint |
 | `seq_price`, `seq_open`, `seq_replay` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: seQ programs `programs/{price,open,replay}_vllm.seq` run in-process by the `seq` crate (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
 | `models::agentic` | programs cycling queue → service → tool on one single-turn replica with finite KV; eviction and offload policies, including the congestion-priced ones (`Priced`, price of a miss from online estimates) | §2.2–2.3, §3.1–3.2 |

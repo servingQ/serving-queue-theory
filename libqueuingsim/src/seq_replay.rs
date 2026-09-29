@@ -34,7 +34,7 @@ use crate::validation::{
     CAL_DECODE_STEP, CAL_PREFILL_LINEAR, TRACE_CAP_FACTORS, TRACE_CAP_OPEN, TRACE_HORIZON,
     TRACE_POOLS, TRACE_RATES, TRACE_WARMUP, TracePriceRow, TraceRow, trace_cap,
 };
-use crate::workload::TraceCorpus;
+use crate::workload::{TraceCorpus, TraceCorpusExt};
 
 /// The program, relative to this crate.
 pub const PROGRAM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../programs/replay_vllm.seq");

@@ -26,6 +26,7 @@ use crate::models::pd::{self, Load, Mode, PdConfig};
 use crate::models::queue::{self, QueueConfig};
 use crate::models::routing::{self, RoutePolicy, RoutingConfig};
 use crate::stats::{Estimate, Welford, batch_means, replications};
+use crate::workload::TraceCorpusExt;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
