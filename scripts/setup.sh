@@ -12,7 +12,7 @@ if ! command -v elan >/dev/null; then
 fi
 
 if ! command -v rustup >/dev/null; then
-  echo "== installing rustup (toolchain pinned by libqueuingsim/rust-toolchain.toml)"
+  echo "== installing rustup (toolchain pinned by paper-validation/rust-toolchain.toml)"
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
 fi
@@ -31,9 +31,9 @@ fi
 echo "== Lean toolchain + Mathlib cache"
 ( cd lean && lake exe cache get >/dev/null && lake build 2>&1 | tail -1 )
 
-echo "== Rust toolchain + libqueuingsim build"
-( cd libqueuingsim && rustup toolchain install >/dev/null && cargo build --release --quiet )
+echo "== Rust toolchain + paper-validation build"
+( cd paper-validation && rustup toolchain install >/dev/null && cargo build --release --quiet )
 
 echo
-echo "$(cd libqueuingsim && cargo --version) | elan $(elan --version | cut -d' ' -f2) | $(cd lean && lean --version) | $(tectonic --version) | $(uv --version)"
+echo "$(cd paper-validation && cargo --version) | elan $(elan --version | cut -d' ' -f2) | $(cd lean && lean --version) | $(tectonic --version) | $(uv --version)"
 echo "OK. Try: make check"

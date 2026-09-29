@@ -2,10 +2,10 @@
 //! replica (prefill alone is M/D/1; decode at zero context is an infinite
 //! server) and the PD tandem against the capacity formulas.
 
-use libqueuingsim::Dist;
-use libqueuingsim::models::batch::{self, BatchConfig, Server, Work};
-use libqueuingsim::models::pd;
-use libqueuingsim::validation::pd_cfg;
+use paper_validation::Dist;
+use paper_validation::models::batch::{self, BatchConfig, Server, Work};
+use paper_validation::models::pd;
+use paper_validation::validation::pd_cfg;
 use seq::{Overrides, run_program, run_source};
 
 /// With no decode the prefill stage is an M/D/1 at rate 1 (budget omega/a

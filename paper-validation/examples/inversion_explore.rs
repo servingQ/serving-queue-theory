@@ -1,6 +1,6 @@
 //! Print affinity vs lookahead mean response by rate and link bandwidth.
-use libqueuingsim::models::routing::{self, RoutePolicy, RoutingConfig};
-use libqueuingsim::validation::{INVERSION_BANDWIDTHS, INVERSION_RATES};
+use paper_validation::models::routing::{self, RoutePolicy, RoutingConfig};
+use paper_validation::validation::{INVERSION_BANDWIDTHS, INVERSION_RATES};
 fn main() {
     print!("{:>5}", "rate");
     print!(" {:>12}", "affinity");

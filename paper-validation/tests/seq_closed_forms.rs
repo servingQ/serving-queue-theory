@@ -1,7 +1,7 @@
 //! seQ programs against the closed forms the paper proves (mirrors the
-//! in-model checks of `libqueuingsim::validation`).
+//! in-model checks of `paper_validation::validation`).
 
-use libqueuingsim::analytic::{finite_source_mm1, mm1_wait, pk_wait};
+use paper_validation::analytic::{finite_source_mm1, mm1_wait, pk_wait};
 use seq::run_program;
 
 #[test]

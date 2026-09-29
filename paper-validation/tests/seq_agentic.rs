@@ -1,7 +1,7 @@
 //! Compare the paper-specific agentic seQ program with an alternate seQ
 //! scenario over independent random streams.
 
-use libqueuingsim::models::agentic::{self, AgenticConfig};
+use paper_validation::models::agentic::{self, AgenticConfig};
 use seq::{Overrides, run_file};
 use std::path::Path;
 

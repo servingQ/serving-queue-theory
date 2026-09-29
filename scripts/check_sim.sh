@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# libqueuingsim: every Lean theorem a validation check cites must exist,
+# paper-validation: every Lean theorem a validation check cites must exist,
 # then fmt + clippy + tests + validation report.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -7,16 +7,16 @@ export PATH="$HOME/.cargo/bin:$PATH"
 LEAN_DIR=${LEAN_DIR:-lean/ServingQueueTheory}
 
 fail=0
-names=$(awk '/lean: &\[/,/\]/' libqueuingsim/src/validation.rs | grep -oE '"[A-Za-z0-9_.]+"' | tr -d '"' | sort -u)
+names=$(awk '/lean: &\[/,/\]/' paper-validation/src/validation.rs | grep -oE '"[A-Za-z0-9_.]+"' | tr -d '"' | sort -u)
 for n in $names; do
   if ! grep -rqE "^(theorem|lemma|def|noncomputable def) +${n}\b" "$LEAN_DIR"; then
-    echo "MISSING in Lean: $n (cited in libqueuingsim/src/validation.rs)"; fail=1
+    echo "MISSING in Lean: $n (cited in paper-validation/src/validation.rs)"; fail=1
   fi
 done
 echo "checked $(echo "$names" | wc -w) Lean names cited by validation checks"
 [ "$fail" -eq 0 ] || exit 1
 
-cd libqueuingsim
+cd paper-validation
 cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --release --locked
@@ -28,7 +28,7 @@ if [ -f data/exp/e1/fit.json ]; then
   python3 - <<'PY' || exit 1
 import json, re
 fit = json.load(open("data/exp/e1/fit.json"))
-src = open("libqueuingsim/src/validation.rs").read()
+src = open("paper-validation/src/validation.rs").read()
 def const(name):
     return float(re.search(rf"pub const {name}: f64 = ([0-9.e+-]+);", src).group(1))
 bad = [n for n, k in [("CAL_PREFILL_LINEAR", "a"), ("CAL_PREFILL_QUADRATIC", "b"), ("CAL_PREFILL_OVERHEAD", "c0")]
@@ -38,4 +38,4 @@ if bad:
 print("calibrated cost constants match data/exp/e1/fit.json")
 PY
 fi
-echo "OK: libqueuingsim, $(tail -1 validation-report.md)"
+echo "OK: paper-validation, $(tail -1 validation-report.md)"

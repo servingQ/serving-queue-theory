@@ -2,9 +2,9 @@
 //! If a closed form was mistranscribed from Lean, one of these fails.
 //! Test names are the Lean theorem names.
 
-use libqueuingsim::Dist;
-use libqueuingsim::analytic::*;
-use libqueuingsim::models::eviction::{Item, evict_cost, shortest_first_lean};
+use paper_validation::Dist;
+use paper_validation::analytic::*;
+use paper_validation::models::eviction::{Item, evict_cost, shortest_first_lean};
 
 fn close(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-9 * b.abs().max(1.0)

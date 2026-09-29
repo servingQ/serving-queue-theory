@@ -1,8 +1,8 @@
 //! Adapter coverage for `models::routing`, which delegates to seQ's
 //! `programs/routing.seq`.
 
-use libqueuingsim::Dist;
-use libqueuingsim::models::routing::{self, RoutePolicy, RoutingConfig};
+use paper_validation::Dist;
+use paper_validation::models::routing::{self, RoutePolicy, RoutingConfig};
 use seq::run_program;
 
 #[test]

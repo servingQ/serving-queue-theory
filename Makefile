@@ -24,10 +24,10 @@ site: paper lectures   ## the public page (docs/, mkdocs.yml) with the PDFs, int
 	for d in lectures/*/; do cp $$d/notes.pdf docs/pdf/$$(basename $$d).pdf; done
 	uv run --quiet --with mkdocs-material==9.7.7 mkdocs build --strict
 
-sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests and validation report
+sim:              ## paper-validation: Lean-name check, fmt, clippy, tests and validation report
 	scripts/check_sim.sh
 
-seq:              ## the seQ release pinned in libqueuingsim/Cargo.toml: .seq/src (programs, oracle vectors) and the CLI .seq/bin/seq-lang
+seq:              ## the seQ release pinned in paper-validation/Cargo.toml: .seq/src (programs, oracle vectors) and the CLI .seq/bin/seq-lang
 	scripts/fetch_seq.sh
 
 figs:             ## redraw paper/sim/fig-*.pdf from paper/sim/data/*.csv (written by paper_tables)
@@ -49,7 +49,7 @@ exp:              ## regenerate paper/exp/ from the testbed measurements (data/e
 	uv run --quiet --with matplotlib python scripts/exp/plot_exp.py --prices data/exp/e2b/price_*.json
 
 report:           ## print the simulator validation report
-	cd libqueuingsim && cargo run --release --quiet --example validate
+	cd paper-validation && cargo run --release --quiet --example validate
 
 check: seq lean refs paper lectures sim   ## everything CI runs
 
@@ -57,5 +57,5 @@ preview: paper    ## render PDF pages to PNG for visual inspection
 	cd paper && uv run --quiet --with pymupdf python -c "import pymupdf,os; d=pymupdf.open('main.pdf'); out=os.environ.get('OUT','/tmp/sqt-preview'); os.makedirs(out,exist_ok=True); [p.get_pixmap(dpi=75).save(f'{out}/page{i+1}.png') for i,p in enumerate(d)]; print(len(d),'pages ->',out)"
 
 clean:
-	rm -f paper/main.pdf lectures/*/notes.pdf lean/build.log lean/axioms.log libqueuingsim/validation-report.md
+	rm -f paper/main.pdf lectures/*/notes.pdf lean/build.log lean/axioms.log paper-validation/validation-report.md
 	rm -rf docs/pdf site
