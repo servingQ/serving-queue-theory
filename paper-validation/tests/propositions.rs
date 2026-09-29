@@ -1,7 +1,7 @@
 //! One test per validation check (see `src/validation.rs`). A failure
 //! prints the claim, the prediction and what was observed.
 
-use libqueuingsim::validation::{self, Check};
+use paper_validation::validation::{self, Check};
 
 fn assert_pass(c: Check) {
     assert!(

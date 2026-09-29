@@ -1,4 +1,4 @@
-//! # libqueuingsim
+//! # paper-validation
 //!
 //! Validation and report generation for the models in `paper/main.tex`. The
 //! Lean proofs in `lean/` establish the propositions *inside* their model;

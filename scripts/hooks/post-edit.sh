@@ -20,8 +20,8 @@ case "$f" in
       emit "lake build after editing ${f#$PWD/}:"$'\n'"$out"
     fi
     ;;
-  */libqueuingsim/*.rs)
-    out=$(cd libqueuingsim && cargo clippy --all-targets --quiet --message-format short 2>&1 | grep -E "(error|warning)" | head -30)
+  */paper-validation/*.rs)
+    out=$(cd paper-validation && cargo clippy --all-targets --quiet --message-format short 2>&1 | grep -E "(error|warning)" | head -30)
     if [ -n "$out" ]; then
       emit "cargo clippy after editing ${f#$PWD/}:"$'\n'"$out"
     fi

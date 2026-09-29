@@ -7,7 +7,7 @@ whose paper ↔ proof correspondence is enforced by CI.
 ```
 paper/   ICML-2026-format LaTeX draft (main.tex, refs.bib, icml2026.sty); proofs in Appendix A
 lean/    Lean 4 project `ServingQueueTheory` (Mathlib v4.34.0)
-libqueuingsim/  Rust discrete-event simulator that checks each proposition by simulation
+paper-validation/  Rust validation and report generation using seQ for simulation
 scripts/ CI checks (see below)
 ```
 
@@ -71,12 +71,12 @@ scripts/check_lean_refs.sh
 2. **refs** — every `\leanref{Name}` in `paper/main.tex` names an existing
    Lean declaration, and every referenced theorem is in the axiom audit.
 3. **paper** — the ICML PDF compiles; uploaded as an artifact.
-4. **sim** — `scripts/check_sim.sh`: every Lean theorem cited by a simulator
+4. **sim** — `scripts/check_sim.sh`: every Lean theorem cited by a simulation
    check exists; `cargo fmt --check`, `clippy -D warnings`, `cargo test`;
-   the validation report (`libqueuingsim/validation-report.md`) is uploaded
-   and posted to the job summary. See `libqueuingsim/README.md`. This job
+   the validation report (`paper-validation/validation-report.md`) is uploaded
+   and posted to the job summary. See `paper-validation/README.md`. This job
    regenerates the report and `paper/sim/` by simulation (about 16 minutes),
-   so it runs only when a path it reads changed (`libqueuingsim/`,
+   so it runs only when a path it reads changed (`paper-validation/`,
    `programs/`, `paper/sim/`, `lean/`, its scripts, the workflow); a manual
    `workflow_dispatch` runs it regardless.
 

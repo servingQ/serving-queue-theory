@@ -10,7 +10,7 @@
 use std::fmt::Write as _;
 use std::time::Instant;
 
-use libqueuingsim::validation::{self, Kind};
+use paper_validation::validation::{self, Kind};
 
 fn main() {
     let t0 = Instant::now();
@@ -19,7 +19,7 @@ fn main() {
 
     let mut md = String::new();
     let failed = checks.iter().filter(|c| !c.pass).count();
-    writeln!(md, "# libqueuingsim validation report\n").unwrap();
+    writeln!(md, "# paper-validation validation report\n").unwrap();
     writeln!(
         md,
         "Synthetic workloads, fixed seeds. These are properties of the \

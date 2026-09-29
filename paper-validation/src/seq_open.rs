@@ -9,7 +9,7 @@
 //! with LIFO preemption, 16-token blocks evicted from an entry's tail); the
 //! time model is the testbed's cost fit, whose decode iteration of
 //! `CAL_DECODE_STEP` seconds makes the arrival rates two orders of
-//! magnitude lower than in the uncalibrated libqueuingsim scenario. Every
+//! magnitude lower than in the uncalibrated paper-validation scenario. Every
 //! policy is run with the end of a session known (its blocks dropped), so
 //! that the eviction order is the only difference; LRU (vLLM's order) and
 //! the byte-second price are also run with the end unknown, as vLLM's

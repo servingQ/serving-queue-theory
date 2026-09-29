@@ -1,15 +1,14 @@
 [package]
-name = "libqueuingsim"
+name = "paper-validation"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Discrete-event simulator that tests the serving-queue-theory propositions outside their assumptions"
+description = "Paper validation and report generation using the seQ simulation engine"
 publish = false
 
 [dependencies]
 rand = "0.9"
-# seQ defines the serving deployments and provides the shared distributions
-# used by the independent queueing reference models.
+# seQ defines and executes the serving deployments and provides shared distributions.
 seq = { package = "seq-lang", git = "https://github.com/vrvrv/seQ", rev = "f2abcc78b50b9fb82e411cbd283bd7ead45a43fe" }
 
 # Statistical tests simulate millions of customers; run them optimised.

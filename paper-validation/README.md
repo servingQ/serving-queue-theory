@@ -1,4 +1,4 @@
-# libqueuingsim
+# paper-validation
 
 Paper-specific validation and report generation for `paper/main.tex`. seQ is the simulation engine.
 
@@ -31,7 +31,7 @@ AGENTS.md rule 5).
 make sim      # from the repo root: Lean-name check, fmt, clippy, tests, report
 make report   # print the validation report only
 
-cd libqueuingsim
+cd paper-validation
 cargo test --release                            # all tests (~12 s)
 cargo run --release --example validate          # Markdown report to stdout
 cargo run --release --example validate -- r.md  # also write it to a file
