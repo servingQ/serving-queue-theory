@@ -107,8 +107,8 @@ and a seed gives bit-identical output on the same libm (CI runs on
 - `examples/paper_tables.rs`: writes `paper/sim/*.tex`, which
   `paper/simulation.tex` inputs. No simulator number is typed by hand.
 - `scripts/check_sim.sh` (`make sim`): cited Lean names exist, `cargo fmt`,
-  `clippy -D warnings`, tests, report, and a diff that fails if
-  `paper/sim/` is stale.
+  `clippy -D warnings`, tests and report. Paper tables and figures are
+  regenerated manually with `paper_tables` and `make figs`.
 
 ## 3. Validation ladder
 

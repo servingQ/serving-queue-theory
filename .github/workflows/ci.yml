@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Which jobs a change needs. The simulator job regenerates the validation
-  # report and the paper's tables by simulation (16 minutes), so it runs only
+  # Which jobs a change needs. The simulator job runs simulator checks and
+  # regenerates the validation report, so it runs only
   # when something it reads changed: the crate, the seQ programs it runs, the
-  # tables it diffs against, the Lean names it checks, its scripts, or the
+  # E1 calibration, the Lean names it checks, its scripts, or the
   # workflow itself. A manual run (workflow_dispatch) runs everything.
   changes:
     name: Changed paths
@@ -29,10 +29,9 @@ jobs:
             sim:
               - libqueuingsim/**
               - programs/**
-              - paper/sim/**
+              - data/exp/e1/**
               - lean/**
               - scripts/check_sim.sh
-              - scripts/plot_sim.py
               - .github/workflows/ci.yml
               - .github/actions/**
 
@@ -111,9 +110,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: libqueuingsim
-      - name: Install uv (scripts/plot_sim.py draws the figures)
-        uses: astral-sh/setup-uv@v6
-      - name: Lean names, fmt, clippy, tests, validation report, tables and figures
+      - name: Lean names, fmt, clippy, tests and validation report
         run: scripts/check_sim.sh
       - name: Publish report to job summary
         if: always()
@@ -123,4 +120,3 @@ jobs:
         with:
           name: sim-validation-report
           path: libqueuingsim/validation-report.md
-
