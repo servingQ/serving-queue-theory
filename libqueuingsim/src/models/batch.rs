@@ -63,8 +63,8 @@ use std::sync::Arc;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
+use crate::Dist;
 use crate::analytic::stationary_mean;
-use crate::dist::Dist;
 use crate::engine::{Model, Scheduler, run};
 use crate::stats::{Estimate, TimeAverage, Welford, batch_means, quantile};
 use crate::workload::TraceCorpus;

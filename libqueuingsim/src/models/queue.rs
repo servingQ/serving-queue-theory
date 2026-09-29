@@ -14,7 +14,7 @@ use std::collections::VecDeque;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use crate::dist::Dist;
+use crate::Dist;
 use crate::engine::{Model, Scheduler, run};
 use crate::stats::{Estimate, TimeAverage, Welford, batch_means};
 

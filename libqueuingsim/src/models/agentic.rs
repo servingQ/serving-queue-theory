@@ -25,8 +25,8 @@ use std::collections::VecDeque;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
+use crate::Dist;
 use crate::analytic::{miss_price_given_wait, pk_wait};
-use crate::dist::Dist;
 use crate::engine::{Model, Scheduler, run};
 use crate::stats::{Estimate, TimeAverage, Welford, batch_means};
 

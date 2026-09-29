@@ -17,8 +17,8 @@
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
+use crate::Dist;
 use crate::analytic::{lookahead_cost, myopic_cost};
-use crate::dist::Dist;
 use crate::models::agentic::{CostModel, ProgramClass};
 use crate::stats::{Estimate, Welford, batch_means, quantile};
 

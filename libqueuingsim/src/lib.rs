@@ -26,11 +26,11 @@
 //! are not measurements of a real serving system.
 //!
 //! Serving deployments and their workloads are specified in seQ programs.
-//! The Rust `models` and `dist` modules are independent reference models used
-//! to check queueing formulas and compare selected scenarios with seQ.
+//! The Rust `models` are independent queueing references used to check
+//! formulas and compare selected scenarios with seQ; distribution sampling
+//! and moments come from seQ's `Dist` API.
 
 pub mod analytic;
-pub mod dist;
 pub mod engine;
 pub mod models;
 pub mod seq_open;
@@ -40,6 +40,6 @@ pub mod stats;
 pub mod validation;
 pub mod workload;
 
-pub use dist::Dist;
 pub use engine::{Model, Scheduler, run};
+pub use seq::Dist;
 pub use stats::{Estimate, TimeAverage, Welford};

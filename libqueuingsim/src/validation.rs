@@ -15,8 +15,8 @@
 //! [`observations`] reports quantities with no prediction attached; they are
 //! printed, never asserted.
 
+use crate::Dist;
 use crate::analytic::*;
-use crate::dist::Dist;
 use crate::models::agentic::{
     self, AgenticConfig, EvictionPolicy, FetchMode, OffloadPolicy, Population, ProgramClass,
 };
