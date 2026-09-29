@@ -111,7 +111,7 @@ dependencies = [
 [[package]]
 name = "seq-lang"
 version = "0.1.0-rc3"
-source = "git+https://github.com/vrvrv/seQ?rev=f2abcc78b50b9fb82e411cbd283bd7ead45a43fe#f2abcc78b50b9fb82e411cbd283bd7ead45a43fe"
+source = "git+https://github.com/vrvrv/seQ?rev=206f25b50a8897c96c205d9df66f82adbf4a132b#206f25b50a8897c96c205d9df66f82adbf4a132b"
 dependencies = [
  "rand",
  "serde",

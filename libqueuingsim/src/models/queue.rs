@@ -118,6 +118,7 @@ pub fn simulate(cfg: &QueueConfig) -> QueueReport {
     };
     let margin = (10.0 * (total as f64).sqrt()).max(100.0);
     let mut horizon = cfg.interarrival.mean() * (total as f64 + margin) + drain;
+    let mut attempts = 0;
     let report = loop {
         let overrides = seq::Overrides {
             seed: Some(cfg.seed),
@@ -126,10 +127,16 @@ pub fn simulate(cfg: &QueueConfig) -> QueueReport {
             arrivals: Some(total),
             ..Default::default()
         };
-        let result = seq::run_source(&source, &overrides, path.parent())
-            .unwrap_or_else(|e| panic!("mg1.seq: {e}"));
-        if result.arrivals >= total as u64 {
-            break result;
+        match seq::run_source(&source, &overrides, path.parent()) {
+            Ok(report) => break report,
+            Err(error) => {
+                // IR 6 rejects partial finite runs; replay the same seed with a
+                // longer deadline only when arrival generation or drain timed out.
+                let deadline = error.contains("reached before requested arrivals")
+                    || error.contains("failed to drain");
+                attempts += 1;
+                assert!(deadline && attempts < 8, "mg1.seq: {error}");
+            }
         }
         horizon *= 2.0;
         assert!(

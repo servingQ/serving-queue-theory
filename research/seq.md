@@ -27,7 +27,11 @@ pinned seQ release:
 | `scripts/exp/*seq*`, `diff_seq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.seq/bin/seq-lang`, `.seq/src/examples`, `.seq/src/tools` |
 
 The pin is the `tag` or `rev` in `libqueuingsim/Cargo.toml`. The draft queue/PD
-migration pins seQ PR #107's commit with `rev`; replace it with a release tag
+migration pins seQ PR #107's IR 6 commit with `rev`. IR 6 adds renewal
+arrivals and requires finite runs to finish within their horizon; the queue
+adapter retries deadline errors with the same seed and a larger horizon
+(up to eight attempts). The oracle generator rejects finite arrival limits
+and renewal workloads outside its explicit-session fragment. Replace the pin with a release tag
 once that PR is merged and released. `scripts/fetch_seq.sh`
 (`make seq`, first step of `make check`) checks that revision out into
 `.seq/src` and installs its CLI into `.seq/bin/seq-lang` (gitignored).
