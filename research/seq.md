@@ -26,9 +26,12 @@ pinned seQ release:
 | `programs/replay_{twostage,vllm}.seq`, `scripts/exp/seq_replay42.py` | §4.2's replay with libqueuingsim's and vLLM's engine rules (`research/seq-replay42.md`) | `.seq/bin/seq-lang` |
 | `scripts/exp/*seq*`, `diff_seq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.seq/bin/seq-lang`, `.seq/src/examples`, `.seq/src/tools` |
 
-The pin is the `tag` or `rev` in `libqueuingsim/Cargo.toml`. The draft queue/PD
-migration pins seQ PR #107's commit with `rev`; replace it with a release tag
-once that PR is merged and released. `scripts/fetch_seq.sh`
+The pin is `v0.1.0-rc4` in `libqueuingsim/Cargo.toml`. This release includes
+seQ PR #107 and IR 6. IR 6 adds renewal
+arrivals and requires finite runs to finish within their horizon; the queue
+adapter retries deadline errors with the same seed and a larger horizon
+(up to eight attempts). The oracle generator rejects finite arrival limits
+and renewal workloads outside its explicit-session fragment. `scripts/fetch_seq.sh`
 (`make seq`, first step of `make check`) checks that revision out into
 `.seq/src` and installs its CLI into `.seq/bin/seq-lang` (gitignored).
 

@@ -25,7 +25,8 @@ ODIR = os.path.join(SEQ_SRC, "tools", "oracle")
 OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SeqOracle.lean")
 # 5 added the statements `Release` and `Load` (a KV transfer between two pools),
 # which are outside the fragment: a program that uses them fails below.
-IR_VERSION = 5
+# 6 adds renewal arrivals and finite open runs, outside explicit-session semantics.
+IR_VERSION = 6
 
 
 class Fragment(Exception):
@@ -224,6 +225,8 @@ def load(name):
     ir = json.load(open(os.path.join(ODIR, name + ".ir.json")))
     if ir["version"] != IR_VERSION:
         raise Fragment(f"{name}: IR version {ir['version']} (this generator reads {IR_VERSION})")
+    if ir.get("arrivals") is not None:
+        raise Fragment(f"{name}: finite arrival limits are outside the fragment")
     return ir, Lean(ir)
 
 
