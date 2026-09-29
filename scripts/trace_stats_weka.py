@@ -113,7 +113,7 @@ def main():
     ap.add_argument('traces')
     ap.add_argument('--tex')
     ap.add_argument('--label', default='weka')
-    ap.add_argument('--export-csv', help='write per-turn sessions (session,turn,new,out,think) for paper-validation replay')
+    ap.add_argument('--export-csv', help='write per-turn sessions (session,turn,new,out,think) for validation replay')
     ap.add_argument('--split-gap', type=float, default=600.0,
                     help='export only: start a new session after a gap longer than this many seconds (user walked away)')
     a = ap.parse_args()

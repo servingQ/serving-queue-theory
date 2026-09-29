@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # seQ (https://github.com/vrvrv/seQ), the serving-deployment language: the
-# Rust crate `seq-lang` (a Cargo git dependency of paper-validation), the CLI
+# Rust crate `seq-lang` (a Cargo git dependency of validation), the CLI
 # `seq-lang`, and the vLLM oracle with its test vectors (the Lean model of
 # the language, lean/ServingQueueTheory/Seq*.lean, is generated from them).
-# This script checks out the revision pinned in paper-validation/Cargo.toml
+# This script checks out the revision pinned in validation/Cargo.toml
 # into .seq/src and installs its CLI into .seq/bin/seq-lang
 # (`--src`: the checkout only).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-TAG=$(sed -n 's/^seq = {.*tag = "\([^"]*\)".*/\1/p' paper-validation/Cargo.toml)
-REV=$(sed -n 's/^seq = {.*rev = "\([^"]*\)".*/\1/p' paper-validation/Cargo.toml)
-[ -n "$TAG" ] || [ -n "$REV" ] || { echo "FAIL: no seQ tag or rev in paper-validation/Cargo.toml"; exit 1; }
+TAG=$(sed -n 's/^seq = {.*tag = "\([^"]*\)".*/\1/p' validation/Cargo.toml)
+REV=$(sed -n 's/^seq = {.*rev = "\([^"]*\)".*/\1/p' validation/Cargo.toml)
+[ -n "$TAG" ] || [ -n "$REV" ] || { echo "FAIL: no seQ tag or rev in validation/Cargo.toml"; exit 1; }
 REF=${REV:-$TAG}
 SRC_ONLY=0; [ "${1:-}" = "--src" ] && SRC_ONLY=1
 if [ "$(cat .seq/tag 2>/dev/null)" != "$REF" ]; then

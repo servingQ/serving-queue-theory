@@ -27,7 +27,7 @@ jobs:
         with:
           filters: |
             sim:
-              - paper-validation/**
+              - validation/**
               - programs/**
               - data/exp/e1/**
               - lean/**
@@ -104,19 +104,19 @@ jobs:
       - uses: ./.github/actions/seq-access
         with:
           deploy-key: ${{ secrets.SEQ_DEPLOY_KEY }}
-      - name: Install pinned Rust toolchain (paper-validation/rust-toolchain.toml)
-        working-directory: paper-validation
+      - name: Install pinned Rust toolchain (validation/rust-toolchain.toml)
+        working-directory: validation
         run: rustup toolchain install && cargo --version
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: paper-validation
+          workspaces: validation
       - name: Lean names, fmt, clippy, tests and validation report
         run: scripts/check_sim.sh
       - name: Publish report to job summary
         if: always()
-        run: cat paper-validation/validation-report.md >> "$GITHUB_STEP_SUMMARY" || true
+        run: cat validation/validation-report.md >> "$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sim-validation-report
-          path: paper-validation/validation-report.md
+          path: validation/validation-report.md

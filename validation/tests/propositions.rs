@@ -1,7 +1,7 @@
 //! One test per validation check (see `src/validation.rs`). A failure
 //! prints the claim, the prediction and what was observed.
 
-use paper_validation::validation::{self, Check};
+use validation::validation::{self as checks, Check};
 
 fn assert_pass(c: Check) {
     assert!(
@@ -13,13 +13,13 @@ fn assert_pass(c: Check) {
 
 macro_rules! checks {
     ($($name:ident),* $(,)?) => {
-        $(#[test] fn $name() { assert_pass(validation::$name()); })*
+        $(#[test] fn $name() { assert_pass(checks::$name()); })*
 
         /// Guard against adding a check to `all()` without a test here.
         #[test]
         fn every_check_has_a_test() {
             let tested = [$(stringify!($name)),*];
-            for c in validation::all() {
+            for c in checks::all() {
                 assert!(tested.contains(&c.id), "no test for check {}", c.id);
             }
         }

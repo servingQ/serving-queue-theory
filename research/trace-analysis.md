@@ -146,11 +146,11 @@ preceding gap; expected next gap 4–65 s (table `tab-weka-resume.tex`).
 
 ## Replay in the simulator (2026-09-24)
 
-`scripts/trace_stats_weka.py --export-csv` writes `paper-validation/data/weka-sessions.csv`
+`scripts/trace_stats_weka.py --export-csv` writes `validation/data/weka-sessions.csv`
 (main-agent requests, sessions split at gaps > 600 s: 761 sessions, 26,395
 turns, mean 34.7 turns, mean think 22.7 s, mean final context 391k).
-`paper_validation::workload::TraceCorpus` loads it and
-`paper_validation::seq_replay` runs the seQ replay program with one real
+`validation::workload::TraceCorpus` loads it and
+`validation::seq_replay` runs the seQ replay program with one real
 session per Poisson arrival. Results in paper §4.1
 (`tab:sim-trace`, generated): appends alone give CV² 35–43; a tight
 admission cap keeps hits ≥ 0.80 with the mixture at 38–75 % of Var[S]; a

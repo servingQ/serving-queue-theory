@@ -95,7 +95,7 @@ current at the end of every work block.
   priced key that keeps finished sessions' blocks loses hit rate, so the
   §3 scheduler needs the program's end). **User decision: (b), done the
   same day:** §4.2 runs `programs/replay_vllm.seq` through
-  `paper_validation::seq_replay` in `paper_tables.rs` (tables, Reuse column,
+  `validation::seq_replay` in `paper_tables.rs` (tables, Reuse column,
   macros, prose of `simulation.tex` and the intro sentence regenerated;
   `replay_twostage.seq` removed). Open for the paper: §3 could state that
   the price key needs the program's end under vLLM (the `keep=0`
@@ -104,7 +104,7 @@ current at the end of every work block.
   **Follow-up the same day (items 1–4, user request):** (1) the
   eviction/admission experiment (`tab:sim-evict-dyn`, `tab:sim-admission`,
   `fig:sim-admission`) runs `programs/open_vllm.seq` (vLLM rules, testbed
-  cost, rates 0.03/0.05) through `paper_validation::seq_open`: priced orders
+  cost, rates 0.03/0.05) through `validation::seq_open`: priced orders
   ≈ shortest-first, LRU 1.7–3.0× TTFT, the cap decides thrashing, and with
   the end unknown the byte-second price loses its lead (text of §4.2 and
   §3.1); thrashing is now "reuse below half" (partial misses); seQ dev4
@@ -121,7 +121,7 @@ current at the end of every work block.
   **Then `TwoStage` removed (user request):** it was used by no in-model
   check (`miss_price_bracket` runs on a plain M/G/1); its one check,
   where a miss is paid, runs `programs/price_vllm.seq` through
-  `paper_validation::seq_price` (check `prefill_pays_the_miss`, `tab:sim-ps`
+  `validation::seq_price` (check `prefill_pays_the_miss`, `tab:sim-ps`
   rows 8–9): ΔL_P inside the bracket at its upper end; the decode batch
   changes by 0.3 % (not 0: a miss's prefill lengthens shared iterations),
   so the check bounds it by 1 % and §4.2 says so. Gone with it: the
@@ -144,7 +144,7 @@ current at the end of every work block.
   the paper's two-resource replica, PD tandem, routing, vLLM v1, vLLM
   on the A100 replaying the short trace). Validated against the closed
   forms, the hand-written `libqueuingsim` models (now run under `make
-  sim`, `paper-validation/tests/seq_*.rs`), the real upstream vLLM
+  sim`, `validation/tests/seq_*.rs`), the real upstream vLLM
   scheduler on six deterministic scenarios (6/6 step-exact,
   `seQ tests/vllm_oracle.rs`) and the ten measured A100 runs (one
   calibrated parameter; mean TTFT within 10–30 % below the cliff, the

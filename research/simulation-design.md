@@ -1,36 +1,36 @@
-# Simulation validation design (`paper-validation`)
+# Simulation validation design (the `validation` crate)
 
 Design and status of the simulation checks. Read
 `research/research-plan.md` first: the simulator is the first validation
 phase, and the empirical programme (E1–E6) follows it.
 
 Status (2026-09-29, draft): the queue, PD, routing, agentic and sampled-work
-batch checks all execute seQ programs. `paper-validation` retains the paper's
+batch checks all execute seQ programs. `validation` retains the paper's
 configuration, analytic checks, statistics and table generation; its own
 event scheduler and agentic/batch event loops have been removed. The old
 batch token-work and blocking-prefill variants were used only by internal
 tests and are no longer part of the Rust configuration API. The detailed
 vLLM scenarios continue to run through the seQ programs below.
 
-Status (2026-09-27, later): paper-validation's `TwoStage` server (the §2.2
+Status (2026-09-27, later): the validation crate's `TwoStage` server (the §2.2
 replica with its own memory model: whole-turn KV reservation,
 whole-session eviction, no preemption) is removed. The paper's evidence
 on where a miss is paid, on eviction and admission, and the trace replay
 runs vLLM v1's engine rules as seQ programs
-(`programs/{price,open,replay}_vllm.seq`, `paper_validation::seq_{price,open,replay}`)
+(`programs/{price,open,replay}_vllm.seq`, `validation::seq_{price,open,replay}`)
 with the testbed's cost model; the propositions' in-model checks use
 their own closed-form queues (M/G/1, PS).
 
 Status (2026-09-27): since this date the scenarios can be written as
 seQ programs (seQ, a pinned release: `research/seq.md`; spec seQ
-`docs/language.md`); `paper-validation` depends on seQ's crate `seq-lang` and `make sim` runs the programs next to
-the hand-written models (`paper-validation/tests/seq_*.rs`). The vLLM
+`docs/language.md`); `validation` depends on seQ's crate `seq-lang` and `make sim` runs the programs next to
+the hand-written models (`validation/tests/seq_*.rs`). The vLLM
 engine (seQ `programs/vllm.seq`) and its A100 replay
 (`vllm_replay.seq`) are the calibrated-simulator items of §6 below
 that seQ now covers: continuous batching with a token budget, chunked
 prefill, block-level KV with LRU, preemption, trace replay, the E1 fits
 per chunk. Status (2026-09-23): the **uncalibrated** simulator exists in
-`paper-validation/` (Rust). It covers validation-ladder steps 1–4 and reports
+`validation/` (Rust). It covers validation-ladder steps 1–4 and reports
 in paper §4.1 (`sec:sim`). The **calibrated** simulator of paper §4.2
 (continuous batching, block-level KV, trace replay, E1 service fits) is
 the roadmap in §6 below and is not built.
@@ -63,7 +63,7 @@ two, in two roles:
 
 ## 2. What exists
 
-Rust 2024, toolchain pinned by `paper-validation/rust-toolchain.toml`, one
+Rust 2024, toolchain pinned by `validation/rust-toolchain.toml`, one
 dependency (`rand`). Single-threaded event loop; everything is seeded,
 and a seed gives bit-identical output on the same libm (CI runs on
 `ubuntu-22.04` for that reason).

@@ -1,7 +1,7 @@
 name: Access seQ
 description: >
   Read access to the private seQ repository (a pinned release is a Cargo
-  git dependency of paper-validation; scripts/fetch_seq.sh checks it out for
+  git dependency of validation; scripts/fetch_seq.sh checks it out for
   the Lean oracle check) through a read-only deploy key, for git and Cargo
   (git-fetch-with-cli).
 inputs:

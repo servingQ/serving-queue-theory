@@ -1,9 +1,9 @@
 //! Compare the paper-specific agentic seQ program with an alternate seQ
 //! scenario over independent random streams.
 
-use paper_validation::models::agentic::{self, AgenticConfig};
 use seq::{Overrides, run_file};
 use std::path::Path;
+use validation::models::agentic::{self, AgenticConfig};
 
 fn mean(xs: &[f64]) -> f64 {
     xs.iter().sum::<f64>() / xs.len() as f64

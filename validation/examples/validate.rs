@@ -10,16 +10,16 @@
 use std::fmt::Write as _;
 use std::time::Instant;
 
-use paper_validation::validation::{self, Kind};
+use validation::validation::{self as checks, Kind};
 
 fn main() {
     let t0 = Instant::now();
-    let checks = validation::all();
-    let obs = validation::observations();
+    let checks = checks::all();
+    let obs = checks::observations();
 
     let mut md = String::new();
     let failed = checks.iter().filter(|c| !c.pass).count();
-    writeln!(md, "# paper-validation validation report\n").unwrap();
+    writeln!(md, "# validation validation report\n").unwrap();
     writeln!(
         md,
         "Synthetic workloads, fixed seeds. These are properties of the \

@@ -34,7 +34,7 @@ offloading, placement and admission.
 
 - [vrvrv/serving-queue-theory](https://github.com/vrvrv/serving-queue-theory):
   the paper (`paper/`), the lecture notes (`lectures/`), the Lean development
-  (`lean/`) and the validation reports (`paper-validation/`), executed with seQ.
+  (`lean/`) and the validation reports (`validation/`), executed with seQ.
   The repository is private;
   the page and the PDFs are public.
 - [seQ](https://github.com/vrvrv/seQ), the serving-deployment language, with

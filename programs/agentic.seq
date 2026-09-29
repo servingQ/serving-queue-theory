@@ -1,4 +1,4 @@
-// The single-turn replica of `paper_validation::models::agentic`: N closed
+// The single-turn replica of `validation::models::agentic`: N closed
 // agent programs cycle queue -> service (prefill + decode) -> tool call on
 // one FIFO replica with a finite KV pool of C tokens. Memory is taken when
 // service starts (the `slot` pool is the replica's queue), evicting
@@ -29,7 +29,7 @@ workload {
   }
 }
 
-// paper-validation frees a finished session's KV: `drop kv;` before every `end;`
+// the validation crate frees a finished session's KV: `drop kv;` before every `end;`
 session {
   loop {
     turn;

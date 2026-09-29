@@ -22,7 +22,7 @@ paper/_build/
 .claude/settings.local.json
 
 # trace_html example output
-paper-validation/*.html
+validation/*.html
 
 # trace corpora (large, downloaded; see research/trace-analysis.md)
 /data/

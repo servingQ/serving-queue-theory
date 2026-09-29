@@ -1,8 +1,8 @@
 //! seQ programs against the closed forms the paper proves (mirrors the
-//! in-model checks of `paper_validation::validation`).
+//! in-model checks of `validation::validation`).
 
-use paper_validation::analytic::{finite_source_mm1, mm1_wait, pk_wait};
 use seq::run_program;
+use validation::analytic::{finite_source_mm1, mm1_wait, pk_wait};
 
 #[test]
 fn mm1_sojourn_is_one_over_mu_minus_lambda() {

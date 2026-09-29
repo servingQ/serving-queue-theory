@@ -1661,7 +1661,7 @@ pub struct OpenEvictRow {
     pub rate: f64,
     pub policy: EvictionPolicy,
     /// Whether the scheduler knows that a session ended (its KV is then
-    /// dropped); paper-validation always drops it.
+    /// dropped); validation always drops it.
     pub end_known: bool,
     pub throughput: Estimate,
     pub hit_rate: Estimate,
@@ -1850,7 +1850,7 @@ pub fn trace_cap(corpus: &crate::workload::TraceCorpus, kv: f64, factor: f64) ->
 /// follow-up turns comes from the appends alone (mixture share 0); with a
 /// finite pool and a tight admission cap the hit/miss mixture supplies a
 /// share of `Var[S]` (small under block eviction, where a miss is often
-/// partial; it was above 0.3 under paper-validation's whole-session eviction);
+/// partial; it was above 0.3 under the validation crate's whole-session eviction);
 /// and the PK wait computed from the measured moments is an upper bound on
 /// the observed prefill wait in every cell (the live sessions are a finite
 /// population, so arrivals are self-limiting and the open M/G/1 queue

@@ -1,9 +1,9 @@
 //! Adapter coverage for `models::routing`, which delegates to seQ's
 //! `programs/routing.seq`.
 
-use paper_validation::Dist;
-use paper_validation::models::routing::{self, RoutePolicy, RoutingConfig};
 use seq::run_program;
+use validation::Dist;
+use validation::models::routing::{self, RoutePolicy, RoutingConfig};
 
 #[test]
 fn affinity_and_myopic_match_hand_written_model() {
