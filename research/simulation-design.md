@@ -4,6 +4,14 @@ Design and status of the discrete-event simulator. Read
 `research/research-plan.md` first: the simulator is the first validation
 phase, and the empirical programme (E1–E6) follows it.
 
+Status (2026-09-29, draft): the queue, PD, routing, agentic and sampled-work
+batch checks all execute seQ programs. `libqueuingsim` retains the paper's
+configuration, analytic checks, statistics and table generation; its own
+event scheduler and agentic/batch event loops have been removed. The old
+batch token-work and blocking-prefill variants were used only by internal
+tests and are no longer part of the Rust configuration API. The detailed
+vLLM scenarios continue to run through the seQ programs below.
+
 Status (2026-09-27, later): libqueuingsim's `TwoStage` server (the §2.2
 replica with its own memory model: whole-turn KV reservation,
 whole-session eviction, no preemption) is removed. The paper's evidence

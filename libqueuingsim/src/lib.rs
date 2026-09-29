@@ -26,12 +26,10 @@
 //! are not measurements of a real serving system.
 //!
 //! Serving deployments and their workloads are specified in seQ programs.
-//! Queue, PD, and routing checks run those programs. The remaining Rust
-//! simulations are independent references for cross-checking during their
-//! migration. Distribution sampling and moments come from seQ's `Dist` API.
+//! Queue, PD, routing, agentic and batch checks run those programs.
+//! Distribution sampling and moments come from seQ's `Dist` API.
 
 pub mod analytic;
-pub mod engine;
 pub mod models;
 mod seq_adapter;
 pub mod seq_open;
@@ -41,6 +39,5 @@ pub mod stats;
 pub mod validation;
 pub mod workload;
 
-pub use engine::{Model, Scheduler, run};
 pub use seq::Dist;
 pub use stats::{Estimate, TimeAverage, Welford};
