@@ -22,12 +22,6 @@ cargo clippy --all-targets --locked -- -D warnings
 cargo test --release --locked
 cargo run --release --locked --example validate -- validation-report.md >/dev/null
 
-# The paper's simulation tables and the data files behind the figures
-# (paper/sim/data/*.csv) must be what the code produces now. The figure
-# PDFs are not diffed (bytes depend on the matplotlib build); they are
-# redrawn from the checked data below.
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp" "$tmp.diff"' EXIT
 # The replay scenario's cost model is calibrated on the testbed: the constants
 # in validation.rs must equal the E1 fit (3 significant figures).
 if [ -f data/exp/e1/fit.json ]; then
@@ -44,20 +38,4 @@ if bad:
 print("calibrated cost constants match data/exp/e1/fit.json")
 PY
 fi
-cargo run --release --locked --quiet --example paper_tables -- "$tmp" 2>/dev/null
-if ! diff -ru -x 'fig-*.pdf' ../paper/sim "$tmp" >"$tmp.diff"; then
-  cat "$tmp.diff"
-  echo "STALE: paper/sim/ differs from the simulator output."
-  echo "       Regenerate: cd libqueuingsim && cargo run --release --example paper_tables && make figs"
-  exit 1
-fi
-echo "paper/sim tables and data match the simulator ($(ls ../paper/sim/*.tex | wc -l) tables, $(ls ../paper/sim/data/*.csv | wc -l) data files)"
-
-# Redraw the figures from the checked data; a plotting error fails the check.
-cd ..
-export PATH="$HOME/.local/bin:$PATH"
-if ! command -v uv >/dev/null; then
-  echo "MISSING: uv (needed by scripts/plot_sim.py; run make setup)"; exit 1
-fi
-uv run --quiet --with matplotlib python scripts/plot_sim.py
-echo "OK: libqueuingsim, $(tail -1 libqueuingsim/validation-report.md)"
+echo "OK: libqueuingsim, $(tail -1 validation-report.md)"

@@ -24,7 +24,7 @@ site: paper lectures   ## the public page (docs/, mkdocs.yml) with the PDFs, int
 	for d in lectures/*/; do cp $$d/notes.pdf docs/pdf/$$(basename $$d).pdf; done
 	uv run --quiet --with mkdocs-material==9.7.7 mkdocs build --strict
 
-sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests, report, tables/data staleness, figures
+sim:              ## libqueuingsim: Lean-name check, fmt, clippy, tests and validation report
 	scripts/check_sim.sh
 
 seq:              ## the seQ release pinned in libqueuingsim/Cargo.toml: .seq/src (programs, oracle vectors) and the CLI .seq/bin/seq-lang
