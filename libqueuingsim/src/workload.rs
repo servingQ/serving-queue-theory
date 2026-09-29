@@ -10,7 +10,7 @@
 //! requests, measures `new` as tokens beyond the longest earlier prefix in a
 //! session, and splits sessions at gaps over ten minutes.
 
-pub use seq::trace::{Corpus as TraceCorpus, TraceSession, Turn as TraceTurn};
+pub use seq::ir::trace::{Corpus as TraceCorpus, TraceSession, Turn as TraceTurn};
 
 /// Paper-specific corpus selections and summary statistics.
 ///

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Calibrate the two overhead constants of .seq/src/programs/vllm_replay.seq
+"""Calibrate the two overhead constants of .seq/src/examples/replay/vllm_replay.seq
 (c_it: fixed seconds per iteration, c0: seconds per request outside the
 engine) on the light-load A100 runs and report every run.
 

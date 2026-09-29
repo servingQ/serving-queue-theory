@@ -3,7 +3,8 @@
 //! statistically over seeds.
 
 use libqueuingsim::models::agentic::{self, AgenticConfig};
-use seq::run_program;
+use seq::{Overrides, run_file};
+use std::path::Path;
 
 fn mean(xs: &[f64]) -> f64 {
     xs.iter().sum::<f64>() / xs.len() as f64
@@ -29,8 +30,28 @@ fn agentic_replica_matches_hand_written_model() {
                 format!("C={kv}"),
                 format!("maxctx={}", cfg.max_context),
             ];
-            let sets: Vec<&str> = sets.iter().map(String::as_str).collect();
-            let o = run_program("agentic", &sets, Some(seed), None);
+            // The reference scenario belongs to this paper; seQ removed it
+            // from its general example set when examples were reorganized.
+            let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../programs/agentic.seq");
+            let o = run_file(
+                &path,
+                &Overrides {
+                    lets: sets
+                        .iter()
+                        .map(|set| {
+                            let (name, value) = set.split_once('=').expect("name=expr");
+                            (
+                                name.to_string(),
+                                seq::frontend::parser::parse_expr(value)
+                                    .expect("override expression"),
+                            )
+                        })
+                        .collect(),
+                    seed: Some(seed),
+                    ..Default::default()
+                },
+            )
+            .expect("paper agentic program");
             ours.0.push(o.stage("svc").unwrap().throughput);
             ours.1.push(o.observe("hit").unwrap().mean);
             ours.2.push(o.observe("response").unwrap().mean);

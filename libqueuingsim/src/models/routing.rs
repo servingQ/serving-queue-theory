@@ -6,6 +6,7 @@
 
 use crate::Dist;
 use crate::models::agentic::{CostModel, ProgramClass};
+use crate::seq_adapter::{number, sample_expr};
 use crate::stats::{Estimate, Welford};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,54 +107,6 @@ pub struct RoutingReport {
     pub link_utilization: f64,
 }
 
-fn number(x: f64) -> String {
-    format!("{x:.17e}")
-}
-
-/// Render a `Dist` as a seQ sampling expression. Categorical mixtures are
-/// represented by nested Bernoulli choices, so sampling stays in seQ.
-fn sample_expr(dist: &Dist) -> String {
-    match dist {
-        Dist::Deterministic(x) => format!("~det({})", number(*x)),
-        Dist::Exponential { mean } => format!("~exp({})", number(*mean)),
-        Dist::Erlang { k, mean } => format!("~erlang({k}, {})", number(*mean)),
-        Dist::HyperExp { p, mean1, mean2 } => format!(
-            "(~bernoulli({}) ? ~exp({}) : ~exp({}))",
-            number(*p),
-            number(*mean1),
-            number(*mean2)
-        ),
-        Dist::Uniform { lo, hi } => {
-            format!("~uniform({}, {})", number(*lo), number(*hi))
-        }
-        Dist::Discrete { values, probs } => {
-            assert!(!values.is_empty() && values.len() == probs.len());
-            let mut tail = number(*values.last().expect("nonempty"));
-            let mut suffix_probability = *probs.last().expect("nonempty");
-            for (&value, &prob) in values.iter().zip(probs).rev().skip(1) {
-                suffix_probability += prob;
-                if prob > 0.0 {
-                    let conditional = prob / suffix_probability;
-                    tail = format!(
-                        "(~bernoulli({}) ? {} : {})",
-                        number(conditional),
-                        number(value),
-                        tail
-                    );
-                }
-            }
-            tail
-        }
-        Dist::HitMiss { p_hit, hit, miss } => format!(
-            "(~bernoulli({}) ? {} : {})",
-            number(*p_hit),
-            number(*hit),
-            number(*miss)
-        ),
-        Dist::Bernoulli { p } => format!("~bernoulli({})", number(*p)),
-    }
-}
-
 /// Simulate by loading `programs/routing.seq` and running it in seQ.
 pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
     assert_eq!(
@@ -192,7 +145,8 @@ pub fn simulate(cfg: &RoutingConfig) -> RoutingReport {
     .map(|(name, value)| {
         (
             name.to_string(),
-            seq::parser::parse_expr(&value).unwrap_or_else(|e| panic!("{name}={value}: {e}")),
+            seq::frontend::parser::parse_expr(&value)
+                .unwrap_or_else(|e| panic!("{name}={value}: {e}")),
         )
     })
     .collect::<Vec<_>>();

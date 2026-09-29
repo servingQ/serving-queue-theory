@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare a seQ replay of the GPU testbed (`.seq/src/programs/vllm_replay.seq`)
+"""Compare a seQ replay of the GPU testbed (`.seq/src/examples/replay/vllm_replay.seq`)
 with the measured vLLM runs (`data/exp/gpu/e2b/<run>/rounds.jsonl`,
 research/testbed-gpu.md), turn by turn.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fit the step-cost expression of .seq/src/programs/vllm_replay.seq to the
+"""Fit the step-cost expression of .seq/src/examples/replay/vllm_replay.seq to the
 A100 step sweeps (data/exp/gpu_seq/steps.jsonl, scripts/exp/lambda/seq_cases.py).
 
 Two forms, both in seQ's step quantities (ntok, npre, ndec, kvb = KV held by

@@ -19,7 +19,7 @@
 
 use std::path::Path;
 
-use seq::{Overrides, Report, parser};
+use seq::{Overrides, Report, frontend::parser};
 
 use crate::models::agentic::EvictionPolicy;
 use crate::stats::replications;
@@ -77,6 +77,7 @@ fn run(cap: usize, rate: f64, policy: EvictionPolicy, end_known: bool, seed: u64
         seed: Some(seed),
         horizon: Some(HORIZON),
         warmup: Some(WARMUP),
+        arrivals: None,
         trace: None,
     };
     let path = Path::new(PROGRAM);

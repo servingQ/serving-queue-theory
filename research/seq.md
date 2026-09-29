@@ -24,10 +24,12 @@ pinned seQ release:
 | `lean/ServingQueueTheory/Deployments.lean` | the paper's two replicas as seQ programs | |
 | `libqueuingsim/tests/seq_*.rs` | seQ programs against the hand-written models and closed forms | the crate (`seq = { package = "seq-lang", git = …, tag = … }`) |
 | `programs/replay_{twostage,vllm}.seq`, `scripts/exp/seq_replay42.py` | §4.2's replay with libqueuingsim's and vLLM's engine rules (`research/seq-replay42.md`) | `.seq/bin/seq-lang` |
-| `scripts/exp/*seq*`, `diff_seq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.seq/bin/seq-lang`, `.seq/src/programs`, `.seq/src/tools` |
+| `scripts/exp/*seq*`, `diff_seq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.seq/bin/seq-lang`, `.seq/src/examples`, `.seq/src/tools` |
 
-The pin is the `tag` in `libqueuingsim/Cargo.toml`. `scripts/fetch_seq.sh`
-(`make seq`, first step of `make check`) checks that tag out into
+The pin is the `tag` or `rev` in `libqueuingsim/Cargo.toml`. The draft queue/PD
+migration pins seQ PR #107's commit with `rev`; replace it with a release tag
+once that PR is merged and released. `scripts/fetch_seq.sh`
+(`make seq`, first step of `make check`) checks that revision out into
 `.seq/src` and installs its CLI into `.seq/bin/seq-lang` (gitignored).
 
 ## Moving to a new seQ release

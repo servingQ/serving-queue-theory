@@ -15,7 +15,7 @@
 
 use std::path::Path;
 
-use seq::{Overrides, Report, parser};
+use seq::{Overrides, Report, frontend::parser};
 
 use crate::analytic::{miss_price, num_in_system};
 use crate::models::batch::paired_differences;
@@ -56,6 +56,7 @@ fn run(delta: f64) -> Report {
         seed: Some(1),
         horizon: Some(HORIZON),
         warmup: Some(WARMUP),
+        arrivals: None,
         trace: None,
     };
     let path = Path::new(PROGRAM);
