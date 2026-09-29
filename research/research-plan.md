@@ -338,7 +338,7 @@ current at the end of every work block.
 **Do not.** Attribute a bracket overshoot to the prefill-time
 inflation (scaling every service time by it over-corrects; round 5
 issue 1). Type measured numbers into the paper; run two replays at
-once on the server; leave caches under `~/.cache` (see CLAUDE.md);
+once on the server; leave caches under `~/.cache` (see AGENTS.md);
 use `pkill -f` with a pattern that appears in your own command line
 (it kills the shell; write the pattern with a bracket, `run_al[l]`).
 

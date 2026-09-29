@@ -1,8 +1,9 @@
 # AGENTS.md — shared instructions for coding agents (Claude Code, Codex, …)
 
 This file is the single source of truth for how agents work in this repo.
-`CLAUDE.md` imports it; Codex reads it directly. Keep agent-specific
-details in the agent's own file, not here.
+Codex reads it directly; `CLAUDE.md` is a symlink to it, so Claude Code
+reads the same file. Edit only this file; agent-specific details go in
+their own section below ("Claude Code specifics").
 
 ## What this project is
 
@@ -256,6 +257,47 @@ cost fit (E1, `data/exp/e1`, `\eOne*`), long-context replay (E2,
 `data/exp/e2b`, `\eTwob*`), offloading test (E3), eviction replay (E4),
 placement test (E5), faithfulness scoring (E6). Do not write "E1"…"E6"
 in the paper.
+
+## Claude Code specifics
+
+- Project hooks (`.claude/settings.json`) rebuild Lean after you edit a
+  `.lean` file and re-run the paper↔Lean reference check after you edit
+  `paper/main.tex`. Read the hook output; it is the compiler talking.
+- Prefer `make check` over running the three scripts by hand, and paste the
+  final `OK:` / `checked N` lines in your summary.
+- For literature claims you cannot verify from the source text, say so and
+  mark the bib entry UNVERIFIED instead of asking; the user prefers hedged
+  drafts over blocked work.
+- Reply in Korean when the user writes Korean; paper text stays in English.
+
+## Paper craft
+
+- Abstract ≤ 200 words: thesis, one result, one method, one validation line.
+- After every restructure, delete what the new thesis no longer needs
+  (old framings, near-trivial propositions, superseded simulation tables).
+  Demote a trivial proposition to a prose sentence with an inline
+  `\provedby{}`; keep its Lean theorem.
+- Simulation results are shown as figures when a trend or comparison is
+  the point (generated from the same data files as the tables, never
+  drawn by hand); tables carry the exact numbers, with the best result per
+  row in bold and CIs stated.
+- Placeholder (`\tbd`) result tables live in `research/research-plan.md`, not
+  in the paper; the paper keeps one experiment-overview table and short
+  hypotheses.
+
+## Continuing across sessions
+
+- Work is expected to continue in a fresh session: before doing anything,
+  read `research/research-plan.md` (section "Where we are / next steps" at the
+  top) and `research/testbed.md`; they are kept current at the end of every
+  work block and say what is running, what is done and what comes next.
+- Testbed measurements: launch the server with `scripts/exp/serve_m27.sh`
+  as documented in `research/testbed.md`; results enter the paper only through
+  `make exp` (`paper/exp/*.tex`, `paper/exp/fig-*.pdf`).
+- All large caches (HF weights, vLLM/rbln compile cache, torch_rbln
+  offload files) live under `/mnt/shared_data/users/jinhwan.suk/.cache`
+  (`HF_HOME`, `VLLM_CACHE_ROOT`, `RBLN_OFFLOAD_DIR`); never let a tool write
+  hundreds of GB under `~/.cache` (the home disk is 1.7 TB and filled once).
 
 ## Research context worth knowing
 
