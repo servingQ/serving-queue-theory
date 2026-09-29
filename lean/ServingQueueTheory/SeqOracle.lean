@@ -33,13 +33,19 @@ namespace Oracle
 
 open Exec
 
-/-- The vLLM request program (seQ `programs/vllm_request.seq`), translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = prompt, 9 = o, 10 = arrive. Observations: 0 = first, 1 = done. Pools: 0 = reqs, 1 = kv. Stages: 0 = engine, 1 = gate. -/
+/-- The vLLM request program (seQ `programs/vllm_request.seq`), translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = computed, 9 = prompt, 10 = o, 11 = arrive, 12 = known. Observations: 0 = first, 1 = done. Pools: 0 = reqs, 1 = kv. Stages: 0 = engine, 1 = gate. -/
 def vllmRequest : Prog := [route|
-  run 1 (x.attr 10);
-  hold 0 (1), 1 (min (x.attr 8) x.budgetLeft) fits (x.attr 8) {
-    run 0 prefill (x.attr 8) growing 1;
-    observe 0 = x.now;
-    run 0 decode ((x.attr 9) - 1) growing 1;
+  run 1 (x.attr 11);
+  hold 0 (1), 1 (min (if (if (x.attr 8) < (x.attr 9) then 1 else 0) ≠ 0 then (x.attr 9) else ((x.attr 8) + 1)) x.budgetLeft) fits (if (if (x.attr 8) < (x.attr 9) then 1 else 0) ≠ 0 then (x.attr 9) else ((x.attr 8) + 1)) {
+    set 12 = if (if (x.attr 8) < (x.attr 9) then 1 else 0) ≠ 0 then (x.attr 9) else ((x.attr 8) + 1);
+    run 0 prefill (x.attr 12) growing 1;
+    branch (if (x.attr 12) = (x.attr 9) then 1 else 0) {
+      observe 0 = x.now;
+      done
+    } else {
+      done
+    };
+    run 0 decode (((x.attr 10) - 1) - ((x.attr 12) - (x.attr 9))) growing 1;
     done
   };
   observe 1 = x.now;
@@ -56,71 +62,77 @@ def outcome (D : Deployment) (ticks : ℕ) (w : Workload) :
 /-- seQ `tools/oracle/chunked.ir.json`: 3 requests, 1000 blocks of 16, budget 1024, 16 slots, chunk 0; the deployment and the workload are the IR's. -/
 theorem vllm_chunked :
     outcome ⟨[⟨16, 1, true⟩, ⟨15984, 16, false⟩], 1024, 0⟩ 13
-      ⟨[[(8, 3000), (9, 2), (10, 0)], [(8, 700), (9, 5), (10, 1)], [(8, 100), (9, 3), (10, 1)]], [], none, 0⟩ =
+      ⟨[[(9, 3000), (10, 2), (11, 0)], [(9, 700), (10, 5), (11, 1)], [(9, 100), (10, 3), (11, 1)]], [], none, 0⟩ =
     ([(0, 3), (1, 4), (2, 4)], [(0, 4), (1, 8), (2, 6)], 0) := by
   decide +kernel
 
 /-- seQ `tools/oracle/hol.ir.json`: 3 requests, 11 blocks of 16, budget 1024, 16 slots, chunk 0; the deployment and the workload are the IR's. -/
 theorem vllm_hol :
     outcome ⟨[⟨16, 1, true⟩, ⟨160, 16, false⟩], 1024, 0⟩ 25
-      ⟨[[(8, 96), (9, 10), (10, 0)], [(8, 96), (9, 10), (10, 0)], [(8, 16), (9, 3), (10, 0)]], [], none, 0⟩ =
+      ⟨[[(9, 96), (10, 10), (11, 0)], [(9, 96), (10, 10), (11, 0)], [(9, 16), (10, 3), (11, 0)]], [], none, 0⟩ =
     ([(0, 1), (1, 11), (2, 11)], [(0, 10), (1, 20), (2, 13)], 0) := by
   decide +kernel
 
 /-- seQ `tools/oracle/longchunk.ir.json`: 2 requests, 1000 blocks of 16, budget 4096, 16 slots, chunk 1000; the deployment and the workload are the IR's. -/
 theorem vllm_longchunk :
     outcome ⟨[⟨16, 1, true⟩, ⟨15984, 16, false⟩], 4096, 1000⟩ 9
-      ⟨[[(8, 3000), (9, 2), (10, 0)], [(8, 3000), (9, 2), (10, 0)]], [], none, 0⟩ =
+      ⟨[[(9, 3000), (10, 2), (11, 0)], [(9, 3000), (10, 2), (11, 0)]], [], none, 0⟩ =
     ([(0, 3), (1, 3)], [(0, 4), (1, 4)], 0) := by
   decide +kernel
 
 /-- seQ `tools/oracle/mixed.ir.json`: 6 requests, 40 blocks of 16, budget 512, 4 slots, chunk 0; the deployment and the workload are the IR's. -/
 theorem vllm_mixed :
     outcome ⟨[⟨4, 1, true⟩, ⟨624, 16, false⟩], 512, 0⟩ 105
-      ⟨[[(8, 300), (9, 40), (10, 0)], [(8, 200), (9, 30), (10, 2)], [(8, 250), (9, 20), (10, 3)], [(8, 150), (9, 60), (10, 3)], [(8, 400), (9, 10), (10, 5)], [(8, 100), (9, 25), (10, 9)]], [], none, 0⟩ =
+      ⟨[[(9, 300), (10, 40), (11, 0)], [(9, 200), (10, 30), (11, 2)], [(9, 250), (10, 20), (11, 3)], [(9, 150), (10, 60), (11, 3)], [(9, 400), (10, 10), (11, 5)], [(9, 100), (10, 25), (11, 9)]], [], none, 0⟩ =
     ([(0, 1), (1, 3), (2, 33), (3, 41), (4, 53), (5, 63)], [(0, 40), (1, 32), (2, 52), (3, 100), (4, 62), (5, 87)], 0) := by
   decide +kernel
 
 /-- seQ `tools/oracle/preempt.ir.json`: 2 requests, 11 blocks of 16, budget 100, 16 slots, chunk 0; the deployment and the workload are the IR's. -/
 theorem vllm_preempt :
     outcome ⟨[⟨16, 1, true⟩, ⟨160, 16, false⟩], 100, 0⟩ 65
-      ⟨[[(8, 80), (9, 30), (10, 0)], [(8, 80), (9, 30), (10, 0)]], [], none, 0⟩ =
+      ⟨[[(9, 80), (10, 30), (11, 0)], [(9, 80), (10, 30), (11, 0)]], [], none, 0⟩ =
     ([(0, 1), (1, 31)], [(0, 30), (1, 60)], 1) := by
   decide +kernel
 
 /-- seQ `tools/oracle/seqcap.ir.json`: 4 requests, 1000 blocks of 16, budget 1024, 2 slots, chunk 0; the deployment and the workload are the IR's. -/
 theorem vllm_seqcap :
     outcome ⟨[⟨2, 1, true⟩, ⟨15984, 16, false⟩], 1024, 0⟩ 18
-      ⟨[[(8, 1024), (9, 5), (10, 0)], [(8, 1024), (9, 5), (10, 0)], [(8, 1024), (9, 5), (10, 0)], [(8, 1024), (9, 5), (10, 0)]], [], none, 0⟩ =
+      ⟨[[(9, 1024), (10, 5), (11, 0)], [(9, 1024), (10, 5), (11, 0)], [(9, 1024), (10, 5), (11, 0)], [(9, 1024), (10, 5), (11, 0)]], [], none, 0⟩ =
     ([(0, 1), (1, 3), (2, 7), (3, 9)], [(0, 5), (1, 7), (2, 11), (3, 13)], 0) := by
   decide +kernel
 
 /-! ### A multi-turn scenario with a prefix cache -/
 
-/-- The vLLM replay program (seQ `programs/vllm_replay.seq`) on a unit step clock, translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = prev, 9 = prevout, 10 = t0, 11 = prompt, 12 = hitmax, 13 = c. Observations: 0 = cached_tokens, 1 = prefix, 2 = sent, 3 = ttft, 4 = latency. Pools: 0 = kv, 1 = reqs. Stages: 0 = engine, 1 = front, 2 = gate, 3 = tool. -/
+/-- The vLLM replay program (seQ `programs/vllm_replay.seq`) on a unit step clock, translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = computed, 9 = prev, 10 = prevout, 11 = t0, 12 = prompt, 13 = hitmax, 14 = known, 15 = c. Observations: 0 = cached_tokens, 1 = prefix, 2 = sent, 3 = ttft, 4 = latency. Pools: 0 = kv, 1 = reqs. Stages: 0 = engine, 1 = front, 2 = gate, 3 = tool. -/
 def vllmTurn : Prog := [route|
   run 2 (x.serial * 3);
-  set 8 = 0;
   set 9 = 0;
+  set 10 = 0;
   turn;
   loop {
-    set 10 = x.now;
-    set 11 = x.attr 3;
-    run 1 (0 + (0 * (x.attr 11)));
-    set 12 = if (x.attr 7) ≠ 0 then 0 else (((min (x.attr 8) ((x.attr 11) - 1)) / 16) * 16);
-    hold 1 (1), 0 ((min (x.cachedIn 0) (x.attr 12)) + (min ((x.attr 11) - (min (x.cachedIn 0) (x.attr 12))) x.budgetLeft)) fits (x.attr 11) reuse (x.attr 12) {
-      set 13 = x.cached;
-      observe 0 = x.attr 13;
-      observe 1 = (x.attr 8) + (x.attr 9);
-      observe 2 = x.attr 10;
-      run 0 prefill ((x.attr 11) - (x.attr 13)) growing 0;
-      observe 3 = x.now - (x.attr 10);
-      run 0 decode ((x.attr 4) - 1) growing 0;
+    set 11 = x.now;
+    set 12 = x.attr 3;
+    run 1 (0 + (0 * (x.attr 12)));
+    set 13 = if (x.attr 7) ≠ 0 then 0 else (((min (x.attr 9) ((x.attr 12) - 1)) / 16) * 16);
+    hold 1 (1), 0 ((min (x.cachedIn 0) (max (x.attr 13) (((x.attr 8) / 16) * 16))) + (min ((if (if (x.attr 8) < (x.attr 12) then 1 else 0) ≠ 0 then (x.attr 12) else ((x.attr 8) + 1)) - (min (x.cachedIn 0) (max (x.attr 13) (((x.attr 8) / 16) * 16)))) x.budgetLeft)) fits (if (if (x.attr 8) < (x.attr 12) then 1 else 0) ≠ 0 then (x.attr 12) else ((x.attr 8) + 1)) reuse (max (x.attr 13) (((x.attr 8) / 16) * 16)) {
+      set 14 = if (if (x.attr 8) < (x.attr 12) then 1 else 0) ≠ 0 then (x.attr 12) else ((x.attr 8) + 1);
+      set 15 = x.cached;
+      observe 0 = x.attr 15;
+      observe 1 = (x.attr 9) + (x.attr 10);
+      observe 2 = x.attr 11;
+      run 0 prefill ((x.attr 14) - (x.attr 15)) growing 0;
+      branch (if (x.attr 14) = (x.attr 12) then 1 else 0) {
+        observe 3 = x.now - (x.attr 11);
+        done
+      } else {
+        done
+      };
+      run 0 decode (((x.attr 4) - 1) - ((x.attr 14) - (x.attr 12))) growing 0;
       done
-    } cache (((x.attr 11) + (x.attr 4)) - 1);
-    observe 4 = x.now - (x.attr 10);
-    set 8 = x.attr 11;
-    set 9 = x.attr 4;
+    } cache (((x.attr 12) + (x.attr 4)) - 1);
+    observe 4 = x.now - (x.attr 11);
+    set 9 = x.attr 12;
+    set 10 = x.attr 4;
     branch (x.attr 6) {
       run 3 (x.attr 5);
       turn;

@@ -11,7 +11,7 @@
 //    budget its residents leave (`admit via engine`), never in an iteration
 //    that preempted, and serves residents in admission order (no `decode
 //    first`);
-//  * admission needs room for the whole prompt (`fits`), but allocates only
+//  * admission needs room for the whole prompt (`reserve`), but allocates only
 //    the reused prefix plus the first chunk, and the hold grows with every
 //    computed token (`growing kv`); a growth that does not fit preempts the
 //    most recently admitted turn (`preempt lifo`), which re-queues at the
@@ -88,7 +88,7 @@ session {
       set hitmax = fm ? 0 : hm0;
       hold slots (1), kv (min(cachedin(kv), hitmax)
                           + min(prompt - min(cachedin(kv), hitmax), budget_left(engine)))
-                      fits (prompt)
+                      reserve (prompt)
            reuse (hitmax) {
         set c = cached;
         set m = prompt - c;
