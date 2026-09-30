@@ -8,7 +8,7 @@ import pyserq
 from pyserq import Rng
 
 import fmt
-from sim import laws
+from sim import laws, serq
 from sim.stats import Welford, batch_means, quantile
 from sim.workload import TraceCorpus, weka
 from theory import eviction
@@ -27,11 +27,15 @@ from theory.eviction import Item, Weighted
 
 
 def test_pyserq_is_the_pinned_release():
-    """pyserq (PyPI) and the serQ checkout (examples, oracle IR) are one release."""
+    """pyserq (PyPI) and the serQ checkout (examples, oracle IR) are one
+    version: the checkout's workspace version, and the tag when one is pinned."""
     pin = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
-    tag = pin["tool"]["serq"]["tag"]
-    assert f"v{pyserq.__version__}" == tag
-    assert f"pyserq=={pyserq.__version__}" in pin["project"]["dependencies"]
+    cargo = tomllib.loads((serq.SERQ_HOME / "src" / "Cargo.toml").read_text())
+    version = cargo["workspace"]["package"]["version"]
+    assert pyserq.__version__ == version
+    assert f"pyserq=={version}" in pin["project"]["dependencies"]
+    if "tag" in pin["tool"]["serq"]:
+        assert pin["tool"]["serq"]["tag"] == f"v{version}"
 
 
 def test_rng_is_rand_0_9_std_rng():

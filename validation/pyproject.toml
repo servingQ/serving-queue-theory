@@ -18,10 +18,10 @@ build-backend = "hatchling.build"
 only-include = ["src"]
 sources = ["src"]
 
-# The serQ release this repository runs: pyserq from PyPI (above) and the
-# checkout scripts/fetch_serq.sh makes of the same tag, for the example
-# programs, the oracle IR files and the CLI. `tests/test_units.py` holds the
-# two to one release.
+# The serQ this repository runs: pyserq from PyPI (above) and the checkout
+# scripts/fetch_serq.sh makes of `tag` (or of `rev`, which wins), for the
+# example programs, the oracle IR files and the CLI. `tests/test_units.py`
+# holds the two to one version (pyserq's and the checkout's Cargo.toml).
 [tool.serq]
 tag = "v0.1.1"
 
