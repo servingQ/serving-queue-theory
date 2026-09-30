@@ -3,7 +3,7 @@ name = "validation"
 version = "0.1.0"
 description = "Paper validation and report generation using the serQ simulation engine"
 requires-python = ">=3.12"
-dependencies = ["numpy>=2.2", "pyserq"]
+dependencies = ["numpy>=2.2", "pyserq==0.1.0"]
 
 [dependency-groups]
 dev = ["pytest>=8.3", "ruff>=0.11"]
@@ -18,14 +18,12 @@ build-backend = "hatchling.build"
 only-include = ["src"]
 sources = ["src"]
 
-# pyserq is built from the serQ checkout scripts/fetch_serq.sh makes (the
-# release pinned below), with serQ's own Rust toolchain
-[tool.uv.sources]
-pyserq = { path = "../.serq/src/pyserq" }
-
-# The serQ release this repository runs (scripts/fetch_serq.sh reads it).
+# The serQ release this repository runs: pyserq from PyPI (above) and the
+# checkout scripts/fetch_serq.sh makes of the same tag, for the example
+# programs, the oracle IR files and the CLI. `tests/test_units.py` holds the
+# two to one release.
 [tool.serq]
-tag = "v0.1.0-rc8"
+tag = "v0.1.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,8 +1,8 @@
 name: Access serQ
 description: >
   Read access to the private serQ repository (scripts/fetch_serq.sh checks out
-  the release pinned in validation/pyproject.toml, whose pyserq the
-  validation package runs and whose IR files the Lean oracle check reads) through a
+  the release pinned in validation/pyproject.toml, whose example programs
+  the validation package runs and whose IR files the Lean oracle check reads) through a
   read-only deploy key.
 inputs:
   deploy-key:

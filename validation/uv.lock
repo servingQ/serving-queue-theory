@@ -122,7 +122,12 @@ wheels = [
 
 [[package]]
 name = "pyserq"
-source = { directory = "../.serq/src/pyserq" }
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/80/5cd374f59d5333423dc12d916a4b97326e3c6c647bffdb62185dd2847e3d/pyserq-0.1.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:c5290195780e488f79163cf02bace1a850622f654d782cf056d02a99ac332d49", size = 780896, upload-time = "2026-09-30T06:22:24.797Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/85/5281358253c00f8831c5b58b16f0d8c55836db3c82c7debacad095f75c16/pyserq-0.1.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:92bed91798abea8ff79a4fc8aff2e6ba2a77094461c1d6cc6e00ddc30d9c307d", size = 868241, upload-time = "2026-09-30T06:22:26.442Z" },
+]
 
 [[package]]
 name = "pytest"
@@ -183,7 +188,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.2" },
-    { name = "pyserq", directory = "../.serq/src/pyserq" },
+    { name = "pyserq", specifier = "==0.1.0" },
 ]
 
 [package.metadata.requires-dev]

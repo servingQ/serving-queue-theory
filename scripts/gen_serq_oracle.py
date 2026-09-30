@@ -29,7 +29,7 @@ OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SerqOracle.lean")
 # 7 makes `choose` compare a tuple of keys. 8 lets a run hold several stages
 # at once (`Run.also`, under `Program.share`), outside the fragment.
 # 9 reevaluates non-FIFO queue keys and supplies Waited, outside this fragment.
-# FIFO programs in v7/v8/v9 keep their meaning; the pinned corpus (v0.1.0-rc8,
+# FIFO programs in v7/v8/v9 keep their meaning; the pinned corpus (v0.1.0,
 # IR 9) is FIFO and stays inside the fragment.
 IR_VERSION = 9
 SUPPORTED_IR_VERSIONS = (7, 8, IR_VERSION)
