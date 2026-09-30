@@ -1,11 +1,11 @@
-"""One test per validation check (`validation.checks`). A failure prints
+"""One test per validation check (`checks`). A failure prints
 the claim, the prediction and what was observed. The report
-(`python -m validation.report`, run by `scripts/check_sim.sh`) runs the same
+(`python -m report`, run by `scripts/check_sim.sh`) runs the same
 checks, so CI deselects these (`-m "not checks"`)."""
 
 import pytest
 
-from validation import checks
+import checks
 
 
 @pytest.mark.checks

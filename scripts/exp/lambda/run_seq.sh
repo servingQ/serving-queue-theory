@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ON the Lambda instance: served replays with per-iteration logging, the
-# end-to-end test cases of seQ (seQ `docs/language.md` §8).
+# end-to-end test cases of serQ (serQ `docs/language.md` §8).
 set -u
 cd "$(dirname "$0")/../../.."
 PORT=8020; BASE=http://127.0.0.1:$PORT; MODEL=Qwen/Qwen3-8B

@@ -5,38 +5,38 @@ Design and status of the simulation checks. Read
 phase, and the empirical programme (E1–E6) follows it.
 
 Status (2026-09-29, later): `validation` is a Python package (it was a
-Rust crate). Every simulation is a seQ program run by the CLI of the release
+Rust crate). Every simulation is a serQ program run by the CLI of the release
 pinned in `validation/pyproject.toml`; the package keeps the configurations,
 the analytic references, the offline eviction instances, the statistics
 and the table generation. It reproduces the crate bit for bit (rand 0.9's
-`StdRng` and Rust's number formatting are ported in `validation.rng` and
-`validation.fmt`): the report and every file of `paper/sim/` came out
-unchanged. Rust remains only to build the seQ CLI.
+`StdRng` and Rust's number formatting are ported in `rng` and
+`fmt`): the report and every file of `paper/sim/` came out
+unchanged. Rust remains only to build the serQ CLI.
 
 Status (2026-09-29, draft): the queue, PD, routing, agentic and sampled-work
-batch checks all execute seQ programs. `validation` retains the paper's
+batch checks all execute serQ programs. `validation` retains the paper's
 configuration, analytic checks, statistics and table generation; its own
 event scheduler and agentic/batch event loops have been removed. The old
 batch token-work and blocking-prefill variants were used only by internal
 tests and are no longer part of the Rust configuration API. The detailed
-vLLM scenarios continue to run through the seQ programs below.
+vLLM scenarios continue to run through the serQ programs below.
 
 Status (2026-09-27, later): the validation crate's `TwoStage` server (the §2.2
 replica with its own memory model: whole-turn KV reservation,
 whole-session eviction, no preemption) is removed. The paper's evidence
 on where a miss is paid, on eviction and admission, and the trace replay
-runs vLLM v1's engine rules as seQ programs
-(`programs/{price,open,replay}_vllm.seq`, `validation::seq_{price,open,replay}`)
+runs vLLM v1's engine rules as serQ programs
+(`programs/{price,open,replay}_vllm.sq`, `serq_{price,open,replay}`)
 with the testbed's cost model; the propositions' in-model checks use
 their own closed-form queues (M/G/1, PS).
 
 Status (2026-09-27): since this date the scenarios can be written as
-seQ programs (seQ, a pinned release: `research/seq.md`; spec seQ
-`docs/language.md`); `validation` depends on seQ's crate `seq-lang` and `make sim` runs the programs next to
+serQ programs (serQ, a pinned release: `research/seq.md`; spec serQ
+`docs/language.md`); `validation` depends on serQ's crate `serq` and `make sim` runs the programs next to
 the hand-written models (`validation/tests/seq_*.rs`). The vLLM
-engine (seQ `programs/vllm.seq`) and its A100 replay
-(`vllm_replay.seq`) are the calibrated-simulator items of §6 below
-that seQ now covers: continuous batching with a token budget, chunked
+engine (serQ `programs/vllm.sq`) and its A100 replay
+(`vllm_replay.sq`) are the calibrated-simulator items of §6 below
+that serQ now covers: continuous batching with a token budget, chunked
 prefill, block-level KV with LRU, preemption, trace replay, the E1 fits
 per chunk. Status (2026-09-23): the **uncalibrated** simulator exists in
 `validation/` (Rust). It covers validation-ladder steps 1–4 and reports
@@ -72,25 +72,25 @@ two, in two roles:
 
 ## 2. What exists
 
-Python (`validation/pyproject.toml`, `uv.lock`; numpy), with seQ as the
-engine: each model renders its configuration into a seQ program and reads
+Python (`validation/pyproject.toml`, `uv.lock`; numpy), with serQ as the
+engine: each model renders its configuration into a serQ program and reads
 the observations back from the CLI's JSON summary and per-sample dump.
 Everything is seeded, and a seed gives bit-identical output on the same libm
 (CI runs on `ubuntu-22.04` for that reason).
 
 | Module | Contents |
 |--------|----------|
-| `seq` | runs a seQ program with the pinned CLI and reads its report |
-| `dist` | Deterministic, Exponential, Erlang, balanced H2, Uniform, Discrete, HitMiss, Bernoulli; exact moments and seQ sampler expressions |
+| `serq` | runs a serQ program in process with pyserq and reads its report |
+| `dist` | Deterministic, Exponential, Erlang, balanced H2, Uniform, Discrete, HitMiss, Bernoulli; exact moments and serQ sampler expressions |
 | `stats` | Welford moments, batch means (20 batches), replication CIs, quantiles |
 | `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `mixtureCV2`, `pdFullCapacity`, `lookaheadCost`, …) |
-| `models.queue` | seQ's `mg1.seq` as an open G/G/c FIFO queue; separate streams for arrivals and service; Lindley cross-check |
-| `models.agentic` | `programs/agentic_model.seq`: closed or open agent programs on one replica with a finite KV pool; eviction, offload and fetch-mode policies |
+| `models.queue` | serQ's `mg1.sq` as an open G/G/c FIFO queue; separate streams for arrivals and service; Lindley cross-check |
+| `models.agentic` | `programs/agentic_model.sq`: closed or open agent programs on one replica with a finite KV pool; eviction, offload and fetch-mode policies |
 | `models.eviction` | offline instances; SF (and the literal Lean `shortestFirst`), density, guarded density, exact DP optimum |
-| `models.pd` | seQ's `pd_tandem.seq`, `pd_open.seq`: aggregated pool vs prefill → KV link → decode tandem |
-| `models.routing` | seQ's `routing.seq`: affinity, least-loaded, least-loaded with fetch, KV-aware myopic, lookahead with migration |
+| `models.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem |
+| `models.routing` | serQ's `routing.sq`: affinity, least-loaded, least-loaded with fetch, KV-aware myopic, lookahead with migration |
 | `workload` | replayed real sessions (`TraceCorpus`, bundled `validation/data/weka-sessions.csv` from the cc-traces-weka corpus) |
-| `seq_price`, `seq_open`, `seq_replay` | the vLLM-rule replica: `programs/{price,open,replay}_vllm.seq` |
+| `serq_price`, `serq_open`, `serq_replay` | the vLLM-rule replica: `programs/{price,open,replay}_vllm.sq` |
 | `checks` | named checks, one or more per proposition; shared by tests, report and paper tables |
 
 ### Modelling choices in the agentic model
@@ -122,8 +122,8 @@ Everything is seeded, and a seed gives bit-identical output on the same libm
 - `tests/test_propositions.py`: one test per check (marker `checks`).
   `tests/test_lean_examples.py`: `analytic` at every numeric instance
   proved in Lean.
-- `validation.report`: Markdown report (CI job summary and artifact).
-- `validation.paper_tables` (`make tables`): writes `paper/sim/*.tex`, which
+- `report`: Markdown report (CI job summary and artifact).
+- `paper_tables` (`make tables`): writes `paper/sim/*.tex`, which
   `paper/simulation.tex` inputs. No simulator number is typed by hand.
 - `scripts/check_sim.sh` (`make sim`): cited Lean names exist, `ruff`,
   `pytest` and the report. Paper tables and figures are regenerated
@@ -190,7 +190,7 @@ rather than model them.
 
 ## 6. Roadmap to the calibrated simulator
 
-Each item is a seQ program (or a seQ extension) with an adapter here.
+Each item is a serQ program (or a serQ extension) with an adapter here.
 Every new model gets in-model checks in `checks.py` before it is used for a
 beyond-model question.
 

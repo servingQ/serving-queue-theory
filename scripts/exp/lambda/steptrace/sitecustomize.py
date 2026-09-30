@@ -3,7 +3,7 @@ serve_gpu.sh when STEPTRACE is set). Every scheduler step writes one JSON
 line to $STEPTRACE.<pid>: the monotonic time of `schedule()` and of the
 `update_from_output()` that consumes it, and per scheduled request the
 tokens, the tokens computed before, the prompt length and the blocks held.
-These are seQ's step quantities (ntok, npre, ndec, kvb, attn), measured
+These are serQ's step quantities (ntok, npre, ndec, kvb, attn), measured
 on the serving path (async scheduling included)."""
 import json
 import os

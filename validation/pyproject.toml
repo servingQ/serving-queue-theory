@@ -1,9 +1,9 @@
 [project]
 name = "validation"
 version = "0.1.0"
-description = "Paper validation and report generation using the seQ simulation engine"
+description = "Paper validation and report generation using the serQ simulation engine"
 requires-python = ">=3.12"
-dependencies = ["numpy>=2.2"]
+dependencies = ["numpy>=2.2", "pyserq"]
 
 [dependency-groups]
 dev = ["pytest>=8.3", "ruff>=0.11"]
@@ -12,19 +12,28 @@ dev = ["pytest>=8.3", "ruff>=0.11"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# the modules sit flat in src/ (`import checks`, `import serq`)
 [tool.hatch.build.targets.wheel]
-packages = ["src/validation"]
+only-include = ["src"]
+sources = ["src"]
 
-# The seQ release this repository runs (scripts/fetch_seq.sh reads it).
-[tool.seq]
-tag = "v0.1.0-rc5"
+# pyserq is built from the serQ checkout scripts/fetch_serq.sh makes (the
+# release pinned below), with serQ's own Rust toolchain
+[tool.uv.sources]
+pyserq = { path = "../.serq/src/pyserq" }
+
+# The serQ release this repository runs (scripts/fetch_serq.sh reads it).
+[tool.serq]
+tag = "v0.1.0-rc6"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 markers = ["checks: the named validation checks (slow; the report runs them too)"]
 
 [tool.ruff]
 line-length = 100
+src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

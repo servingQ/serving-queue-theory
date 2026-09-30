@@ -24,61 +24,61 @@ current at the end of every work block.
 **Done.**
 - **Validation in Python (2026-09-29).** `validation/` is a Python package
   (uv, `validation/pyproject.toml`), no longer a Rust crate: every
-  simulation is a seQ program run by the pinned seQ CLI, and the package
+  simulation is a serQ program run by the pinned serQ CLI, and the package
   keeps configurations, closed forms, offline eviction instances,
   statistics and table generation. It reproduces the crate bit for bit
   (rand 0.9's `StdRng` and Rust's number formatting ported): the report
   and every file of `paper/sim/` are unchanged apart from the generator
-  line. Rust is needed only to build the seQ CLI. `make tables`
+  line. Rust is needed only to build the serQ CLI. `make tables`
   regenerates `paper/sim/` (~7 min); `make sim` runs ruff, pytest and the
   report (~5 min).
-- **IR first (2026-09-27, seQ v0.1.0-dev2).** A seQ program is defined by
-  its IR (seQ `docs/ir.md`): versioned JSON, validated on load, with the
+- **IR first (2026-09-27, serQ v0.1.0-dev2).** A serQ program is defined by
+  its IR (serQ `docs/ir.md`): versioned JSON, validated on load, with the
   workload instance (explicit sessions) as data. The vLLM request program
   had three hand-kept copies (a Rust test string, the Lean `vllmRequest`,
-  `vllm.seq`); now `programs/vllm_request.seq` compiles per scenario to
-  `tools/oracle/*.ir.json`, the seQ test runs those files, and
-  `SeqOracle.lean`'s program, deployments and request tables are
+  `vllm.sq`); now `programs/vllm_request.sq` compiles per scenario to
+  `tools/oracle/*.ir.json`, the serQ test runs those files, and
+  `SerqOracle.lean`'s program, deployments and request tables are
   translated from them (same six theorems). Experiment scripts pass traces
   with `--trace` and record `program.ir.json`. **Done (dev3):** sessions
   carry their turns in the IR (`--inline-trace`), the Lean executable
   semantics reads them (`Exec.Workload`, delays on every stage but the
   engine), and `vllmTurn` with the cache theorem is generated from
   `cache_trace.ir.json`; no oracle program is hand-written any more.
-- **The language is seQ, a separate project (2026-09-27).** The serving-
+- **The language is serQ, a separate project (2026-09-27).** The serving-
   deployment language, its interpreter and CLI
-  (`seq-lang`), the example programs and the vLLM oracle with its test
-  vectors are https://github.com/vrvrv/seQ (release v0.1.0-dev3); this
+  (`serq`), the example programs and the vLLM oracle with its test
+  vectors are https://github.com/vrvrv/serQ (release v0.1.0-dev3); this
   repository uses the pinned release as a Cargo git dependency and through
-  `.seq/` (`research/seq.md`). The Lean model of the language stays here
+  `.serq/` (`research/seq.md`). The Lean model of the language stays here
   (`lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean`, the oracle
-  theorems generated from seQ's IR files by `scripts/gen_seq_oracle.py`),
-  as do the paper's replica programs (`Deployments.lean`). CI reads seQ
+  theorems generated from serQ's IR files by `scripts/gen_serq_oracle.py`),
+  as do the paper's replica programs (`Deployments.lean`). CI reads serQ
   with a read-only deploy key (secret `SEQ_DEPLOY_KEY`, `research/seq.md`).
-- **seQ, second pass (2026-09-27).** The vLLM program now reproduces
+- **serQ, second pass (2026-09-27).** The vLLM program now reproduces
   the real scheduler request for request on the full short-context trace
   (3 321/3 321; six semantic gaps found by differential replay and fixed in
   the language: admission served by the engine, whole-prompt gate, partial
   reuse with dead blocks, `end` keeps the cache, admission order, release
-  order); the six scenarios are Lean theorems (`SeqOracle.lean`,
+  order); the six scenarios are Lean theorems (`SerqOracle.lean`,
   `decide +kernel`) and hold on the real A100 engine; the paper's "prefill
   from what decode leaves" equals vLLM's admission order unless a
-  per-request chunk cap is set (`SeqServe.lean`, cited in §2.2). The A100
+  per-request chunk cap is set (`SerqServe.lean`, cited in §2.2). The A100
   miss under-prediction (117 vs 426) was these semantic gaps; with them fixed
   the model's remaining error is the time model (two overhead constants),
-  `seQ `docs/language.md`` §8. Review round with seQ:
+  `serQ `docs/language.md`` §8. Review round with serQ:
   `research/reviews/2026-09-27-seq-round1*.md`.
-- **seQ v0.1.0-rc1 pinned (2026-09-29).** This release advances the oracle
-  vectors to IR v5. `scripts/gen_seq_oracle.py` and `SeqOracle.lean` read the
+- **serQ v0.1.0-rc1 pinned (2026-09-29).** This release advances the oracle
+  vectors to IR v5. `scripts/gen_serq_oracle.py` and `SerqOracle.lean` read the
   new version; the three simulator programs use `reserve` for admission,
   and the open-session program declares its probabilistic branch.
-- **seQ v0.1.0-rc0 first pinned (2026-09-28).** The first release candidate:
+- **serQ v0.1.0-rc0 first pinned (2026-09-28).** The first release candidate:
   the per-session block is `session { … }` (IR v3, field `session`), the
   serving vocabulary (`admit … keep`, `prefill`, `decode`, `tool`,
   `transfer`) and `branch with (p)` are sugar over the kernel, the vLLM
-  programs' request pool is `reqs`, and `seq-lang draw` exists. Here:
-  `programs/*_vllm.seq` and the inline test programs say `session`,
-  `scripts/gen_seq_oracle.py` read IR v3, `SeqOracle.lean` was regenerated
+  programs' request pool is `reqs`, and `serq draw` exists. Here:
+  `programs/*_vllm.sq` and the inline test programs say `session`,
+  `scripts/gen_serq_oracle.py` read IR v3, `SerqOracle.lean` was regenerated
   (only its doc comments changed: pool `reqs`); the paper's replicas in
   `Deployments.lean` still use the kernel forms, and the Lean type and
   quotation keep the name `Route`/`[route| … ]`.
@@ -91,33 +91,33 @@ current at the end of every work block.
   (`scripts/exp/lambda/steptrace/pinpatch.py`). **Result (A100, served,
   2026-09-27, one run per point):** at 2.5 s the vLLM rule collapses (TTFT
   34.6 s, full-hit 0.22) and the pinned engine does not (0.88 s, 0.78;
-  seQ pre-registered 0.89 s, 0.75); at 3.0 s both are off the cliff
+  serQ pre-registered 0.89 s, 0.75); at 3.0 s both are off the cliff
   (0.44 → 0.41 s). Data `data/exp/gpu_seq/trace/`, table in
-  `seQ `docs/language.md`` §8. The Lambda instance was terminated after
+  `serQ `docs/language.md`` §8. The Lambda instance was terminated after
   the runs. Candidate for the paper's §3.3 admission step (needs a same-day
   unpinned 2.5 s rerun with the tracer and seeds before it goes in).
-  **§4.2 replay in seQ (done 2026-09-27, `research/seq-replay42.md`,
-  `programs/replay_{twostage,vllm}.seq`, `scripts/exp/seq_replay42.py`):**
+  **§4.2 replay in serQ (done 2026-09-27, `research/seq-replay42.md`,
+  `programs/replay_{twostage,vllm}.sq`, `scripts/exp/seq_replay42.py`):**
   the qualitative conclusions stay (open replica all hits; the admission
   cap decides thrashing under every rule set; priced ≤ LRU in TTFT); the
   quoted numbers move under vLLM's rules (block tail eviction makes misses
   partial: TTFT 1.3–3.7× lower, mixture share of variance much lower; a
   priced key that keeps finished sessions' blocks loses hit rate, so the
   §3 scheduler needs the program's end). **User decision: (b), done the
-  same day:** §4.2 runs `programs/replay_vllm.seq` through
-  `validation.seq_replay` in `validation.paper_tables` (tables, Reuse column,
+  same day:** §4.2 runs `programs/replay_vllm.sq` through
+  `serq_replay` in `paper_tables` (tables, Reuse column,
   macros, prose of `simulation.tex` and the intro sentence regenerated;
-  `replay_twostage.seq` removed). Open for the paper: §3 could state that
+  `replay_twostage.sq` removed). Open for the paper: §3 could state that
   the price key needs the program's end under vLLM (the `keep=0`
   ablation), and the LRU-vs-priced margin on the trace is small (up to
   1.65× in TTFT) next to the synthetic `tab:sim-evict-dyn`.
   **Follow-up the same day (items 1–4, user request):** (1) the
   eviction/admission experiment (`tab:sim-evict-dyn`, `tab:sim-admission`,
-  `fig:sim-admission`) runs `programs/open_vllm.seq` (vLLM rules, testbed
-  cost, rates 0.03/0.05) through `validation::seq_open`: priced orders
+  `fig:sim-admission`) runs `programs/open_vllm.sq` (vLLM rules, testbed
+  cost, rates 0.03/0.05) through `validation::serq_open`: priced orders
   ≈ shortest-first, LRU 1.7–3.0× TTFT, the cap decides thrashing, and with
   the end unknown the byte-second price loses its lead (text of §4.2 and
-  §3.1); thrashing is now "reuse below half" (partial misses); seQ dev4
+  §3.1); thrashing is now "reuse below half" (partial misses); serQ dev4
   made the interpreter 5–15× faster (identical results). (2) §3.1: the
   block problem is not a fractional knapsack (tail recompute concave,
   `tailRecompute_marginal_antitone`, `tailRecompute_subadditive`); the
@@ -130,38 +130,38 @@ current at the end of every work block.
   whole-session eviction; 0.06–0.23 now).
   **Then `TwoStage` removed (user request):** it was used by no in-model
   check (`miss_price_bracket` runs on a plain M/G/1); its one check,
-  where a miss is paid, runs `programs/price_vllm.seq` through
-  `validation::seq_price` (check `prefill_pays_the_miss`, `tab:sim-ps`
+  where a miss is paid, runs `programs/price_vllm.sq` through
+  `validation::serq_price` (check `prefill_pays_the_miss`, `tab:sim-ps`
   rows 8–9): ΔL_P inside the bracket at its upper end; the decode batch
   changes by 0.3 % (not 0: a miss's prefill lengthens shared iterations),
   so the check bounds it by 1 % and §4.2 says so. Gone with it: the
-  `open_session_cfg` scenario, the seQ-vs-TwoStage cross-check, the
+  `open_session_cfg` scenario, the serQ-vs-TwoStage cross-check, the
   `trace_html` example and the TwoStage unit tests.
-  **Next for seQ** (in order): (1) keep a growing hold's position integral
+  **Next for serQ** (in order): (1) keep a growing hold's position integral
   (fractional chunks lose a block when rounded, found in the replay port);
   (2) identify the served overhead constants
   from a served step trace with synchronous against asynchronous
   scheduling at light load; (3) Kani harnesses, then Aeneas, on a pure pool
-  core of `seQ src/sim.rs` against `SeqLang.Step` and
+  core of `serQ src/sim.rs` against `SerqLang.Step` and
   `Exec.makeRoom_room`.
-- **seQ (2026-09-27): the serving-deployment language of Lecture 1
+- **serQ (2026-09-27): the serving-deployment language of Lecture 1
   rebuilt as a programming language for the formal verification and
-  simulation of serving systems.** seQ (Rust parser, interpreter,
-  CLI), `lean/ServingQueueTheory/Seq.lean` (syntax, pool semantics,
-  memory invariant `SeqLang.Step.invariant`, the two replicas as
+  simulation of serving systems.** serQ (Rust parser, interpreter,
+  CLI), `lean/ServingQueueTheory/Serq.lean` (syntax, pool semantics,
+  memory invariant `SerqLang.Step.invariant`, the two replicas as
   programs, the surface syntax `[route| … ]` inside Lean),
-  `seQ programs/*.seq` (M/G/1, PS, M/M/1//N, the agentic replica,
+  `serQ programs/*.sq` (M/G/1, PS, M/M/1//N, the agentic replica,
   the paper's two-resource replica, PD tandem, routing, vLLM v1, vLLM
   on the A100 replaying the short trace). Validated against the closed
   forms, the hand-written `libqueuingsim` models (now run under `make
   sim`, `validation/tests/seq_*.rs`), the real upstream vLLM
   scheduler on six deterministic scenarios (6/6 step-exact,
-  `seQ tests/vllm_oracle.rs`) and the ten measured A100 runs (one
+  `serQ tests/vllm_oracle.rs`) and the ten measured A100 runs (one
   calibrated parameter; mean TTFT within 10–30 % below the cliff, the
   cliff at 2.5 s reproduced; `data/exp/seq/gpu.txt`). Spec
-  `seQ `docs/language.md``; review of the lecture's version against
+  `serQ `docs/language.md``; review of the lecture's version against
   vLLM, design, self-review and the verification-tooling survey
-  `seQ `docs/review.md``. Next for seQ: an executable Lean semantics
+  `serQ `docs/review.md``. Next for serQ: an executable Lean semantics
   (`#eval`) fed by the oracle scenarios, Aeneas/Kani on the pool core,
   cross-session prefix sharing, a fluid option for the step stage, and
   the eviction under-prediction on the A100 (117 vs 426 misses at
@@ -691,7 +691,7 @@ fill the "Simulator" columns of `tab:scorecard`; they replace nothing in
   per-migration transfer time and bytes (E6).
 
 ### Decisions about the simulator
-The simulator checks live in `validation/` (Python on the seQ CLI); `research/simulation-design.md`
+The simulator checks live in `validation/` (Python on the serQ CLI); `research/simulation-design.md`
 has its design, status and roadmap. It serves E2 (hit-rate sweeps), E3,
 E4 (end-to-end), E5 and E6. E1 and the PD experiment are testbed-only; E4's cost/OPT
 column is offline. Milestones M0 to M4 are built on synthetic workloads

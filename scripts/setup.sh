@@ -12,7 +12,7 @@ if ! command -v elan >/dev/null; then
 fi
 
 if ! command -v rustup >/dev/null; then
-  echo "== installing rustup (seQ's pinned toolchain builds the seQ CLI)"
+  echo "== installing rustup (serQ's pinned toolchain builds the serQ CLI)"
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
 fi
@@ -31,12 +31,12 @@ fi
 echo "== Lean toolchain + Mathlib cache"
 ( cd lean && lake exe cache get >/dev/null && lake build 2>&1 | tail -1 )
 
-echo "== seQ CLI (the release pinned in validation/pyproject.toml)"
-scripts/fetch_seq.sh
+echo "== serQ CLI (the release pinned in validation/pyproject.toml)"
+scripts/fetch_serq.sh
 
 echo "== Python environment of the validation package"
 ( cd validation && uv sync --locked --quiet )
 
 echo
-echo "seQ $(cat .seq/tag) | $(cd validation && uv run --quiet python --version) | elan $(elan --version | cut -d' ' -f2) | $(cd lean && lean --version) | $(tectonic --version) | $(uv --version)"
+echo "serQ $(cat .serq/tag) | $(cd validation && uv run --quiet python --version) | elan $(elan --version | cut -d' ' -f2) | $(cd lean && lean --version) | $(tectonic --version) | $(uv --version)"
 echo "OK. Try: make check"
