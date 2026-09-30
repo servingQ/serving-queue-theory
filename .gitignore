@@ -33,4 +33,4 @@ runtime.log
 __pycache__/
 
 # serQ release checked out by scripts/fetch_serq.sh
-/.seq/
+/.serq/
