@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code PostToolUse hook (Edit|Write). Reads the tool payload on stdin,
-# and if a Lean, Rust or paper file changed, runs the matching check and reports
+# and if a Lean, Python validation or paper file changed, runs the matching check and reports
 # problems back to the model as additionalContext. Never blocks.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -20,10 +20,10 @@ case "$f" in
       emit "lake build after editing ${f#$PWD/}:"$'\n'"$out"
     fi
     ;;
-  */paper-validation/*.rs)
-    out=$(cd paper-validation && cargo clippy --all-targets --quiet --message-format short 2>&1 | grep -E "(error|warning)" | head -30)
+  */validation/*.py)
+    out=$(cd validation && uv run --quiet ruff check --output-format concise . 2>&1 | grep -vE "^(All checks passed|Found 0)" | head -30)
     if [ -n "$out" ]; then
-      emit "cargo clippy after editing ${f#$PWD/}:"$'\n'"$out"
+      emit "ruff check after editing ${f#$PWD/}:"$'\n'"$out"
     fi
     ;;
   */paper/main.tex)

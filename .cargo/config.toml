@@ -1,4 +1,0 @@
-# seQ is a private git dependency: let Cargo fetch it with the git CLI so the
-# usual credential helper (gh) or an SSH deploy key (CI) authenticates.
-[net]
-git-fetch-with-cli = true

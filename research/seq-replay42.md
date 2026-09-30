@@ -9,8 +9,8 @@ Everything here is simulator output on the replayed WEKA workload, not a
 measurement of a serving system (AGENTS.md rule 7).
 
 **Decision (2026-09-27, the user: option (b)).** §4.2 now runs the
-vLLM-rule program: `paper_validation::seq_replay` runs `programs/replay_vllm.seq`
-in-process through the `seq` crate and `examples/paper_tables.rs` generates
+vLLM-rule program: `validation.seq_replay` runs `programs/replay_vllm.seq`
+with the pinned seQ CLI and `validation.paper_tables` generates
 §4.2's tables and macros from it (`tab:sim-trace` with a Reuse column,
 `tab:sim-trace-price`, `tab:sim-trace-split`; 20 seeds). The prose of
 `paper/simulation.tex` describes the engine rules and the partial misses.
