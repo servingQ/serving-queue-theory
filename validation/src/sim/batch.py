@@ -1,8 +1,8 @@
 """Sampled-work FIFO and processor-sharing session checks for the paper.
 
 The arrival, service, feedback and batch-cap behaviour executes in
-`programs/batch_sampled.sq`; this module holds its configuration, report
-shape and analytic helpers.
+`programs/batch_sampled.sq`; this module holds its configuration and report
+shape, `theory.batch` the capacity `φ` and its closed forms.
 """
 
 from __future__ import annotations
@@ -12,75 +12,11 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-import serq
-from analytic import stationary_mean
-from dist import Deterministic, Dist
-from models.agentic import Closed, Open, Population, ProgramClass
-from rng import StdRng
-from stats import NAN_ESTIMATE, Estimate, Welford, batch_means, quantile
-
-
-@dataclass(frozen=True)
-class Constant:
-    """`φ(n) = c` for `n ≥ 1`: plain processor sharing at rate `c`."""
-
-    c: float
-
-    def __repr__(self) -> str:  # Rust `{:?}`
-        from fmt import dbg
-
-        return f"Constant({dbg(self.c)})"
-
-
-@dataclass(frozen=True)
-class Saturating:
-    """`φ(n) = m/(1+β(m-1))`, `m = min(n, cap)`."""
-
-    beta: float
-    cap: int | None
-
-    def __repr__(self) -> str:
-        from fmt import dbg
-
-        cap = "None" if self.cap is None else f"Some({self.cap})"
-        return f"Saturating {{ beta: {dbg(self.beta)}, cap: {cap} }}"
-
-
-Phi = Constant | Saturating
-
-
-def phi_rate(phi: Phi, n: int) -> float:
-    if n == 0:
-        return 0.0
-    if isinstance(phi, Constant):
-        return phi.c
-    m = float(n if phi.cap is None else min(n, phi.cap))
-    return m / (1.0 + phi.beta * (m - 1.0))
-
-
-def phi_limit(phi: Phi) -> float:
-    """`sup_n φ(n)`."""
-    if isinstance(phi, Constant):
-        return phi.c
-    if phi.cap is not None:
-        return phi_rate(phi, phi.cap)
-    if phi.beta > 0.0:
-        return 1.0 / phi.beta
-    return math.inf
-
-
-def ps_mean_number(phi: Phi, rho: float) -> float:
-    """Mean number at a PS queue of capacity `φ` and offered load `ρ`:
-    `Σ n π(n)`, `π(n) ∝ ρⁿ / Π_{k≤n} φ(k)`; for `φ ≡ C` this is `ρ/(C-ρ)`."""
-    assert rho < phi_limit(phi), f"load {rho} ≥ capacity {phi_limit(phi)}"
-    w, z = [1.0], 1.0
-    for n in range(1, 10_000_000):
-        wn = w[n - 1] * rho / phi_rate(phi, n)
-        w.append(wn)
-        z += wn
-        if wn < 1e-16 * z and n > 10:
-            break
-    return stationary_mean(w, 1.0)
+from sim import laws, serq
+from sim.agentic import Closed, Open, Population, ProgramClass
+from sim.stats import NAN_ESTIMATE, Estimate, Welford, batch_means, quantile
+from theory.batch import Constant, Phi, Saturating
+from theory.dist import Deterministic, Dist
 
 
 @dataclass(frozen=True)
@@ -176,9 +112,9 @@ def simulate(cfg: BatchConfig) -> BatchReport:
     src = (serq.PROGRAMS / "batch_sampled.sq").read_text()
     if isinstance(cfg.population, Closed):
         src = _replace(src, "arrive poisson(Lambda);", "arrive closed(N);")
-    src = _replace(src, "~exp(1)", cfg.prefill.sample_expr())
-    src = _replace(src, "~det(0)", cfg.decode.sample_expr())
-    src = _replace(src, "run tool (~det(0));", f"run tool ({cls.tool_time.sample_expr()});")
+    src = _replace(src, "~exp(1)", laws.expr(cfg.prefill))
+    src = _replace(src, "~det(0)", laws.expr(cfg.decode))
+    src = _replace(src, "run tool (~det(0));", f"run tool ({laws.expr(cls.tool_time)});")
     if isinstance(cfg.server, Fifo):
         src = _replace(src, "stage svc : ps(service_rate);", "stage svc : fifo;")
         phi, rate = Constant(1.0), 1.0
@@ -236,32 +172,3 @@ def simulate(cfg: BatchConfig) -> BatchReport:
         utilization=svc.utilization,
         mean_sessions=r.mean_live,
     )
-
-
-def paired_differences(a, b) -> list[float]:
-    """Per-turn differences `b - a` of two per-turn series sorted by key,
-    paired by key (runs with common random numbers)."""
-    i = j = 0
-    out = []
-    while i < len(a) and j < len(b):
-        if a[i][0] < b[j][0]:
-            i += 1
-        elif a[i][0] > b[j][0]:
-            j += 1
-        else:
-            out.append(b[j][1] - a[i][1])
-            i += 1
-            j += 1
-    return out
-
-
-def fifo_admitted(capacity: float, footprint: Dist, rng: StdRng) -> int:
-    """Requests admitted, in FIFO order, into `capacity` until the first
-    whose footprint (drawn from `footprint`) does not fit."""
-    used, n = 0.0, 0
-    while True:
-        k = footprint.sample(rng)
-        if used + k > capacity:
-            return n
-        used += k
-        n += 1

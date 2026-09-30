@@ -3,7 +3,11 @@
 import math
 
 import fmt
-from dist import (
+from sim import laws
+from sim.stats import Welford, batch_means, quantile
+from sim.workload import TraceCorpus, weka
+from theory import eviction
+from theory.dist import (
     Deterministic,
     Erlang,
     HitMiss,
@@ -12,11 +16,8 @@ from dist import (
     exp,
     hyperexp_balanced,
 )
-from models import eviction
-from models.eviction import Item, Weighted
-from rng import StdRng
-from stats import Welford, batch_means, quantile
-from workload import TraceCorpus, weka
+from theory.eviction import Item, Weighted
+from theory.rng import StdRng
 
 # ---------------------------------------------------------------- rng ----
 
@@ -68,8 +69,8 @@ def test_seeded_sampling_matches_moments():
         assert abs(sum(xs) / len(xs) - d.mean()) < 0.03 * max(abs(d.mean()), 1.0)
 
 
-def test_sample_expr_of_discrete():
-    assert discrete([1.0, 2.0, 3.0], [0.5, 0.25, 0.25]).sample_expr() == (
+def test_expr_of_discrete():
+    assert laws.expr(discrete([1.0, 2.0, 3.0], [0.5, 0.25, 0.25])) == (
         "(~bernoulli(5e-1) ? 1e0 : (~bernoulli(5e-1) ? 2e0 : 3e0))"
     )
 

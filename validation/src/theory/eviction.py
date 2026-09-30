@@ -18,7 +18,7 @@ from enum import Enum
 import numpy as np
 
 from fmt import fmax, rround
-from rng import StdRng
+from theory.rng import StdRng
 
 
 @dataclass(frozen=True)

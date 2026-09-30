@@ -134,3 +134,20 @@ def quantile(xs, q: float) -> float:
     assert v.size
     idx = min(max(math.ceil(q * v.size), 1), v.size) - 1
     return float(v[idx])
+
+
+def paired_differences(a, b) -> list[float]:
+    """Per-turn differences `b - a` of two per-turn series sorted by key,
+    paired by key (runs with common random numbers)."""
+    i = j = 0
+    out = []
+    while i < len(a) and j < len(b):
+        if a[i][0] < b[j][0]:
+            i += 1
+        elif a[i][0] > b[j][0]:
+            j += 1
+        else:
+            out.append(b[j][1] - a[i][1])
+            i += 1
+            j += 1
+    return out

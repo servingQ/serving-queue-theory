@@ -30,8 +30,8 @@ sim:              ## validation: Lean-name check, ruff, pytest and validation re
 serq:              ## the serQ release pinned in validation/pyproject.toml: .serq/src (programs, oracle vectors) and the CLI .serq/bin/serq
 	scripts/fetch_serq.sh
 
-tables:           ## regenerate paper/sim/*.tex and paper/sim/data/*.csv (paper_tables)
-	cd validation && uv run --locked --quiet python -m paper_tables
+tables:           ## regenerate paper/sim/*.tex and paper/sim/data/*.csv (report.paper_tables)
+	cd validation && uv run --locked --quiet python -m report.paper_tables
 
 figs:             ## redraw paper/sim/fig-*.pdf from paper/sim/data/*.csv (written by `make tables`)
 	uv run --quiet --with matplotlib python scripts/plot_sim.py
@@ -52,7 +52,7 @@ exp:              ## regenerate paper/exp/ from the testbed measurements (data/e
 	uv run --quiet --with matplotlib python scripts/exp/plot_exp.py --prices data/exp/e2b/price_*.json
 
 report:           ## print the simulator validation report
-	cd validation && uv run --locked --quiet python -m report
+	cd validation && uv run --locked --quiet python -m report.validation
 
 check: serq lean refs paper lectures sim   ## everything CI runs
 

@@ -13,10 +13,10 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-import serq
-from dist import Deterministic, Dist, exp
 from fmt import fmax, fmin
-from stats import Estimate, Welford, batch_means
+from sim import laws, serq
+from sim.stats import Estimate, Welford, batch_means
+from theory.dist import Deterministic, Dist, exp
 
 MIN_POSITIVE = 2.2250738585072014e-308
 
@@ -91,9 +91,9 @@ class PdReport:
 def _source(name: str, cfg: PdConfig) -> str:
     src = serq.program_path(name).read_text()
     for pattern, repl in [
-        ("~exp(sP)", cfg.prefill.sample_expr()),
-        ("~exp(sD)", cfg.decode.sample_expr()),
-        ("~exp(K)", cfg.kv_tokens.sample_expr()),
+        ("~exp(sP)", laws.expr(cfg.prefill)),
+        ("~exp(sD)", laws.expr(cfg.decode)),
+        ("~exp(K)", laws.expr(cfg.kv_tokens)),
     ]:
         assert pattern in src, f"{name}.sq lacks {pattern}"
         src = src.replace(pattern, repl, 1)
@@ -197,16 +197,4 @@ def _poisson(cfg: PdConfig) -> PdReport:
         util = [u("agg", cfg.devices)]
     return PdReport(
         len(lat) / fmax(span, MIN_POSITIVE), lat, batch_means(lat, 20), util, Welford(lat)
-    )
-
-
-def split_capacity(cfg: PdConfig, prefill_devices: int) -> float:
-    """`min(N_P g_P / s_P, N_D g_D / s_D, B_net / E[K])` of an integer split."""
-    n_p = float(prefill_devices)
-    n_d = float(cfg.devices - prefill_devices)
-    return fmin(
-        fmin(
-            n_p * cfg.gain_prefill / cfg.prefill.mean(), n_d * cfg.gain_decode / cfg.decode.mean()
-        ),
-        cfg.b_net / cfg.kv_tokens.mean(),
     )

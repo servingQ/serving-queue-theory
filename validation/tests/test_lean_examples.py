@@ -1,8 +1,8 @@
-"""The numeric instances proved in Lean, evaluated with `analytic`. If a
+"""The numeric instances proved in Lean, evaluated with `theory.analytic`. If a
 closed form was mistranscribed from Lean, one of these fails. Test names
 follow the Lean theorem names."""
 
-from analytic import (
+from theory.analytic import (
     agg_capacity,
     agg_capacity_i,
     decode_local,
@@ -23,8 +23,8 @@ from analytic import (
     utilization,
     via_prefill_pool,
 )
-from dist import HitMiss, discrete
-from models.eviction import Item, evict_cost, shortest_first_lean
+from theory.dist import HitMiss, discrete
+from theory.eviction import Item, evict_cost, shortest_first_lean
 
 
 def close(a, b):

@@ -21,9 +21,6 @@ import math
 from dataclasses import dataclass
 from functools import cache
 
-import serq
-import workload
-from analytic import finite_source_price, miss_price
 from constants import (
     CAL_DECODE_STEP,
     CAL_PREFILL_LINEAR,
@@ -35,8 +32,10 @@ from constants import (
     TRACE_WARMUP,
 )
 from fmt import rround, ssum
-from models.agentic import EvictionPolicy
-from stats import Estimate, replications
+from sim import serq, workload
+from sim.agentic import EvictionPolicy
+from sim.stats import Estimate, replications
+from theory.analytic import finite_source_price, miss_price
 
 PROGRAM = serq.PROGRAMS / "replay_vllm.sq"
 SEEDS = 20  # per replay cell

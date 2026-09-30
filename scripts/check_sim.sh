@@ -49,5 +49,5 @@ cd validation
 uv run --locked --quiet ruff format --check .
 uv run --locked --quiet ruff check .
 uv run --locked --quiet pytest -q -m "not checks"
-uv run --locked --quiet python -m report validation-report.md >/dev/null
+uv run --locked --quiet python -m report.validation validation-report.md >/dev/null
 echo "OK: validation, $(tail -1 validation-report.md)"

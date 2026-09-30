@@ -78,20 +78,28 @@ the observations back from the CLI's JSON summary and per-sample dump.
 Everything is seeded, and a seed gives bit-identical output on the same libm
 (CI runs on `ubuntu-22.04` for that reason).
 
+The modules are layers (`validation/README.md`, enforced by
+`tests/test_layers.py`): `theory` never imports serQ, `sim` never imports
+`checks`, nothing imports `report`.
+
 | Module | Contents |
 |--------|----------|
-| `serq` | runs a serQ program in process with pyserq and reads its report |
-| `dist` | Deterministic, Exponential, Erlang, balanced H2, Uniform, Discrete, HitMiss, Bernoulli; exact moments and serQ sampler expressions |
-| `stats` | Welford moments, batch means (20 batches), replication CIs, quantiles |
-| `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `mixtureCV2`, `pdFullCapacity`, `lookaheadCost`, …) |
-| `models.queue` | serQ's `mg1.sq` as an open G/G/c FIFO queue; separate streams for arrivals and service; Lindley cross-check |
-| `models.agentic` | `programs/agentic_model.sq`: closed or open agent programs on one replica with a finite KV pool; eviction, offload and fetch-mode policies |
-| `models.eviction` | offline instances; SF (and the literal Lean `shortestFirst`), density, guarded density, exact DP optimum |
-| `models.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem |
-| `models.routing` | serQ's `routing.sq`: affinity, least-loaded, least-loaded with fetch, KV-aware myopic, lookahead with migration |
-| `workload` | replayed real sessions (`TraceCorpus`, bundled `validation/data/weka-sessions.csv` from the cc-traces-weka corpus) |
-| `serq_price`, `serq_open`, `serq_replay` | the vLLM-rule replica: `programs/{price,open,replay}_vllm.sq` |
+| `theory.dist` | Deterministic, Exponential, Erlang, balanced H2, Uniform, Discrete, HitMiss, Bernoulli; exact moments and seeded sampling |
+| `theory.analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `mixtureCV2`, `pdFullCapacity`, `lookaheadCost`, …) |
+| `theory.queue` | Lindley's recursion on the streams of `mg1.sq` (the cross-check of the event engine) |
+| `theory.batch`, `theory.pd` | the PS capacity `φ(n)` and its mean number; FIFO admission by footprint; the capacity of an integer PD split |
+| `theory.eviction` | offline instances; SF (and the literal Lean `shortestFirst`), density, guarded density, exact DP optimum |
+| `sim.serq` | runs a serQ program in process with pyserq and reads its report |
+| `sim.laws` | a law as an expression in serQ's sampler |
+| `sim.stats` | Welford moments, batch means (20 batches), replication CIs, quantiles, paired differences |
+| `sim.queue` | serQ's `mg1.sq` as an open G/G/c FIFO queue; separate streams for arrivals and service |
+| `sim.agentic` | `programs/agentic_model.sq`: closed or open agent programs on one replica with a finite KV pool; eviction, offload and fetch-mode policies |
+| `sim.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem |
+| `sim.routing` | serQ's `routing.sq`: affinity, least-loaded, least-loaded with fetch, KV-aware myopic, lookahead with migration |
+| `sim.workload` | replayed real sessions (`TraceCorpus`, bundled `validation/data/weka-sessions.csv` from the cc-traces-weka corpus) |
+| `sim.price_vllm`, `sim.open_vllm`, `sim.replay_vllm` | the vLLM-rule replica: `programs/{price,open,replay}_vllm.sq` |
 | `checks` | named checks, one or more per proposition; shared by tests, report and paper tables |
+| `report.validation`, `report.paper_tables` | the Markdown report and the paper's tables |
 
 ### Modelling choices in the agentic model
 
@@ -115,15 +123,15 @@ Everything is seeded, and a seed gives bit-identical output on the same libm
 
 ### Checks, reports and paper tables
 
-- `src/validation/checks.py`: 35 checks. *In-model* checks keep a proposition's
+- `src/checks.py`: 35 checks. *In-model* checks keep a proposition's
   assumptions, so a failure means a bug. *Beyond-model* checks drop one
   assumption and test the decision. `observations()` prints results with
   no asserted prediction.
 - `tests/test_propositions.py`: one test per check (marker `checks`).
-  `tests/test_lean_examples.py`: `analytic` at every numeric instance
+  `tests/test_lean_examples.py`: `theory.analytic` at every numeric instance
   proved in Lean.
-- `report`: Markdown report (CI job summary and artifact).
-- `paper_tables` (`make tables`): writes `paper/sim/*.tex`, which
+- `report.validation`: Markdown report (CI job summary and artifact).
+- `report.paper_tables` (`make tables`): writes `paper/sim/*.tex`, which
   `paper/simulation.tex` inputs. No simulator number is typed by hand.
 - `scripts/check_sim.sh` (`make sim`): cited Lean names exist, `ruff`,
   `pytest` and the report. Paper tables and figures are regenerated
