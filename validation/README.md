@@ -80,10 +80,10 @@ leaves every layer may use. `tests/test_layers.py` enforces the directions.
 | `theory.batch` | the PS capacity `φ(n)`, the mean number at a PS queue, and `fifo_admitted` for footprint | §2, Props. price, decode, footprint |
 | `theory.pd` | the capacity of an integer prefill/decode split | App. B |
 | `theory.eviction` | offline eviction instances with an exact DP optimum; SF, density and guarded density greedy, on `p c²` or arbitrary weights | §3.1 |
-| `sim.serq` | runs a serQ program in process with pyserq (`compile`, `run`) and reads its report and samples | all |
+| `sim.serq` | runs a serQ program in process with pyserq (`compile`, `run`); pyserq's report, with an observation's samples as numpy arrays | all |
 | `sim.laws` | a law of `theory.dist` as an expression in serQ's sampler | |
 | `sim.stats` | Welford moments, batch-means and replication intervals, paired differences | |
-| `sim.workload` | replayed real sessions (`TraceCorpus`, the bundled WEKA sessions) | §4.2 |
+| `sim.workload` | replayed real sessions (`TraceCorpus`, the bundled WEKA sessions, read by `pyserq.read_trace`) | §4.2 |
 | `sim.queue` | serQ's `mg1.sq` as a G/G/c FIFO queue | §2.1–2.2 |
 | `sim.batch` | `programs/batch_sampled.sq`: sampled-work FIFO, PS and exact LPS session checks | §2, Props. price, decode |
 | `sim.price_vllm`, `sim.open_vllm`, `sim.replay_vllm` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: `programs/{price,open,replay}_vllm.sq` (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |

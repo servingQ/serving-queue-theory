@@ -126,12 +126,14 @@ def test_quantile_nearest_rank():
 # ----------------------------------------------------------- workload ----
 
 
-def test_trace_parser_and_summaries():
-    c = TraceCorpus.from_csv(
+def test_trace_parser_and_summaries(tmp_path):
+    path = tmp_path / "trace.csv"
+    path.write_text(
         "# c\nsession,turn,new,out,think,forced\n0,1,100,10,5,0\n0,2,20,10,0,1\n1,1,50,5,0,0\n"
     )
+    c = TraceCorpus.load(path)
     assert len(c.sessions) == 2 and c.turns() == 3
-    assert c.sessions[0].turns[1].new == 20.0 and c.sessions[0].turns[1].forced == 1.0
+    assert c.sessions[0][1] == (20.0, 10.0, 0.0, 1.0)
     assert abs(c.mean_turns() - 1.5) < 1e-12
     assert abs(c.mean_think() - 5.0) < 1e-12
     assert abs(c.resume_fraction() - 1.0 / 3.0) < 1e-12
@@ -141,8 +143,8 @@ def test_trace_parser_and_summaries():
 def test_bundled_corpus_is_sane():
     c = weka()
     assert len(c.sessions) > 100 and c.mean_turns() > 5.0
-    assert all(len(s.turns) >= 2 for s in c.sessions)
-    assert all(s.turns[-1].think == 0.0 for s in c.sessions)
+    assert all(len(s) >= 2 for s in c.sessions)
+    assert all(s[-1][2] == 0.0 for s in c.sessions)
 
 
 # ----------------------------------------------------------- eviction ----

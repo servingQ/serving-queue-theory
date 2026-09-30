@@ -24,12 +24,13 @@ current at the end of every work block.
 **Done.**
 - **Validation in Python (2026-09-29).** `validation/` is a Python package
   (uv, `validation/pyproject.toml`), no longer a Rust crate: every
-  simulation is a serQ program run by the pinned serQ CLI, and the package
+  simulation is a serQ program run in process by pyserq (the Python
+  binding of the pinned serQ release), and the package
   keeps configurations, closed forms, offline eviction instances,
   statistics and table generation. It reproduces the crate bit for bit
   (rand 0.9's `StdRng` and Rust's number formatting ported): the report
   and every file of `paper/sim/` are unchanged apart from the generator
-  line. Rust is needed only to build the serQ CLI. `make tables`
+  line. Rust is needed only to build pyserq and the serQ CLI. `make tables`
   regenerates `paper/sim/` (~7 min); `make sim` runs ruff, pytest and the
   report (~5 min).
 - **IR first (2026-09-27, serQ v0.1.0-dev2).** A serQ program is defined by

@@ -78,9 +78,9 @@ def load_gpu(path):
 
 
 def run_seq(seq_dir, trace, spacing, dump):
-    prog = os.path.join(seq_dir, "programs", "vllm_replay.sq")
+    prog = os.path.join(seq_dir, "examples", "replay", "vllm_replay.sq")
     os.makedirs(dump, exist_ok=True)
-    csv = os.path.abspath(os.path.join(seq_dir, "programs", "data", trace + ".csv"))
+    csv = os.path.abspath(os.path.join(seq_dir, "examples", "replay", "data", trace + ".csv"))
     seq = os.path.join(ROOT_BIN, "serq")
     args = [prog, "--trace", csv, "--set", f"spacing={spacing}"]
     # what ran, as IR (the program with its constants folded and the trace)

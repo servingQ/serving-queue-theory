@@ -25,7 +25,7 @@ pyserq = { path = "../.serq/src/pyserq" }
 
 # The serQ release this repository runs (scripts/fetch_serq.sh reads it).
 [tool.serq]
-tag = "v0.1.0-rc6"
+tag = "v0.1.0-rc7"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
