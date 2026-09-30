@@ -22,6 +22,14 @@ fresh session can continue without the chat history. Keep this section
 current at the end of every work block.
 
 **Done.**
+- **serQ v0.1.0 pinned, pyserq from PyPI (2026-09-30).** `validation`
+  installs `pyserq==0.1.0` from PyPI and checks out serQ `v0.1.0` for the
+  example programs, the oracle IR files (IR 9) and the CLI; a test holds
+  the two to one release (`research/seq.md`). On the way (rc6–rc8) the
+  package dropped its copies of what pyserq now has: the report classes,
+  the trace parser, the port of rand's `StdRng` (`pyserq.Rng`), and most
+  program-text splices (named `def`s given with `defs=`). `paper/sim/` is
+  byte-identical throughout.
 - **Validation in Python (2026-09-29).** `validation/` is a Python package
   (uv, `validation/pyproject.toml`), no longer a Rust crate: every
   simulation is a serQ program run in process by pyserq (the Python
@@ -30,7 +38,8 @@ current at the end of every work block.
   statistics and table generation. It reproduces the crate bit for bit
   (rand 0.9's `StdRng` and Rust's number formatting ported): the report
   and every file of `paper/sim/` are unchanged apart from the generator
-  line. Rust is needed only to build pyserq and the serQ CLI. `make tables`
+  line. pyserq comes from PyPI (`pyserq==0.1.0`); Rust is needed only for
+  the serQ CLI of `scripts/exp`. `make tables`
   regenerates `paper/sim/` (~7 min); `make sim` runs ruff, pytest and the
   report (~5 min).
 - **IR first (2026-09-27, serQ v0.1.0-dev2).** A serQ program is defined by
