@@ -28,7 +28,10 @@ OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SerqOracle.lean")
 # 6 adds renewal arrivals and finite open runs, outside explicit-session semantics.
 # 7 makes `choose` compare a tuple of keys. 8 lets a run hold several stages
 # at once (`Run.also`, under `Program.share`), outside the fragment.
-IR_VERSION = 8
+# 9 reevaluates non-FIFO queue keys and supplies Waited, outside this fragment.
+# FIFO programs in v7/v8/v9 keep their meaning; the pinned v8 corpus stays valid.
+IR_VERSION = 9
+SUPPORTED_IR_VERSIONS = (7, 8, IR_VERSION)
 
 
 class Fragment(Exception):
@@ -150,6 +153,8 @@ class Lean:
                 g = f" growing {one_ref(v['growing'], 'growing')}" if v["growing"] else ""
                 out.append(f"{pad}run {s}{mode} ({self.top(v['work'])}){g};")
             elif kind == "Hold":
+                if v.get("lease") is not None:
+                    raise Fragment("a hold with a lease is outside the fragment")
                 ps = []
                 for r, u, fits in v["pools"]:
                     f = f" fits ({self.top(fits)})" if fits is not None else ""
@@ -226,9 +231,12 @@ class Lean:
 
 
 def load(name):
-    ir = json.load(open(os.path.join(ODIR, name + ".ir.json")))
-    if ir["version"] != IR_VERSION:
-        raise Fragment(f"{name}: IR version {ir['version']} (this generator reads {IR_VERSION})")
+    with open(os.path.join(ODIR, name + ".ir.json")) as source:
+        ir = json.load(source)
+    if ir["version"] not in SUPPORTED_IR_VERSIONS:
+        raise Fragment(f"{name}: IR version {ir['version']} (this generator reads {SUPPORTED_IR_VERSIONS})")
+    if ir.get("share") is not None:
+        raise Fragment(f"{name}: shared multi-stage execution is outside the fragment")
     if ir.get("arrivals") is not None:
         raise Fragment(f"{name}: finite arrival limits are outside the fragment")
     return ir, Lean(ir)
