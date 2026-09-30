@@ -26,8 +26,12 @@ pinned serQ release:
 | `programs/replay_{twostage,vllm}.sq`, `scripts/exp/seq_replay42.py` | §4.2's replay with the old validation model's and vLLM's engine rules (`research/seq-replay42.md`) | `.serq/bin/serq` |
 | `scripts/exp/*seq*`, `diff_seq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.serq/bin/serq`, `.serq/src/examples`, `.serq/src/tools` |
 
-The pin is `v0.1.0-rc6` under `[tool.serq]` in `validation/pyproject.toml`, IR 8, and its
-pyserq is the validation package's engine. IR 6 added renewal
+The pin is `v0.1.0-rc7` under `[tool.serq]` in `validation/pyproject.toml`, IR 9, and its
+pyserq is the validation package's engine: `sim/serq.py` uses pyserq's
+report objects and adds only numpy arrays of the samples, and
+`sim/workload.py` reads a trace with `pyserq.read_trace`. IR 9 orders a
+pool's waiting queue when a request is selected; no program here uses
+`queue by`, so their FIFO queues keep their meaning. IR 6 added renewal
 arrivals and requires finite runs to finish within their horizon; the queue
 adapter retries deadline errors with the same seed and a larger horizon
 (up to eight attempts). The oracle generator rejects finite arrival limits

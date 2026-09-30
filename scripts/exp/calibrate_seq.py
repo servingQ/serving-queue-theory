@@ -43,8 +43,8 @@ def model(run, spacing, hi, c_it, c0, tmp):
     trace = "short_m10" if "m10" in run else "short_base"
     if run.endswith("_s1"):
         trace += "_s1"
-    csv = os.path.abspath(os.path.join(ROOT, ".serq", "src", "programs", "data", trace + ".csv"))
-    prog = os.path.join(ROOT, ".serq", "src", "programs", "vllm_replay.sq")
+    csv = os.path.abspath(os.path.join(ROOT, ".serq", "src", "examples", "replay", "data", trace + ".csv"))
+    prog = os.path.join(ROOT, ".serq", "src", "examples", "replay", "vllm_replay.sq")
     d = os.path.join(tmp, "d")
     subprocess.run([os.path.join(ROOT, ".serq", "bin", "serq"), "run", prog, "--trace", csv,
                     "--set", f"spacing={spacing}", "--set", f"c_it={c_it}", "--set", f"c0={c0}",
