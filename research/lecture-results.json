@@ -1,0 +1,156 @@
+{
+  "release": "serQ v0.1.0",
+  "commit": "f9fe9f2cad9e7d88e585860572c3757c295d58c6",
+  "ir_version": 9,
+  "checks": [
+    {
+      "check": "PK law 0",
+      "observed": 2.060522774855633,
+      "expected": 2.0000000000000004
+    },
+    {
+      "check": "PK law 1",
+      "observed": 4.12280742429014,
+      "expected": 4.000000000000001
+    },
+    {
+      "check": "PK law 2",
+      "observed": 2.5660992323527276,
+      "expected": 2.5000000000000004
+    },
+    {
+      "check": "PK law 3",
+      "observed": 10.00041694442918,
+      "expected": 10.000000000000002
+    },
+    {
+      "check": "PS law 0",
+      "observed": 2.3199781072661056,
+      "expected": 2.3333333333333335
+    },
+    {
+      "check": "PS law 1",
+      "observed": 2.2755287470072814,
+      "expected": 2.3333333333333335
+    },
+    {
+      "check": "PS law 3",
+      "observed": 2.2704700137494007,
+      "expected": 2.3333333333333335
+    },
+    {
+      "check": "MVA N=2",
+      "observed": 0.45806909639233057,
+      "expected": 0.46153846153846145
+    },
+    {
+      "check": "MVA N=8",
+      "observed": 4.111556321915866,
+      "expected": 4.121680232903571
+    },
+    {
+      "check": "MVA N=32",
+      "observed": 27.98116379731814,
+      "expected": 28.0
+    },
+    {
+      "check": "PD split 10 link 1000",
+      "observed": 19.999944444444445,
+      "expected": 20
+    },
+    {
+      "check": "PD split 11 link 1000",
+      "observed": 21.049555555555557,
+      "expected": 21
+    },
+    {
+      "check": "PD split 12 link 1000",
+      "observed": 20.0565,
+      "expected": 20
+    },
+    {
+      "check": "PD split 11 link 10",
+      "observed": 9.991222222222222,
+      "expected": 10
+    },
+    {
+      "check": "PD decode service seed 1",
+      "observed": 0.04006239139045818,
+      "expected": 0.04
+    },
+    {
+      "check": "PD decode service seed 2",
+      "observed": 0.039389048522826896,
+      "expected": 0.04
+    },
+    {
+      "check": "PD decode service seed 3",
+      "observed": 0.03960431932997222,
+      "expected": 0.04
+    },
+    {
+      "check": "step-engine miss-price approximation",
+      "observed": 0.14316908666226005,
+      "lower": 0.14218882496771318,
+      "upper": 0.1496649722933742,
+      "decode_relative_change": 0.0005608037485365689
+    }
+  ],
+  "baseline_comparison": [
+    {
+      "seed": 1,
+      "baseline": {
+        "ttft": 0.04324900039103313,
+        "response": 0.05123120135749968,
+        "miss": 0
+      },
+      "current": {
+        "ttft": 0.04320376491937285,
+        "response": 0.08871162493941602,
+        "miss": 0
+      },
+      "baseline_decode": 0.0025126368187528103,
+      "current_decode": 0.04006239139045818
+    },
+    {
+      "seed": 2,
+      "baseline": {
+        "ttft": 0.043348517474325395,
+        "response": 0.05119215662565141,
+        "miss": 0
+      },
+      "current": {
+        "ttft": 0.04390823886455989,
+        "response": 0.08869120127642577,
+        "miss": 0
+      },
+      "baseline_decode": 0.0024665979211674588,
+      "current_decode": 0.039389048522826896
+    },
+    {
+      "seed": 3,
+      "baseline": {
+        "ttft": 0.0431982079499202,
+        "response": 0.05108845589731994,
+        "miss": 0
+      },
+      "current": {
+        "ttft": 0.04358680739991842,
+        "response": 0.08862795588220947,
+        "miss": 0
+      },
+      "baseline_decode": 0.0024873705128369127,
+      "current_decode": 0.03960431932997222
+    }
+  ],
+  "feedback_roots": {
+    "0.25": [
+      0.0,
+      0.24964379676887194,
+      0.8819977699269654
+    ],
+    "0.18": [
+      0.8848287734538585
+    ]
+  }
+}

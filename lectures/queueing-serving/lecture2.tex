@@ -1,12 +1,11 @@
-\chapter{Markovian Queues: Memory Slots, Processor Sharing, and Insensitivity}\label{sec:L2}
+\chapter{Markovian Queues: M/M/1, Processor Sharing, and Insensitivity}\label{sec:L2}
 
 \Cref{sec:L1} dealt with facts, such as the arrival process and Little's law, that
 depend hardly at all on the details of the model. This lecture treats the case where
 the state of the system (the number of jobs present) is a continuous-time Markov
-chain. The stationary distribution can then be computed exactly. Three stations of the
-disaggregated system come out of it: the memory slots in front of each instance
-(a multi-server queue), and the decode batch and the KV link (processor sharing), with
-the key property of the latter, \emph{insensitivity}.
+chain. The stationary distribution can then be computed exactly, and the model of the
+paper's decode stage (processor sharing) and its key property, \emph{insensitivity},
+come out of it.
 
 \section{Continuous-time Markov chains}
 
@@ -191,20 +190,21 @@ servers, not of the mean load alone.
 
 \paragraph{Memory slots.} If every turn at an instance needs about $c$ bytes of KV and
 the pool has $M$ bytes, the pool holds $m=\lfloor M/c\rfloor$ slots, and the memory in
-front of the instance is an M/G/$m$ queue whose service time is the time a turn holds
+front of the instance can be approximated by a slot queue whose holding time is the time a turn holds
 its slot: the prefill and the transfer on a prefill instance ($m_P$ slots), the decode
-on a decode instance ($m_D$ slots). \Cref{prop:mmm} is exact when those holding times
-are exponential and approximate otherwise (the M/G/$m$ queue has no closed form; a
+on a decode instance ($m_D$ slots). \Cref{prop:mmm} is exact with independent exponential holding times
+and Poisson slot arrivals. A real prefill/transfer/decode path can correlate
+holding times and make this an approximation (the M/G/$m$ queue has no closed form; a
 common correction multiplies $W_q$ by $(1+\mathrm{CV}^2)/2$ of the holding time). Two
 limits of the reading: with unequal contexts a turn needs several slots, and the
 station becomes a multi-resource queue with no closed form; and the blocks of the
 prefix cache on a prefill instance count as free, so the cache does not remove slots
 but loses entries whenever an admission needs their blocks.
 
+
 \section{Processor sharing and state-dependent capacity}
 
-So far each server has processed one job at a time. A decode instance does not, and
-neither does a link that concurrent transfers share.
+So far the server has processed one job at a time. The decode stage of an LLM does not.
 
 \begin{definition}[Work, processor sharing]\label{def:ps}
 The \term{work} (service requirement) $S\ge0$ of a job is the time the server needs to
@@ -217,13 +217,12 @@ $\varphi\equiv1$ is classical PS; with Poisson arrivals and a general work distr
 $G$ we write \term{M/G/1-PS}. The load is $\rho=\lambda\E[S]$.
 \end{definition}
 
-\serving{A decode instance runs only decodes: one step advances every request in its
-batch by one token, so the $m$ running requests share the instance equally, a PS
-station whose work is the decode demand $D$ and whose load is $\lambda\E[D]$. Because
-the weights are read once for the whole batch, $\varphi(m)$ increases with $m$; because
-the memory slots limit the batch, it saturates. The KV link is PS with constant
-capacity: concurrent transfers share its bandwidth $B$, and a transfer of $T$ tokens is
-work $X=x_0+\kappa T/B$.}
+\serving{In continuous batching, one decode step advances every request in the batch
+by one token. We therefore model the decode stage as PS, with the $m$ requests sharing
+the device equally. Because the weights are read once for the whole batch, $\varphi(m)$
+increases with $m$, and because memory (the KV cache) limits the batch size, it
+eventually saturates. The decode stage of \S2.2 of the paper is exactly this model:
+the work is the decode demand $D_i$ and the load is $\rho_D=\lambda\E[D]$.}
 
 \begin{proposition}[PS with exponential work \cite{kelly1979}]\label{prop:phi}
 For a PS server with capacity $\varphi$, Poisson arrivals of rate $\lambda$, and
@@ -274,9 +273,7 @@ Under processor sharing a short job shares the server with the long one and leav
 after about $0.2$. With $\varphi\equiv1$ the mean number in system is $\rho/(1-\rho)$
 for every work law (\cref{thm:insens} below): $1.0$ under A and $1.5$ under B, in the
 order of the load. \Cref{thm:L-mono} together with insensitivity makes this true for
-every capacity function $\varphi$. This contrast is exactly the one between the two
-kinds of instance: the prefill instance is a FIFO server, and the decode instance (like
-the link) is PS.
+every capacity function $\varphi$.
 
 \begin{figure}[t]
 \centering
@@ -446,7 +443,7 @@ The normalisability condition is $G(\rho)<\infty$, with $B=1/G(\rho)$. This is
 
 \begin{remark}
 Insensitivity for general work distributions is due to \cite{kelly1979} and
-\cite{bcmp1975} (BCMP). One route to a proof is to extend the partial balance argument
+\cite{bcmp1975} (BCMP). One approach to a proof is to extend the partial balance argument
 above to phase-type distributions and take limits, using the fact that phase-type
 distributions are dense, under weak convergence, among distributions on $[0,\infty)$.
 Here we only cite it.
@@ -455,15 +452,32 @@ where every job immediately gets its own server, so nobody waits), which we use 
 \cref{sec:L4}.
 \end{remark}
 
-\paragraph{Fairness of PS.} The difference is visible job by job: in M/G/1-PS the
-mean sojourn time of a job with work $x$ is $x/(1-\rho)$, proportional to its own size
-and independent of the size distribution of the other jobs \cite{kleinrock1976}. At
-the FIFO prefill instance, by contrast, a job's wait depends on the second moment of
-everyone's work (\cref{sec:L3}).
+\paragraph{FIFO is not insensitive.} Compare three service-time distributions with the
+same mean $\E[S]=1$ and the same load $\rho=0.5$ ($\lambda=0.5$). Borrowing from
+\cref{sec:L3} the Pollaczek--Khinchine formula $W_q=\lambda\E[S^2]/(2(1-\rho))$ and
+Little's law $L=\lambda W_q+\rho$, we get the following.
+\begin{center}\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Service time $S$ & $\E[S^2]$ & FIFO $L$ & PS $L$ \\
+\midrule
+constant 1 & 1 & 0.75 & 1 \\
+$\mathrm{Exp}(1)$ & 2 & 1.00 & 1 \\
+$0.1$ w.p.\ $0.9$, $9.1$ w.p.\ $0.1$ & 8.29 & 2.57 & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Under FIFO one long job blocks every job behind it (head-of-line blocking). Under PS
+short jobs share capacity with the long one and leave first.
+The fairness of PS is also visible job by job: in M/G/1-PS, the mean sojourn time of
+a job with work $x$ is $x/(1-\rho)$, proportional to its own size and independent of
+the size distribution of the other jobs \cite{kleinrock1976}.
+This difference separates the two stages of the paper: the FIFO prefill queue sees the
+second moment of the work, while the PS decode stage sees only the mean.
 
-\section{The price at a processor-sharing station}
+\section{The price at the decode stage}
 
-\begin{proposition}[A processor-sharing station prices only work]\label{prop:decode-price}
+\begin{proposition}[The decode stage prices only work]\label{prop:decode-price}
 For a PS station with constant capacity $C$ and load $\rho<C$, $L=\rho/(C-\rho)$. If a
 policy change increases the work of a fraction $q_i$ of arrivals by $\Delta D_i\ge0$,
 raising the load to $\rho'=\rho+\lambda\sum_iq_i\Delta D_i<C$, then exactly
@@ -491,31 +505,21 @@ $(C-\rho)/(C-\rho')$ corrects for curvature. For example, with $C=1$ and
 $\rho=0.5\to0.6$, $\Delta L=0.5$, the first-order term is $0.4$, and the factor is
 $1.25$.
 
-The proposition applies to both PS stations of the disaggregated system. At the decode
-instance the added work is added decode demand (admitting a session, longer answers).
-At the link it is added transfer time: if a decode instance drops a paused session's
-KV, the next turn must receive its whole context over the link instead of only the new
-tokens, and $\Delta X_i=\kappa K_i/B$ for a context of $K_i$ tokens. In both cases the
-price is $\Delta_i/(C-\rho)^2$ per unit of arrival rate, times $C$: it depends on the
-added work only through its mean. There is no head-of-line term, because at a PS
-station a long job does not hold up the short ones; the FIFO prefill instance of
-\cref{sec:L3} has one.
-
 \begin{corollary}\label{L2:cor:decode-hit}
 If a policy change alters the distribution of the decode work but not its mean $\E[D]$,
-the distribution of the number of jobs at the decode instance does not change.
+the distribution of the number of jobs at the decode stage does not change.
 \end{corollary}
 \begin{proof}
 By \cref{thm:insens} the distribution depends only on $\rho_D=\lambda\E[D]$.
 \end{proof}
 
-\serving{A prefix hit or miss changes only the prefill work on the prefill instance. It
-does not change the decode demand, and, since the decode instance receives the whole
-context either way, it does not change the transfer either. So by
-\cref{L2:cor:decode-hit} a prefill miss costs nothing at the decode instance or on the
-link, and its whole price is paid at the FIFO prefill instance (\cref{sec:L3}). What
-the decode instance keeps, on the other hand, is priced at the link by
-\cref{prop:decode-price}, and what it admits is priced at its own batch.}
+\serving{KV-cache hits and misses change only the prefill work; they do not change the
+decode demand $D_i=o_i(\beta K_i+\omega/m)$. So by \cref{L2:cor:decode-hit} a miss costs
+nothing at the decode stage to first order, and its whole price is paid at the FIFO
+prefill queue (\cref{sec:L3}). Only decisions that add decode demand, such as admitting
+a session, pay the load factor of \cref{prop:decode-price}.
+\Cref{prop:decode-price,L2:cor:decode-hit} are the content of the paper's proposition
+``The decode stage prices only work''.}
 
 \section{Exercises}
 
@@ -533,3 +537,17 @@ $(1-\rho)\rho^n$, and conditionally the sojourn time is a sum of $n+1$ independe
 $\mathrm{Exp}(\mu)$ variables.
 \end{exercise}
 
+\begin{exercise}[M/M/$m$ and the Erlang C formula]\label{L2:ex:mmm}
+Arrivals are Poisson with rate $\lambda$, service times are $\mathrm{Exp}(\mu)$, and there
+are $m$ servers; a customer waits only when all $m$ are busy. With $a=\lambda/\mu<m$,
+show from \cref{thm:birthdeath} that
+$\pi(n)=\pi(0)\,a^n/n!$ for $n\le m$ and $\pi(n)=\pi(0)\,a^n/(m!\,m^{n-m})$ for $n\ge m$,
+that the probability of waiting is
+\[
+  C(m,a)=\frac{\frac{a^m}{m!}\frac{m}{m-a}}{\sum_{k=0}^{m-1}\frac{a^k}{k!}+\frac{a^m}{m!}\frac{m}{m-a}},
+\]
+and that the mean wait is $W_q=C(m,a)/(m\mu-\lambda)$. This is the memory-slot station
+of \cref{L1:sec:projection} when every turn holds one slot for an exponential time.
+\emph{Hint:} the death rate in state $n$ is $\min(n,m)\,\mu$; use PASTA for the waiting
+probability and Little's law for $W_q$.
+\end{exercise}

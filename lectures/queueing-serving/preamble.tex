@@ -9,6 +9,7 @@
 \usepackage{xcolor}
 \usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black]{hyperref}
 \usepackage[capitalize,noabbrev]{cleveref}
+\hypersetup{hypertexnames=false}
 \linespread{1.08}
 \renewcommand{\chaptername}{Lecture}
 \setlist{nosep,leftmargin=1.8em}
@@ -57,10 +58,6 @@
 \crefname{equation}{Eq.}{Eqs.}
 \creflabelformat{equation}{(#2#1#3)}
 
-\usepackage{algorithm}
-\usepackage[noend]{algpseudocode}
-\crefname{algorithm}{Algorithm}{Algorithms}
-\newcommand{\kw}[1]{\mathbf{#1}}  % keyword of the station language
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\Prob}{\mathbb{P}}
 \newcommand{\Var}{\operatorname{Var}}

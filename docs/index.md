@@ -27,8 +27,7 @@ offloading, placement and admission.
 
 | Notes | About |
 |---|---|
-| **[Queueing Theory for Agentic LLM Serving](pdf/queueing-primer.pdf)** (PDF) | Lecture notes for a four-hour course, the queueing primer behind the paper: probabilistic foundations (Poisson arrivals, PASTA, Little's law), Markovian queues (M/M/1, processor sharing, insensitivity), the M/G/1 queue and Pollaczek–Khinchine as the price of a miss, closed systems and memory (mean value analysis, Campbell's theorem, eviction as a covering knapsack), and the theory of the paper step by step. |
-| **[Queueing Theory for Disaggregated LLM Serving](pdf/queueing-pd.pdf)** (PDF) | Lecture notes for a five-lecture course on prefill instances, decode instances and the KV cache between them: the same foundations, the prefill instance as an M/G/1 queue, memory slots and processor sharing at the decode instance, closed systems and eviction, and a queueing model of disaggregated serving with three prices and two pools (how long to keep, how many sessions to admit, misses that feed themselves). |
+| **[Queueing Theory for LLM Serving](pdf/queueing-serving.pdf)** (PDF) | Unified lecture notes: arrivals, PASTA, renewal rewards, Little’s law, Markovian queues, memory slots, processor sharing, the price of a miss, closed systems, eviction, a colocated scheduler, and prefill–decode disaggregation with transfer prices and feedback. Executable examples use serQ v0.1.0. |
 
 ## Sources
 

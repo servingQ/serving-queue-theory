@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 export PATH := $(HOME)/.elan/bin:$(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
 
-.PHONY: setup serq lean refs paper lectures site sim tables figs report check preview clean
+.PHONY: setup serq lean refs paper lectures lecture-results site sim tables figs report check preview clean
 
 setup:            ## install elan, rustup, tectonic, uv (user-local) and fetch Mathlib cache
 	scripts/setup.sh
@@ -18,6 +18,9 @@ paper:            ## compile paper/main.pdf
 
 lectures:         ## compile lectures/*/notes.pdf
 	for d in lectures/*/; do (cd $$d && tectonic -X compile notes.tex) || exit 1; done
+
+lecture-results: serq  ## lecture formulas and executable resource lifetimes
+	python3 scripts/check_lecture_results.py --serq .serq/bin/serq --out /tmp/sqt-lecture-check.json
 
 site: paper lectures   ## the public page (docs/, mkdocs.yml) with the PDFs, into site/
 	mkdir -p docs/pdf && cp paper/main.pdf docs/pdf/paper.pdf
@@ -54,7 +57,7 @@ exp:              ## regenerate paper/exp/ from the testbed measurements (data/e
 report:           ## print the simulator validation report
 	cd validation && uv run --locked --quiet python -m report.validation
 
-check: serq lean refs paper lectures sim   ## everything CI runs
+check: serq lean refs paper lectures sim lecture-results   ## everything CI runs
 
 preview: paper    ## render PDF pages to PNG for visual inspection
 	cd paper && uv run --quiet --with pymupdf python -c "import pymupdf,os; d=pymupdf.open('main.pdf'); out=os.environ.get('OUT','/tmp/sqt-preview'); os.makedirs(out,exist_ok=True); [p.get_pixmap(dpi=75).save(f'{out}/page{i+1}.png') for i,p in enumerate(d)]; print(len(d),'pages ->',out)"

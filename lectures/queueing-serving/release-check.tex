@@ -1,0 +1,52 @@
+\appendix
+\chapter{Release Verification}
+
+The executable examples target serQ v0.1.0, commit
+\texttt{f9fe9f2}, with IR version 9. The accompanying verifier runs
+four FIFO service laws, three PS service laws, three finite-population
+sizes, four PD bottleneck configurations, and three seeds of the
+continuous tandem. It also recomputes the feedback example's roots and
+checks the step-engine miss-price approximation.
+
+\paragraph{Results that retain their assumptions.} PK, PS insensitivity,
+finite-source MVA and the PD bottleneck formula agree with the simulations
+within the verifier's stated finite-run tolerances. The feedback example
+still has equilibria $0$, approximately $0.250$ and $0.882$ at
+$\lambda=0.25$/s, and approximately $0.885$ at $\lambda=0.18$/s.
+The step-engine test compares increased prefill occupancy with the FIFO
+bracket at mean prefill availability. That is a check of an approximation,
+not a proof that the engine is M/G/1. Its decode occupancy changes slightly
+because prefill affects shared iteration time.
+
+\paragraph{A changed result in the previous PD example.} The old PS
+capacity expression used a name that also denoted the workload's appended
+token count. The interpreter resolved it as that attribute, rather than
+as the number at the station, giving almost every decode the full capped
+throughput even when alone. Using \texttt{present} in
+\texttt{ps(min(present,16))} restores the stated model. A turn with
+mean decode work $200\times0.0002=0.04$ seconds cannot receive service in
+about $0.0025$ seconds at a per-turn rate of at most one.
+The table is generated from three matched seeds of the preceding example
+and its serQ v0.1.0 port; it contains simulated means, not measurements.
+\input{results}
+The prefill cost and TTFT remain close, while decode and whole-turn response
+change. Matching a few seeds does not establish equality of all trajectories.
+
+\paragraph{Results that need new interpretation.} A tail-block eviction has
+a concave recomputation cost, so the fractional-knapsack proof does not
+establish optimal block eviction. Partial reuse requires its own work
+moments. The explicit KV-transfer operation reserves the destination and
+releases the source after transfer; an ideal tandem that queues at the
+destination only afterwards has different holding times. A preempted decode
+retains generated tokens and re-prefills only lost KV. Waiting-prefix pinning
+can protect one turn while taking capacity from others, so its net effect
+requires the program and workload to be specified.
+
+\paragraph{Reproduction.} At the repository root, run
+\texttt{make lecture-results} for current-release checks.
+\texttt{scripts/check\_lecture\_results.py} optionally accepts a preceding
+runtime and its program directory to regenerate the comparison evidence
+and this table. The release's pool, PD-transfer, preemption and recorded
+vLLM-oracle tests check the underlying interpreter rules. The mathematical
+proofs in these notes establish results for their stated models; those tests
+do not turn every executable program into a formally proved queue.

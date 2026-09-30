@@ -6,7 +6,7 @@ should happen: simulation first, then empirical measurement (§4). Update it whe
 changes. The paper (`paper/main.tex`) is the public statement. This file is
 the internal plan and may be blunter.
 
-Last updated: 2026-09-29.
+Last updated: 2026-09-30.
 
 ## 0. Where we are / next steps (read this first in a new session)
 
@@ -22,6 +22,18 @@ fresh session can continue without the chat history. Keep this section
 current at the end of every work block.
 
 **Done.**
+- **Unified lecture course (2026-09-30).** The primer and PD notes are now
+  `lectures/queueing-serving/notes.tex`: common theory once, colocated and PD
+  applications in chapters 5–6. All obsolete Route/seQ language exposition
+  removed from the course. Executable examples target serQ v0.1.0, IR v9,
+  using the existing pin in `validation/pyproject.toml`; `make lecture-results`
+  verifies them. A preceding PD program had its PS capacity variable
+  shadowed by a workload attribute: decode service changes from about 2.5 ms
+  to 40 ms, response from about 51 ms to 89 ms, while TTFT stays near 43 ms.
+  The record is `research/lecture-integration.md`; raw comparison evidence
+  is `research/lecture-results.json`. The paper measurements
+  remain on their existing data; these are course simulations.
+
 - **serQ v0.1.0 pinned, pyserq from PyPI (2026-09-30).** `validation`
   installs `pyserq==0.1.0` from PyPI and checks out serQ `v0.1.0` for the
   example programs, the oracle IR files (IR 9) and the CLI; a test holds

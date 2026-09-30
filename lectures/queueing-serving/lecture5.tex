@@ -38,6 +38,17 @@ The hit/miss distinction lives entirely in demand (a): $D_i$ and $c_i$ are
 the same for a hit and a miss. By \cref{cor:price-mono} the extra work of a
 miss is $\Delta S_i=aK_i+bK_i^2/2$, quadratic in the context.
 
+\paragraph{Partial reuse in the executable model.}
+With a reusable prefix of $C\in[0,K]$ tokens, the turn computes
+$P(K+n-C,C)$ rather than choosing only the two endpoints.
+The additional work over a full hit is $r_K(K-C)$ from
+\cref{L4:sec:knapsack}. In a block pool $C$ is rounded down to full
+reusable blocks and cannot cover the final prompt token used for logits.
+For such runs report reusable tokens and the distribution of $C$;
+a binary hit rate alone does not determine the first two work moments.
+The binary variance identity remains true for its stated mixture, but its
+conditional means must be recomputed when partial misses are grouped together.
+
 \paragraph{Two stations and a pool.} \Cref{fig:projection} in
 \cref{L1:sec:projection} shows the structure; here we add the numbers and
 name the lecture that backs each modelling choice.
@@ -49,8 +60,8 @@ name the lecture that backs each modelling choice.
   whatever the law of $D$.
 \item \emph{Prefill is a FIFO queue} whose server is available the fraction
   of time the decode batch leaves. Chunked prefill interleaves chunks with
-  decode steps but serves pending prefills in arrival order, so the
-  M/G/1 FIFO analysis of \cref{sec:L3} applies, with the PK wait
+  decode steps but serves pending prefills in arrival order, so a
+  Poisson, fixed-service approximation uses \cref{sec:L3}, with the PK wait
   $\E[W_q]=\lambda\E[S^2]/(2(1-\rho))$ (\cref{thm:pk}).
 \item \emph{Sessions form a closed loop} (prefill $\to$ decode $\to$ tool),
   and new sessions arrive as a Poisson process of rate $\Lambda$. The tool
@@ -176,7 +187,8 @@ Part~(ii) is the threshold rule of \cref{thm:threshold} in byte-second form:
 keep what is worth more per byte-second than memory, drop the rest. When
 no $\theta$ uses the budget exactly (items are indivisible), the fractional
 relaxation is still solved by the threshold rule with one item split, and
-engines that evict blocks rather than whole programs are close to that case.
+this is a mathematical relaxation. The tail-block cost described in
+\cref{L4:sec:knapsack} does not satisfy its linear-cost assumption.
 
 \paragraph{Step 4: how long to keep.} \Cref{L5:prop:shadow} decides at one instant.
 Because the Lagrangian is separable, once $\theta$ is fixed each program can also be
@@ -197,7 +209,8 @@ and a miss occurs exactly when it resumes after $T$. The quantity that decides i
 the rate at which a program that has not resumed by $t$ resumes at $t$.
 
 \begin{proposition}[Optimal holding time]\label{L5:prop:hold}
-Let $r=\theta c/\Phi$ with $\Phi>0$, and suppose $g$ is continuous.
+Let $c>0$, $\theta>0$ and $r=\theta c/\Phi$ with $\Phi>0$.
+Suppose $g$ is continuous. Define $\eta(T)=0$ after $pG(T)=1$.
 \begin{enumerate}[label=(\roman*)]
 \item $C'(T)=\bigl(1-pG(T)\bigr)\bigl(\theta c-\Phi\,\eta(T)\bigr)$ for every $T\ge0$.
   Holding a little longer lowers the cost exactly when $\Phi\,\eta(T)>\theta c$.
@@ -247,7 +260,8 @@ $T^*=-\tau\ln x=\tau\ln\bigl[\frac{p}{1-p}\bigl(\frac{1}{r\tau}-1\bigr)\bigr]$ w
 $1/(r\tau)=\Phi/(\theta c\tau)$.
 \end{proof}
 
-So the instantaneous test $u_i>\theta$ of the scheduler is exactly the optimal decision
+When $\theta=0$, holding until resumption has zero cost and is optimal.
+For positive memory price, the instantaneous test $u_i>\theta$ of the scheduler is exactly the optimal decision
 to keep a state for exponential resume times, and part~(iii) adds how long to keep it.
 For example, with $p=0.5$, $\tau=10$\,s, $\Phi=20$\,s, $c=1$ and $\theta=0.3$, $u=1>\theta$,
 the optimal holding time is $T^*\approx17.3$\,s, and it lowers the expected cost from
@@ -280,8 +294,11 @@ Every decision now compares a program's $u_i$ with the replica's $\theta$.
 
 \paragraph{Eviction.} When $\Delta C$ bytes must be freed now, the problem
 is the covering knapsack of \cref{L4:def:knapsack} with $w_i=p_i\Phi_i$.
-Take blocks in increasing $u_i$ until $\Delta C$ is freed; $\theta$ is the
-$u_i$ of the last block taken, and $\theta=0$ while the pool has room.
+For additive whole-program items, order the candidates by the corresponding
+price and apply the covering-knapsack rule, with its indivisibility caveat.
+The byte-second key $u_i$ instead prices retention over time. Block tail
+costs are concave (\cref{L4:sec:knapsack}), so neither ordering alone proves
+optimality for a block eviction. Recompute a candidate tail's lost value.
 Deployed rules evict by a fixed key: shortest context first, least recently
 used, longest idle, or an expired time-to-live. \Cref{prop:blind} says what
 such a key can and cannot do: a key that ignores $p_i$ has no constant
@@ -440,8 +457,7 @@ misses caused by forced ones followed long think gaps and a higher rate of re-in
 contexts, which points to the pool (re-insertions shortening how long a cached prefix
 survives) rather than to the wait.
 In queueing terms, the hit rate is not a policy input but depends on the wait, and the
-wait on the hit rate; the next step of this research treats this
-feedback.
+wait on the hit rate; the feedback model in \cref{L6:sec:feedback} treats this dependence.
 
 The paper tests the approximate links in two ways: in simulation on
 replayed production sessions, and on a real testbed. The criterion is

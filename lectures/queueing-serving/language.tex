@@ -1,0 +1,65 @@
+\subsection{Executable deployments in serQ v0.1.0}\label{L1:sec:language}
+
+A serQ program declares memory pools, service stages, a workload and a
+session or server block. Its executable definition is IR version 9.
+The examples accompanying these notes use this release's syntax.
+A FIFO stage serves work in arrival order, a PS stage shares capacity,
+and a delay stage gives each session its own timer. For example:
+\begin{verbatim}
+stage prefill : fifo;
+stage link : ps(1);
+stage decode : ps(min(present, 16));
+stage tool : delay;
+\end{verbatim}
+Work at these stages is measured in seconds at unit rate.
+A step engine instead schedules tokens and charges time per iteration:
+\begin{verbatim}
+stage engine : step {
+  budget B;
+  serve admission;
+  cost max(omega, tokens * a + b * attention);
+  memory kv;
+}
+\end{verbatim}
+Here \texttt{tokens} is the iteration's scheduled token count,
+\texttt{attention} sums $n(K+n/2)$ over prefill chunks, and
+\texttt{present} is the number at a PS station. The declaration can choose
+admission order, decode first, exclusive prefill, or explicit ordering keys.
+FIFO claims require the selected order, rather than following from chunking alone.
+
+\paragraph{Client and server.} The workload describes arrivals and the turn/tool
+loop; a client-side \texttt{request;} invokes a server block once.
+The server specifies admission, prefill, transfer and decode.
+\texttt{hidden o;} prevents scheduling keys from reading an output length
+that the workload sampled but the scheduler does not know.
+Expression and statement definitions use \texttt{def}, imported with
+\texttt{use "file.sq";}. They expand to the executable IR.
+
+\paragraph{Admission and lifetime.} A scoped \texttt{hold} reserves pool units,
+runs its body, then frees the units, optionally retaining a cached prefix.
+\texttt{reserve} states an admission gate larger than the initial allocation;
+\texttt{reuse} limits how much cached state the turn can consume.
+A pool can delegate admission to a step engine with \texttt{admit via engine;}.
+Waiting prefixes then remain evictable until scheduled. A \texttt{lease}
+keeps an allocation after the scope; \texttt{release} gives it back.
+\texttt{transfer (X) from P to Q (T);} runs the link, records $T$ computed
+tokens at the destination, and releases the source. Reserving the destination
+before transfer can prolong the source lifetime; this is different from the
+continuous tandem defined in \cref{L1:ex:program}.
+
+\paragraph{Blocks and preemption.} Allocations round up to blocks and cached
+prefixes round down. A preempted decode keeps generated tokens but may lose
+their KV. At readmission, \texttt{computed} lets the program recover the
+known prompt plus generated tokens, re-prefill the lost part, and decode only
+the remaining output. Restarting from the original prompt changes the work.
+Ending a session alone does not remove its reusable cached blocks.
+An eviction key therefore needs an explicit end-of-program policy if it
+values a finished session differently from a paused one.
+
+\paragraph{What to execute.} The accompanying \texttt{programs/lecture\_pd.sq}
+implements the continuous tandem of \cref{L1:ex:program}.
+\texttt{programs/vllm.sq} and its imported library implement the release's
+step-engine example. They are different models, not interchangeable
+spellings. Run a program with \texttt{serq run file.sq --seed 1 --json};
+\texttt{serq check file.sq} checks its syntax and executable structure.
+Neither command measures a real serving system.

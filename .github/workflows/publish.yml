@@ -1,6 +1,6 @@
 name: Publish
 
-# The paper and the two lecture notes as PDFs, and the public page that
+# The paper and the unified lecture notes as PDFs, and the public page that
 # links to them (https://vrvrv.github.io/serving-queue-theory/).
 #
 # No PDF is committed: every run compiles them from the sources with
@@ -78,8 +78,7 @@ jobs:
         with:
           name: lecture-notes
           path: |
-            pdf/queueing-pd.pdf
-            pdf/queueing-primer.pdf
+            pdf/queueing-serving.pdf
           retention-days: 90
       - uses: actions/upload-artifact@v4
         with:

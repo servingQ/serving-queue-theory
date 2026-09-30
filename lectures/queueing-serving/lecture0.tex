@@ -1,0 +1,29 @@
+\chapter*{About These Notes}
+\addcontentsline{toc}{chapter}{About These Notes}
+These notes combine the queueing primer and the disaggregated-serving course.
+They assume real analysis and mathematical statistics, but no prior queueing theory.
+Definitions, proofs and exercises for the common tools appear once. The final two
+chapters apply them to a colocated replica and a prefill--decode deployment.
+
+\paragraph{The system.} Prefill reads a prompt and produces the first token.
+Decode produces the remaining tokens. Both need KV memory. A session returns
+with another turn after a tool call, so session arrivals and turn arrivals are
+different processes. A cache policy changes how much prefill work a turn needs.
+A colocated engine shares iterations between prefill and decode; a disaggregated
+engine transfers KV between their separate memory pools.
+
+\paragraph{Reading plan.} \Cref{sec:L1} introduces both architectures, serQ v0.1.0,
+Poisson arrivals, PASTA, renewal rewards and Little's law. \Cref{sec:L2} develops
+Markov chains, M/M/1, memory slots, processor sharing and insensitivity.
+\Cref{sec:L3} proves Pollaczek--Khinchine and the price of a miss.
+\Cref{sec:L4} covers finite populations, resident memory and eviction.
+\Cref{sec:L5} builds the colocated scheduler and its holding-time rule.
+\Cref{sec:L6} adds transfer prices, two memory pools and cache feedback.
+The final appendix records what a release comparison can and cannot establish.
+
+\paragraph{Language and models.} Executable examples use serQ v0.1.0 (IR v9).
+Mathematical queues remain idealisations with explicit assumptions; a step engine
+with block admission and preemption does not inherit their formulas automatically.
+The original paper concerns colocated serving. Disaggregation is a course extension.
+The exercises reinforce the proofs; \cite{kleinrock1975,harchol2013} are introductory
+references and \cite{asmussen2003} gives a rigorous treatment.

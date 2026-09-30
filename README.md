@@ -42,7 +42,7 @@ result. `make check` is the one command every agent runs before reporting.
 
 ```bash
 make setup   # one-time: elan + rustup + tectonic + uv + Mathlib cache
-make check   # lean + refs + paper + lectures + sim
+make check   # lean + refs + paper + unified lectures + sim + lecture checks
 make site    # the public page with the PDFs, into site/ (see "What CD publishes")
 ```
 
@@ -56,7 +56,7 @@ scripts/check_lean.sh          # build + sorry check + axiom audit
 
 # Paper and lecture notes (tectonic downloads TeX packages on demand)
 cd paper && tectonic -X compile main.tex
-cd lectures/queueing-primer && tectonic -X compile notes.tex   # and queueing-pd
+cd lectures/queueing-serving && tectonic -X compile notes.tex
 
 # Paper ↔ Lean consistency
 scripts/check_lean_refs.sh
@@ -86,9 +86,24 @@ CI does **not** check that a Lean statement faithfully formalises the informal
 proposition. That step is a human review; statements are kept deliberately
 close to the prose to make it tractable.
 
+## Unified lecture course
+
+[Queueing Theory for LLM Serving](lectures/queueing-serving/notes.tex) combines
+the former primer and PD course. Chapters 1–4 develop the shared foundations;
+chapters 5–6 apply them to colocated and disaggregated serving. Executable
+examples use **serQ v0.1.0 (IR v9)**, using the repository’s existing release pin.
+
+```bash
+make lectures         # compile the unified notes
+make lecture-results  # fetch/build serQ v0.1.0 and check the course's results
+```
+
+The [verification record](research/lecture-integration.md) explains the changed
+PD decode result and how to reproduce the old/new comparison.
+
 ## What CD publishes (`.github/workflows/publish.yml`)
 
-The paper and the two lecture notes are compiled from their sources and
+The paper and the unified lecture notes are compiled from their sources and
 served from the **public** page <https://vrvrv.github.io/serving-queue-theory/>,
 built with mkdocs from `docs/` (`mkdocs.yml`). Anyone can read the page and
 download the PDFs, and search engines index them, although the repository
