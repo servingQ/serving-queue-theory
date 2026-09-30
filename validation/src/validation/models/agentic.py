@@ -235,33 +235,33 @@ def _source(cfg: AgenticConfig) -> str:
     src = _replace(src, "~exp(3)", _class_expr(cfg, lambda c: c.tool_time.sample_expr()))
     E = EvictionPolicy
     key = {
-        E.ShortestFirst: "evict by (queued, size);",
-        E.LongestFirst: "evict by (queued, -size);",
-        E.Lru: "evict by (queued, last);",
-        E.Random: "evict by (queued, ~uniform(0, 1));",
-        E.Density: "evict by (queued, (queued ? 1 : p) * (a + b * size / 2));",
-        E.Priced: "evict by (queued, (queued ? 1 : p) * price(svc, s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (d + dv * (size + mean_new)), a * size + b * size * size / 2) / size);",
-        E.PricedMemory: "evict by (queued, (queued ? 1 : p) * price(svc, s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (d + dv * (size + mean_new)), a * size + b * size * size / 2) / (size * (queued ? 1 : tau)));",
+        E.ShortestFirst: "evict by (waiting, size);",
+        E.LongestFirst: "evict by (waiting, -size);",
+        E.Lru: "evict by (waiting, last);",
+        E.Random: "evict by (waiting, ~uniform(0, 1));",
+        E.Density: "evict by (waiting, (waiting ? 1 : p) * (a + b * size / 2));",
+        E.Priced: "evict by (waiting, (waiting ? 1 : p) * price(svc, s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (d + dv * (size + mean_new)), a * size + b * size * size / 2) / size);",
+        E.PricedMemory: "evict by (waiting, (waiting ? 1 : p) * price(svc, s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (d + dv * (size + mean_new)), a * size + b * size * size / 2) / (size * (waiting ? 1 : tau)));",
     }.get(cfg.eviction)
     if key is None:
         raise ValueError("block-level eviction belongs to the batch model")
-    src = _replace(src, "evict by (queued, size);", key)
+    src = _replace(src, "evict by (waiting, size);", key)
     O, blocking = OffloadPolicy, cfg.fetch == FetchMode.Blocking
     if cfg.offload == O.Never:
         spill = "0"
     elif cfg.offload == O.Always:
-        spill = "!queued"
+        spill = "!waiting"
     elif cfg.offload == O.Selective:
         spill = (
-            f"!queued && {_TRANSFER} < p * {_MISS}"
+            f"!waiting && {_TRANSFER} < p * {_MISS}"
             if blocking
-            else f"!queued && {_TRANSFER} < p * {_MISS} * (1 + queued(slot))"
+            else f"!waiting && {_TRANSFER} < p * {_MISS} * (1 + queued(slot))"
         )
     else:
         spill = (
-            f"!queued && {_TRANSFER} < {_MISS}"
+            f"!waiting && {_TRANSFER} < {_MISS}"
             if blocking
-            else f"!queued && {_TRANSFER} < p * price(svc, {_HIT}, {_MISS})"
+            else f"!waiting && {_TRANSFER} < p * price(svc, {_HIT}, {_MISS})"
         )
     src = _replace(src, "when (0)", f"when ({spill})")
     if cfg.offload == O.Never:

@@ -17,7 +17,7 @@ packages = ["src/validation"]
 
 # The seQ release this repository runs (scripts/fetch_seq.sh reads it).
 [tool.seq]
-tag = "v0.1.0-rc4"
+tag = "v0.1.0-rc5"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

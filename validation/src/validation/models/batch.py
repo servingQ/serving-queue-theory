@@ -188,7 +188,7 @@ def simulate(cfg: BatchConfig) -> BatchReport:
             src = _replace(
                 src,
                 "stage svc : ps(service_rate);",
-                "stage svc : ps(min(n, phi_cap) / (1 + beta * (min(n, phi_cap) - 1)));",
+                "stage svc : ps(min(present, phi_cap) / (1 + beta * (min(present, phi_cap) - 1)));",
             )
         rate = phi.c if isinstance(phi, Constant) else 1.0
     if isinstance(phi, Constant):

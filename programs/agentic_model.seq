@@ -16,7 +16,7 @@ pool slot { cap 1; }
 pool tier { cap inf; }
 pool kv {
   cap C;
-  evict by (queued, size);
+  evict by (waiting, size);
   spill tier via link (size / bw) when (0);
 }
 

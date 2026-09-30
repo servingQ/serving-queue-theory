@@ -21,7 +21,7 @@
 //    the last prompt token), the rest of its entry stays cached, dead;
 //    every computed token is cached (`cache (prompt + out - 1)`);
 //  * a finished session's blocks stay cached (vLLM cannot tell that the
-//    session ended; `keep = 0` drops them, an ablation); `lru = 1` evicts
+//    session ended; `keep_cache = 0` drops them, an ablation); `lru = 1` evicts
 //    least recently released first (what vLLM does) instead of by price.
 // The first token comes from the prefill; decode computes the other
 // `out - 1`. The prefill's fixed overhead c0 is engine time spent before
@@ -40,7 +40,7 @@ let omega = 0.057;
 let p = 0.9711687819662815;
 let tau = 22.65186432082386;
 let lru = 0;           // 1: vLLM's LRU order instead of the price
-let keep = 1;          // 0: drop a finished session's blocks (ablation of vLLM's rule)
+let keep_cache = 1;          // 0: drop a finished session's blocks (ablation of vLLM's rule)
 let delta = 0;         // share of follow-up turns forced to miss (§4.2's price table)
 
 pool live { cap cap; }
@@ -49,17 +49,17 @@ pool kv {
   cap C;
   block bs;
   preempt lifo;
-  evict by (lru ? 0 : queued,
+  evict by (lru ? 0 : waiting,
             lru ? last
-                : (queued ? 1 : p) * price(engine, c0, a * size + b * size * size / 2)
-                  / (size * (queued ? 1 : tau)));
+                : (waiting ? 1 : p) * price(engine, c0, a * size + b * size * size / 2)
+                  / (size * (waiting ? 1 : tau)));
 }
 // the time model of the paper's cost fit in real tokens: an iteration
 // of ntok tokens (the overhead counted in tokens of `a`) and attention attn
 // takes max(ω, a ntok + b attn)
 stage engine : step {
-  budget max(ndec, floor(omega / a));   // whole tokens (ω/a = 293.8)
-  cost max(omega, ntok * a + b * attn);
+  budget max(decoders, floor(omega / a));   // whole tokens (ω/a = 293.8)
+  cost max(omega, tokens * a + b * attention);
   memory kv;
 }
 stage tool : delay;
@@ -113,9 +113,9 @@ session {
       set cold = 0;
       branch (K > maxctx) {
         observe trunc = 1;
-        branch (keep) { end; } else { drop kv; end; }
+        branch (keep_cache) { end; } else { drop kv; end; }
       }
-      branch (more) { run tool (think); turn; } else { branch (keep) { end; } else { drop kv; end; } }
+      branch (more) { run tool (think); turn; } else { branch (keep_cache) { end; } else { drop kv; end; } }
     }
   }
 }
