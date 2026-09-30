@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from pyserq import Rng
+
 from fmt import fmax
 from theory.dist import Dist
-from theory.rng import StdRng
 
 
 def lindley_waits(
@@ -15,8 +16,8 @@ def lindley_waits(
     `mg1.sq` uses (`seed`, `seed ^ 0x9E3779B97F4A7C15`), the first `warmup` of
     `warmup + customers` dropped. An independent check of the event engine:
     for one server the two agree to rounding."""
-    arr = StdRng.seed_from_u64(seed)
-    svc = StdRng.seed_from_u64(seed ^ 0x9E37_79B9_7F4A_7C15)
+    arr = Rng(seed)
+    svc = Rng(seed ^ 0x9E37_79B9_7F4A_7C15)
     total = warmup + customers
     interarrival.sample(arr)  # the first arrival
     out, w = [], 0.0

@@ -86,6 +86,7 @@ def run(
     *,
     source: str | None = None,
     sets: dict[str, object] | None = None,
+    defs: dict[str, str] | None = None,
     seed: int | None = None,
     horizon: float | None = None,
     warmup: float | None = None,
@@ -93,13 +94,14 @@ def run(
     trace: str | Path | None = None,
 ) -> Report:
     """Run a program file, or program text (`source`), with `--set`
-    overrides. A numeric override is that number; a string is an
-    expression."""
+    overrides (a numeric override is that number; a string is an
+    expression) and `--def` bodies of its expression definitions."""
     try:
         program = pyserq.compile(
             path,
             source=source,
             sets=sets or {},
+            defs=defs or {},
             seed=seed,
             horizon=None if horizon is None else float(horizon),
             warmup=None if warmup is None else float(warmup),

@@ -9,7 +9,7 @@ Rust crate). Every simulation is a serQ program run by the CLI of the release
 pinned in `validation/pyproject.toml`; the package keeps the configurations,
 the analytic references, the offline eviction instances, the statistics
 and the table generation. It reproduces the crate bit for bit (rand 0.9's
-`StdRng` and Rust's number formatting are ported in `rng` and
+`StdRng`, now `pyserq.Rng`, and Rust's number formatting, ported in
 `fmt`): the report and every file of `paper/sim/` came out
 unchanged. Rust remains only to build the serQ CLI.
 

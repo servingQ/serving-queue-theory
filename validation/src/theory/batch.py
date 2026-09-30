@@ -7,9 +7,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from pyserq import Rng
+
 from theory.analytic import stationary_mean
 from theory.dist import Dist
-from theory.rng import StdRng
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,7 @@ def ps_mean_number(phi: Phi, rho: float) -> float:
     return stationary_mean(w, 1.0)
 
 
-def fifo_admitted(capacity: float, footprint: Dist, rng: StdRng) -> int:
+def fifo_admitted(capacity: float, footprint: Dist, rng: Rng) -> int:
     """Requests admitted, in FIFO order, into `capacity` until the first
     whose footprint (drawn from `footprint`) does not fit."""
     used, n = 0.0, 0

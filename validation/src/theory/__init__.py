@@ -1,1 +1,1 @@
-"""Closed forms, laws and independent reproductions; imports only the standard library, numpy, `fmt`, `constants` and `theory`."""
+"""Closed forms, laws and independent reproductions; imports only the standard library, numpy, `fmt`, `constants`, `theory` and `pyserq.Rng`."""
