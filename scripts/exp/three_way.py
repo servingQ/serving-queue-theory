@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Three-way comparison of a GPU replay: the measured run, the real vLLM
-scheduler under seQ's time model (`.seq/src/tools/vllm_replay_oracle.py`),
-and the seQ program (`data/exp/seq/<run>/*.csv` from seq_vs_vllm.py).
+scheduler under serQ's time model (`.serq/src/tools/vllm_replay_oracle.py`),
+and the serQ program (`data/exp/seq/<run>/*.csv` from seq_vs_vllm.py).
 
     python3 scripts/exp/three_way.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b s35_base ...
 

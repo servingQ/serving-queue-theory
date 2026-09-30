@@ -1,7 +1,7 @@
-# §4.2's trace replay in seQ, with libqueuingsim's rules and with vLLM's
+# §4.2's trace replay in serQ, with libqueuingsim's rules and with vLLM's
 
-Date: 2026-09-27. Question (research plan, "Next for seQ" (1)): port the
-paper's §4.2 replay (libqueuingsim `TwoStage`, calibrated on RBLN) to a seQ
+Date: 2026-09-27. Question (research plan, "Next for serQ" (1)): port the
+paper's §4.2 replay (libqueuingsim `TwoStage`, calibrated on RBLN) to a serQ
 program with the engine rules that the request-for-request comparison with
 vLLM established, and check whether §4.2's conclusions move.
 
@@ -9,12 +9,12 @@ Everything here is simulator output on the replayed WEKA workload, not a
 measurement of a serving system (AGENTS.md rule 7).
 
 **Decision (2026-09-27, the user: option (b)).** §4.2 now runs the
-vLLM-rule program: `validation.seq_replay` runs `programs/replay_vllm.seq`
-with the pinned seQ CLI and `validation.paper_tables` generates
+vLLM-rule program: `serq_replay` runs `programs/replay_vllm.sq`
+with the pinned serQ CLI and `paper_tables` generates
 §4.2's tables and macros from it (`tab:sim-trace` with a Reuse column,
 `tab:sim-trace-price`, `tab:sim-trace-split`; 20 seeds). The prose of
 `paper/simulation.tex` describes the engine rules and the partial misses.
-`replay_twostage.seq` is gone. The comparison below, with libqueuingsim's
+`replay_twostage.sq` is gone. The comparison below, with libqueuingsim's
 rules, was generated at commit 1fc3d27 (`research/seq-replay42-tables.md`
 there); the current `research/seq-replay42-tables.md` holds the ablations
 (`lru=1`, `keep=0`) next to the paper's configuration.
@@ -23,8 +23,8 @@ there); the current `research/seq-replay42-tables.md` holds the ablations
 
 | Program | Rules |
 |---|---|
-| `programs/replay_twostage.seq` | libqueuingsim's: the batch reserves a turn's whole KV at admission, FCFS; decode first, the head-of-line prefill takes the compute left; eviction of whole sessions outside the batch, tool calls before waiting sessions, cheapest price per byte-second first; a turn hits iff its whole context is resident, else re-prefills all of it; a finished session's KV is dropped |
-| `programs/replay_vllm.seq` | vLLM v1's: the engine admits at iteration start with the budget left, in admission order; admission needs room for the whole prompt but allocates the first chunk, the hold grows per computed token, a failed growth preempts LIFO; 16-token blocks evicted from an entry's tail, reuse bounded by the previous turn's full computed blocks, the rest dead; every computed token cached; a finished session's blocks stay. Variants: `lru=1` (vLLM's LRU order), `keep=0` (drop a finished session's blocks) |
+| `programs/replay_twostage.sq` | libqueuingsim's: the batch reserves a turn's whole KV at admission, FCFS; decode first, the head-of-line prefill takes the compute left; eviction of whole sessions outside the batch, tool calls before waiting sessions, cheapest price per byte-second first; a turn hits iff its whole context is resident, else re-prefills all of it; a finished session's KV is dropped |
+| `programs/replay_vllm.sq` | vLLM v1's: the engine admits at iteration start with the budget left, in admission order; admission needs room for the whole prompt but allocates the first chunk, the hold grows per computed token, a failed growth preempts LIFO; 16-token blocks evicted from an entry's tail, reuse bounded by the previous turn's full computed blocks, the rest dead; every computed token cached; a finished session's blocks stay. Variants: `lru=1` (vLLM's LRU order), `keep=0` (drop a finished session's blocks) |
 
 Both use the same workload (WEKA sessions, Poisson arrivals, live-session
 cap), the same time model (RBLN cost fit: prefill `c0 + a n + b n (K +
@@ -33,12 +33,12 @@ The comparison that isolates the engine rules is `twostage` against `vllm`
 (same interpreter, same key). The budget is rounded to whole tokens and
 the overhead up (`floor(ω/a)`, `ceil(c0/a)`) in both: with fractional
 chunks the position of a growing hold accumulates rounding error and loses
-a block when rounded down (found here; seQ could keep positions integral).
+a block when rounded down (found here; serQ could keep positions integral).
 
-**Baseline.** `replay_twostage.seq` lies inside libqueuingsim's 95 %
+**Baseline.** `replay_twostage.sq` lies inside libqueuingsim's 95 %
 intervals in every cell (hit rate, TTFT, mixture share). Those intervals
 are wide (5 seeds; the finite-pool TTFT half-widths exceed the means), and
-the seQ TTFT means sit lower in the finite cells. seQ's priced key uses the
+the serQ TTFT means sit lower in the finite cells. serQ's priced key uses the
 engine's estimator, which sees decode as well as prefill jobs, where
 libqueuingsim's sees the prefill queue only.
 
@@ -94,7 +94,7 @@ reservation. The options are:
   whole-session eviction.
 - **(b) Replace the replay.** Move §4.2's replay to the vLLM-rule program,
   with its tables generated through `make` like `paper/sim/`. This would
-  need a seQ path in `paper_tables.rs` or a generator of its own. It is
+  need a serQ path in `paper_tables.rs` or a generator of its own. It is
   the faithful choice for a paper that argues from vLLM's behaviour.
 - **(c) Report both.** Keep libqueuingsim's replay and add the vLLM-rule
   replay as a robustness row.

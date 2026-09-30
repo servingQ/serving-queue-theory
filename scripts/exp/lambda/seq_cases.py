@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-"""GPU test cases for seQ (runs ON the Lambda instance, in ~/vllm-gpu/.venv).
+"""GPU test cases for serQ (runs ON the Lambda instance, in ~/vllm-gpu/.venv).
 
 The vLLM engine runs in-process (VLLM_ENABLE_V1_MULTIPROCESSING=0,
 synchronous scheduling) and is stepped by hand, so every engine step is one
 scheduler iteration whose inputs (the SchedulerOutput) and wall time are
 recorded.
 
-  scenarios DIR OUT   every .seq/src/tools/oracle/*.json scenario on the real
+  scenarios DIR OUT   every .serq/src/tools/oracle/*.json scenario on the real
                       engine: per request the step of its first and last token
                       and the preemptions (the format of *.out.json), plus the
                       step records

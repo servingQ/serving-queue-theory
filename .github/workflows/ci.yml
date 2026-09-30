@@ -9,7 +9,7 @@ on:
 jobs:
   # Which jobs a change needs. The simulator job runs simulator checks and
   # regenerates the validation report, so it runs only
-  # when something it reads changed: the package, the seQ programs it runs, the
+  # when something it reads changed: the package, the serQ programs it runs, the
   # E1 calibration, the Lean names it checks, its scripts, or the
   # workflow itself. A manual run (workflow_dispatch) runs everything.
   changes:
@@ -32,7 +32,7 @@ jobs:
               - data/exp/e1/**
               - lean/**
               - scripts/check_sim.sh
-              - scripts/fetch_seq.sh
+              - scripts/fetch_serq.sh
               - .github/workflows/ci.yml
               - .github/actions/**
 
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/seq-access
+      - uses: ./.github/actions/serq-access
         with:
           deploy-key: ${{ secrets.SEQ_DEPLOY_KEY }}
       - name: Install elan
@@ -94,7 +94,7 @@ jobs:
           path: paper/main.pdf
 
   sim:
-    name: Paper validation (seQ)
+    name: Paper validation (serQ)
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.sim == 'true'
     # Pinned to the glibc the paper tables were generated with: a last-bit
@@ -102,17 +102,17 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/seq-access
+      - uses: ./.github/actions/serq-access
         with:
           deploy-key: ${{ secrets.SEQ_DEPLOY_KEY }}
-      # The seQ CLI is built from the pinned release with seQ's own Rust
+      # The serQ CLI is built from the pinned release with serQ's own Rust
       # toolchain; cache it by the pin.
       - uses: actions/cache@v4
         with:
-          path: .seq
+          path: .serq
           key: seq-${{ runner.os }}-${{ hashFiles('validation/pyproject.toml') }}
-      - name: seQ CLI (the release pinned in validation/pyproject.toml)
-        run: scripts/fetch_seq.sh
+      - name: serQ CLI (the release pinned in validation/pyproject.toml)
+        run: scripts/fetch_serq.sh
       - uses: astral-sh/setup-uv@v6
         with:
           working-directory: validation

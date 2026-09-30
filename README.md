@@ -7,7 +7,7 @@ whose paper ↔ proof correspondence is enforced by CI.
 ```
 paper/   ICML-2026-format LaTeX draft (main.tex, refs.bib, icml2026.sty); proofs in Appendix A
 lean/    Lean 4 project `ServingQueueTheory` (Mathlib v4.34.0)
-validation/  Python validation and report generation; seQ runs every simulation
+validation/  Python validation and report generation; serQ runs every simulation
 scripts/ CI checks (see below)
 ```
 
@@ -76,7 +76,7 @@ scripts/check_lean_refs.sh
    validation report, which runs every named check;
    the validation report (`validation/validation-report.md`) is uploaded
    and posted to the job summary. See `validation/README.md`. This job
-   builds the pinned seQ CLI (cached by the pin) and regenerates the report
+   builds the pinned serQ CLI (cached by the pin) and regenerates the report
    by simulation (about 5 minutes),
    so it runs only when a path it reads changed (`validation/`,
    `programs/`, `paper/sim/`, `lean/`, its scripts, the workflow); a manual
@@ -114,7 +114,7 @@ page into `site/`. To unpublish:
 `gh api -X DELETE repos/vrvrv/serving-queue-theory/pages` (caches and search
 results keep what they have for a while).
 
-The internal working notes live in `research/` (plan, testbed, the seQ pin,
+The internal working notes live in `research/` (plan, testbed, the serQ pin,
 design notes, review rounds) and are not part of the site.
 
 ## Status / TODO

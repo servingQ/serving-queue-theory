@@ -1,9 +1,9 @@
 # validation
 
 Paper-specific validation and report generation for `paper/main.tex`, in
-Python. seQ is the simulation engine: every simulated system is a seQ
-program (`programs/*.seq` here, the general ones in seQ's `examples/`), run
-by the CLI of the release pinned in `pyproject.toml` (`[tool.seq]`). This
+Python. serQ is the simulation engine: every simulated system is a serQ
+program (`programs/*.sq` here, the general ones in serQ's `examples/`), run
+by the CLI of the release pinned in `pyproject.toml` (`[tool.serq]`). This
 package holds the configurations, the analytic references, the offline
 eviction instances, the statistics and the table generation.
 
@@ -29,7 +29,7 @@ the `\tbd{}` cells of the paper (AGENTS.md rule 7).
 ## Run
 
 ```bash
-make seq      # from the repo root: the pinned seQ CLI into .seq/bin/seq-lang
+make serq      # from the repo root: the pinned serQ CLI into .serq/bin/serq
 make sim      # Lean-name check, ruff, pytest, validation report
 make report   # print the validation report only
 make tables   # regenerate ../paper/sim/*.tex and ../paper/sim/data/*.csv
@@ -37,15 +37,15 @@ make figs     # redraw ../paper/sim/fig-*.pdf from the data files
 
 cd validation
 uv sync                                        # the Python environment (uv.lock)
-uv run pytest -m "not checks"                  # units, Lean instances, seQ adapters
+uv run pytest -m "not checks"                  # units, Lean instances, serQ adapters
 uv run pytest -m checks                        # one test per named check (slow)
-uv run python -m validation.report r.md        # Markdown report, also written to r.md
-uv run python -m validation.paper_tables       # the paper's simulation tables
-uv run python -m validation.inversion_explore  # affinity vs always-move by rate and link
+uv run python -m report r.md        # Markdown report, also written to r.md
+uv run python -m paper_tables       # the paper's simulation tables
+uv run python -m inversion_explore  # affinity vs always-move by rate and link
 ```
 
 `paper/simulation.tex` (the paper's simulation section) takes every number
-from `paper/sim/*.tex`, which `validation.paper_tables` generates. The same
+from `paper/sim/*.tex`, which `paper_tables` generates. The same
 run writes `paper/sim/data/*.csv` (one file per figure), from which
 `scripts/plot_sim.py` draws `paper/sim/fig-*.pdf`; a figure therefore shows
 exactly the numbers of its table. In the policy-comparison tables the best
@@ -55,10 +55,10 @@ rerun `make tables` and `make figs`, and reread the prose in
 `simulation.tex` against the new tables.
 
 The package reproduces the Rust crate it replaced bit for bit:
-`validation.rng` is rand 0.9's `StdRng` (ChaCha12) with its range samplers,
-`validation.fmt` is Rust's float formatting and `f64::round`, and sums run
+`rng` is rand 0.9's `StdRng` (ChaCha12) with its range samplers,
+`fmt` is Rust's float formatting and `f64::round`, and sums run
 left to right (`fmt.ssum`), so the offline eviction instances, the
-footprint Monte Carlo and every generated file are unchanged. seQ's
+footprint Monte Carlo and every generated file are unchanged. serQ's
 trajectories depend on the platform's libm; the CI job runs on
 `ubuntu-22.04` so that libm matches the machine that generated the tables.
 
@@ -66,18 +66,18 @@ trajectories depend on the platform's libm; the CI job runs on
 
 | Module | Model | Paper |
 |--------|-------|-------|
-| `seq` | runs a seQ program with the pinned CLI (`--json --dump`) and reads its report | all |
+| `seq` | runs a serQ program with the pinned CLI (`--json --dump`) and reads its report | all |
 | `stats` | Welford moments, batch-means and replication intervals | |
 | `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `missPrice`, `psNum`, `psPrice`, `stationaryMean`, `expFit`, `pdFullCapacity`, …) | |
-| `dist` | the scenarios' laws: exact moments, seQ sampler expressions | |
+| `dist` | the scenarios' laws: exact moments, serQ sampler expressions | |
 | `rng`, `fmt` | rand 0.9's `StdRng` and Rust's number formatting | |
-| `models.queue` | seQ's `mg1.seq` as a G/G/c FIFO queue, and the Lindley cross-check | §2.1–2.2 |
-| `models.batch` | `programs/batch_sampled.seq`: sampled-work FIFO, PS and exact LPS session checks; `fifo_admitted` for footprint | §2, Props. price, decode, footprint |
-| `seq_price`, `seq_open`, `seq_replay` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: `programs/{price,open,replay}_vllm.seq` (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
-| `models.agentic` | `programs/agentic_model.seq`: programs cycling queue → service → tool on one replica with finite KV; eviction and offload policies, including the congestion-priced ones | §2.2–2.3, §3.1–3.2 |
+| `models.queue` | serQ's `mg1.sq` as a G/G/c FIFO queue, and the Lindley cross-check | §2.1–2.2 |
+| `models.batch` | `programs/batch_sampled.sq`: sampled-work FIFO, PS and exact LPS session checks; `fifo_admitted` for footprint | §2, Props. price, decode, footprint |
+| `serq_price`, `serq_open`, `serq_replay` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: `programs/{price,open,replay}_vllm.sq` (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
+| `models.agentic` | `programs/agentic_model.sq`: programs cycling queue → service → tool on one replica with finite KV; eviction and offload policies, including the congestion-priced ones | §2.2–2.3, §3.1–3.2 |
 | `models.eviction` | offline eviction instances with an exact DP optimum; SF, density and guarded density greedy, on `p c²` or arbitrary weights | §3.1 |
-| `models.pd` | seQ's `pd_tandem.seq`, `pd_open.seq`: aggregated pool vs prefill → KV link → decode tandem | App. B |
-| `models.routing` | seQ's `routing.seq`: affinity, myopic, lookahead routing | §3.3 |
+| `models.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem | App. B |
+| `models.routing` | serQ's `routing.sq`: affinity, myopic, lookahead routing | §3.3 |
 | `checks` | the named checks; each cites paper labels and Lean theorems | all |
 | `constants` | the calibrated cost model and the scenario grids | |
 
@@ -87,8 +87,8 @@ trajectories depend on the platform's libm; the CI job runs on
   statistics, the trace parser and the eviction DP against brute force.
 - `tests/test_lean_examples.py` evaluates `analytic` at every numeric
   instance proved in Lean.
-- `tests/test_seq_models.py` runs seQ programs against queueing reference
-  formulas and the adapters against alternate seQ scenarios.
+- `tests/test_serq_models.py` runs serQ programs against queueing reference
+  formulas and the adapters against alternate serQ scenarios.
 - `tests/test_propositions.py` runs one test per named check (marker
   `checks`; `scripts/check_sim.sh` runs them through the report instead).
 - `scripts/check_sim.sh` also fails if a check cites a Lean name that does
@@ -110,19 +110,19 @@ trajectories depend on the platform's libm; the CI job runs on
   here. Its time sharing matches vLLM v1's step rule, but a simulator of
   it would also need a memory model, and the evidence runs vLLM's (block
   eviction from the tail, chunk-wise growth with preemption, admission by
-  the engine) as seQ programs (`seq_price`, `seq_open`, `seq_replay`).
+  the engine) as serQ programs (`serq_price`, `serq_open`, `serq_replay`).
 - **Resume uncertainty.** Whether a program issues another turn is drawn
   when its tool call returns. A suspended program therefore holds KV that
   may never be reused, which is what gives `p_i` meaning in eviction.
-- **Eviction scope.** The agentic seQ program evicts suspended programs
-  first, then queued ones when needed. The vLLM scenarios use separate seQ
+- **Eviction scope.** The agentic serQ program evicts suspended programs
+  first, then queued ones when needed. The vLLM scenarios use separate serQ
   programs with block-level KV and admission rules.
-- **Prices.** The agentic seQ program uses its stage's online miss price for
+- **Prices.** The agentic serQ program uses its stage's online miss price for
   `Priced` and `PricedMemory` eviction.
 - **Fetch mode (`agentic`).** `Async` fetches finish before the turn
   queues. `Blocking` fetches hold the replica for the tier wait plus the
   transfer, as when KV loading sits on the batch's critical path.
-- **Batching (`Ps`).** The sampled-work seQ program gives each admitted
+- **Batching (`Ps`).** The sampled-work serQ program gives each admitted
   turn `φ(n)/n` service under PS. `batch_cap` limits concurrent admission;
   `tab-lps` compares that exact rule with a saturating `φ`.
 - **Thrashing and the admission cap.** With finite KV, once misses start,

@@ -1,0 +1,95 @@
+// Paper agentic queue. The Python adapter (validation.models.agentic) supplies class laws and policy
+// expressions; serQ owns the event loop, queues, cache and transfer stages.
+let N = 16;
+let Lambda = 0.05;
+let C = 4e5;
+let maxctx = C / 2;
+let s0 = 0.005;
+let a = 2e-5;
+let b = 2e-9;
+let d = 2e-4;
+let dv = 0;
+let bw = 1e6;
+let blocking = 0;
+
+pool slot { cap 1; }
+pool tier { cap inf; }
+pool kv {
+  cap C;
+  evict by (waiting, size);
+  spill tier via link (size / bw) when (0);
+}
+
+stage svc : fifo;
+stage tool : delay;
+stage link : fifo;
+
+workload {
+  arrive closed(N);
+  init { set K = 0; set cold = 1; set p = 0.9; }
+  turn {
+    set n = cold ? ~uniform(1e4, 3e4) : ~exp(1000);
+    set o = ~exp(300);
+  }
+}
+
+session {
+  loop {
+    set t0 = now;
+    turn;
+    branch (K + n + o > C) {
+      observe truncated = 1;
+      drop kv;
+      drop tier;
+      end;
+    }
+    set staged = 0;
+    set stall = 0;
+    branch (cachedin(tier) > 0 && blocking == 0 && 1) {
+      run link (K / bw);
+      set staged = 1;
+      observe fetched = 1;
+      drop tier;
+    }
+    set enqueued = now;
+    hold slot (1) {
+      observe wait = now - enqueued;
+      branch (cachedin(tier) > 0 && blocking == 1 && 1) {
+        set fetch_start = now;
+        run link (K / bw);
+        set stall = now - fetch_start;
+        set staged = 1;
+        observe fetched = 1;
+        drop tier;
+      }
+      branch (cachedin(tier) > 0 && !staged) { drop tier; }
+      hold kv (K + n + o) {
+        set hit = !cold && (cached >= K || staged);
+        set P = hit ? a * n + b * n * (K + n / 2)
+                    : a * (K + n) + b * (K + n) * (K + n) / 2;
+        set S = s0 + P + o * (d + dv * (K + n));
+        set recompute = !cold && !hit ? a * K + b * K * K / 2 : 0;
+        run svc (S);
+      } cache (K + n + o);
+      observe service = S + stall;
+      observe recompute_work = recompute;
+      observe stall = stall;
+    }
+    observe response = now - t0;
+    branch (!cold) { observe hit = hit; }
+    set K = K + n + o;
+    set cold = 0;
+    branch (K > maxctx) {
+      observe think = 0;
+      drop kv;
+      drop tier;
+      end;
+    }
+    set z = ~exp(3);
+    observe think = z;
+    run tool (z);
+    branch with (p) { } else { drop kv; drop tier; end; }
+  }
+}
+
+run { horizon 5500; warmup 500; seed 1; }
