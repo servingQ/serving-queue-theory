@@ -92,7 +92,7 @@ latency reproduction is secondary.
 Toolchain is user-local (no sudo): `~/.elan` (Lean), `~/.local/bin/tectonic`
 (LaTeX), `~/.local/bin/uv` (Python tooling; the validation package's
 environment is `validation/uv.lock`), `~/.cargo` (Rust, only to build the
-serQ CLI and pyserq with serQ's own pinned toolchain). `scripts/setup.sh` installs all of
+serQ CLI for `scripts/exp`, with serQ's own pinned toolchain; pyserq comes from PyPI). `scripts/setup.sh` installs all of
 it idempotently.
 
 ```bash

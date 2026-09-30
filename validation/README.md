@@ -31,7 +31,7 @@ the `\tbd{}` cells of the paper (AGENTS.md rule 7).
 ## Run
 
 ```bash
-make serq      # from the repo root: the pinned serQ release into .serq/src (pyserq's source) and its CLI
+make serq      # from the repo root: the pinned serQ release into .serq/src (examples, oracle IR) and its CLI; pyserq comes from PyPI
 make sim      # Lean-name check, ruff, pytest, validation report
 make report   # print the validation report only
 make tables   # regenerate ../paper/sim/*.tex and ../paper/sim/data/*.csv
