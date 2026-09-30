@@ -1,4 +1,4 @@
-// Paper agentic queue. The Python adapter (validation.models.agentic) supplies class laws and policy
+// Paper agentic queue. The Python adapter (models.agentic) supplies class laws and policy
 // expressions; serQ owns the event loop, queues, cache and transfer stages.
 let N = 16;
 let Lambda = 0.05;

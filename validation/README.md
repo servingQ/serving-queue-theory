@@ -3,7 +3,8 @@
 Paper-specific validation and report generation for `paper/main.tex`, in
 Python. serQ is the simulation engine: every simulated system is a serQ
 program (`programs/*.sq` here, the general ones in serQ's `examples/`), run
-by the CLI of the release pinned in `pyproject.toml` (`[tool.serq]`). This
+in process by pyserq, which `uv sync` builds from the release pinned in
+`pyproject.toml` (`[tool.serq]`) with serQ's Rust toolchain. This
 package holds the configurations, the analytic references, the offline
 eviction instances, the statistics and the table generation.
 
@@ -29,7 +30,7 @@ the `\tbd{}` cells of the paper (AGENTS.md rule 7).
 ## Run
 
 ```bash
-make serq      # from the repo root: the pinned serQ CLI into .serq/bin/serq
+make serq      # from the repo root: the pinned serQ release into .serq/src (pyserq's source) and its CLI
 make sim      # Lean-name check, ruff, pytest, validation report
 make report   # print the validation report only
 make tables   # regenerate ../paper/sim/*.tex and ../paper/sim/data/*.csv
@@ -66,7 +67,7 @@ trajectories depend on the platform's libm; the CI job runs on
 
 | Module | Model | Paper |
 |--------|-------|-------|
-| `seq` | runs a serQ program with the pinned CLI (`--json --dump`) and reads its report | all |
+| `serq` | runs a serQ program in process with pyserq (`compile`, `run`) and reads its report and samples | all |
 | `stats` | Welford moments, batch-means and replication intervals | |
 | `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `missPrice`, `psNum`, `psPrice`, `stationaryMean`, `expFit`, `pdFullCapacity`, …) | |
 | `dist` | the scenarios' laws: exact moments, serQ sampler expressions | |

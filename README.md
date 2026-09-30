@@ -76,7 +76,7 @@ scripts/check_lean_refs.sh
    validation report, which runs every named check;
    the validation report (`validation/validation-report.md`) is uploaded
    and posted to the job summary. See `validation/README.md`. This job
-   builds the pinned serQ CLI (cached by the pin) and regenerates the report
+   builds the pinned serQ release and pyserq (cached by the pin) and regenerates the report
    by simulation (about 5 minutes),
    so it runs only when a path it reads changed (`validation/`,
    `programs/`, `paper/sim/`, `lean/`, its scripts, the workflow); a manual

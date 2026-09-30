@@ -18,8 +18,8 @@ and eviction, program-aware routing). The deliverables are:
 | `docs/`, `mkdocs.yml`, `.github/workflows/publish.yml` | the **public** page https://vrvrv.github.io/serving-queue-theory/ with the paper and lecture-note PDFs (README, "What CD publishes") |
 | `research/` | internal working notes: plan, testbed, serQ pin, design notes, review rounds; not published |
 | `lean/ServingQueueTheory/` | Lean 4 + Mathlib proofs of every proposition in the paper |
-| `validation/` | Python validation and report package; seeded checks of each proposition, every simulated system a serQ program run by the pinned serQ CLI |
-| serQ (separate repo, pinned release) | the language in which a serving deployment is a program: interpreter and CLI `serq`, example programs, the vLLM oracle and its A100 test vectors; https://github.com/vrvrv/serQ, used here as a Cargo git dependency and a checkout in `.serq/` (`research/seq.md`). Its Lean model is here: `lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean` (syntax and pool semantics, executable semantics, the vLLM scenarios as theorems generated from serQ's vectors, serving order) and `Deployments.lean` (the paper's replicas as serQ programs) |
+| `validation/` | Python validation and report package; seeded checks of each proposition, every simulated system a serQ program run in process by pyserq, built from the pinned release |
+| serQ (separate repo, pinned release) | the language in which a serving deployment is a program: interpreter and CLI `serq`, example programs, the vLLM oracle and its A100 test vectors; https://github.com/vrvrv/serQ, used here as a Cargo git dependency and a checkout in `.serq/` (`research/seq.md`). Its Lean model is here: `lean/ServingQueueTheory/Serq{,Exec,Oracle,Serve}.lean` (syntax and pool semantics, executable semantics, the vLLM scenarios as theorems generated from serQ's vectors, serving order) and `Deployments.lean` (the paper's replicas as serQ programs) |
 | `scripts/` | CI checks that bind the two together |
 | `.github/workflows/ci.yml` | Runs the checks on push/PR |
 
@@ -92,7 +92,7 @@ latency reproduction is secondary.
 Toolchain is user-local (no sudo): `~/.elan` (Lean), `~/.local/bin/tectonic`
 (LaTeX), `~/.local/bin/uv` (Python tooling; the validation package's
 environment is `validation/uv.lock`), `~/.cargo` (Rust, only to build the
-serQ CLI with serQ's own pinned toolchain). `scripts/setup.sh` installs all of
+serQ CLI and pyserq with serQ's own pinned toolchain). `scripts/setup.sh` installs all of
 it idempotently.
 
 ```bash
@@ -100,11 +100,11 @@ make setup     # install/refresh toolchain + Mathlib cache (first run ~2 min)
 make lean      # lake build + sorry check + axiom audit   (scripts/check_lean.sh)
 make refs      # paper \leanref{} ↔ Lean consistency       (scripts/check_lean_refs.sh)
 make paper     # compile paper/main.pdf with tectonic
-make serq       # the serQ release pinned in validation/pyproject.toml: .serq/src + CLI .serq/bin/serq (scripts/fetch_serq.sh)
+make serq      # the serQ release pinned in validation/pyproject.toml: .serq/src + CLI .serq/bin/serq (scripts/fetch_serq.sh)
 make sim       # simulator: Lean-name check, ruff, pytest (incl. the serQ cross-checks), report (scripts/check_sim.sh)
 make report    # print the simulator validation report
 make tables    # regenerate paper/sim/ (tables, macros, figure data; ~7 min)
-make check     # seq + the four checks; run before saying "done"
+make check     # serq + the four checks; run before saying "done"
 make preview   # render PDF pages to PNG in /tmp for visual inspection
 ```
 
@@ -125,15 +125,15 @@ lean/scripts/AxiomAudit.lean   `#print axioms` for every paper-facing theorem
 scripts/check_lean.sh          build + sorry + axiom audit
 scripts/check_lean_refs.sh     \leanref ↔ Lean name check
 scripts/check_sim.sh           simulator: cited Lean names exist + ruff + pytest + report
-scripts/fetch_serq.sh           the pinned serQ release into .serq/ (research/seq.md: pin, upgrading, CI access)
-programs/{price,open,replay}_vllm.sq  where a miss is paid (Poisson turns), the eviction/admission experiment (two-class open sessions) and §4.2's replica (the WEKA sessions) on vLLM v1's engine rules and the testbed's cost model (run by validation/src/seq_{replay,open}.py for paper/sim/; replay ablations by scripts/exp/seq_replay42.py, research/seq-replay42*.md)
+scripts/fetch_serq.sh          the pinned serQ release into .serq/ (research/seq.md: pin, upgrading, CI access)
+programs/{price,open,replay}_vllm.sq  where a miss is paid (Poisson turns), the eviction/admission experiment (two-class open sessions) and §4.2's replica (the WEKA sessions) on vLLM v1's engine rules and the testbed's cost model (run by validation/src/serq_{replay,open}.py for paper/sim/; replay ablations by scripts/exp/seq_replay42.py, research/seq-replay42*.md)
 validation/src/checks.py  one named check per proposition (tests + report)
-validation/src/seq_{price,open,replay}.py  where a miss is paid, the eviction/admission experiment and §4.2's replay on vLLM's rules (programs/*_vllm.sq via serQ); validation no longer simulates the §2.2 replica itself (`TwoStage` removed 2026-09-27)
+validation/src/serq_{price,open,replay}.py  where a miss is paid, the eviction/admission experiment and §4.2's replay on vLLM's rules (programs/*_vllm.sq via serQ); validation no longer simulates the §2.2 replica itself (`TwoStage` removed 2026-09-27)
 scripts/hooks/post-edit.sh     Claude Code hook: rebuild after edits
 research/add-proposition.md        step-by-step workflow for a new result
 research/research-plan.md          status of every result and experiment; read before paper work
 research/simulation-design.md      the validation package: design, validation-ladder status, roadmap to the calibrated simulator
-lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean   serQ formally: syntax `Route Env V` of the route block + pool invariant; executable semantics (ℕ, step clock); SerqOracle.lean is GENERATED by scripts/gen_serq_oracle.py from serQ's IR files tools/oracle/*.ir.json; serving order
+lean/ServingQueueTheory/Serq{,Exec,Oracle,Serve}.lean   serQ formally: syntax `Route Env V` of the route block + pool invariant; executable semantics (ℕ, step clock); SerqOracle.lean is GENERATED by scripts/gen_serq_oracle.py from serQ's IR files tools/oracle/*.ir.json; serving order
 lean/ServingQueueTheory/Deployments.lean   the paper's replicas as serQ programs
 scripts/exp/diff_seq_vllm.sh, first_divergence.sh   serQ (.serq/bin/serq) vs the real vLLM scheduler, request by request / first differing step
 paper/simulation.tex           §4.1 uncalibrated simulation; numbers \input from paper/sim/ (generated)

@@ -30,7 +30,7 @@ sim:              ## validation: Lean-name check, ruff, pytest and validation re
 serq:              ## the serQ release pinned in validation/pyproject.toml: .serq/src (programs, oracle vectors) and the CLI .serq/bin/serq
 	scripts/fetch_serq.sh
 
-tables:           ## regenerate paper/sim/*.tex and paper/sim/data/*.csv (validation.paper_tables)
+tables:           ## regenerate paper/sim/*.tex and paper/sim/data/*.csv (paper_tables)
 	cd validation && uv run --locked --quiet python -m paper_tables
 
 figs:             ## redraw paper/sim/fig-*.pdf from paper/sim/data/*.csv (written by `make tables`)

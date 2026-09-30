@@ -5,7 +5,7 @@
 
 Every number in `paper/simulation.tex` comes from these files, so the paper
 cannot drift from the code. Scenarios and seeds are the ones in
-`validation.checks`. The same run writes `paper/sim/data/*.csv`, from which
+`checks`. The same run writes `paper/sim/data/*.csv`, from which
 `scripts/plot_sim.py` draws the figures.
 """
 

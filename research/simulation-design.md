@@ -26,7 +26,7 @@ replica with its own memory model: whole-turn KV reservation,
 whole-session eviction, no preemption) is removed. The paper's evidence
 on where a miss is paid, on eviction and admission, and the trace replay
 runs vLLM v1's engine rules as serQ programs
-(`programs/{price,open,replay}_vllm.sq`, `validation::seq_{price,open,replay}`)
+(`programs/{price,open,replay}_vllm.sq`, `serq_{price,open,replay}`)
 with the testbed's cost model; the propositions' in-model checks use
 their own closed-form queues (M/G/1, PS).
 
@@ -80,7 +80,7 @@ Everything is seeded, and a seed gives bit-identical output on the same libm
 
 | Module | Contents |
 |--------|----------|
-| `seq` | runs a serQ program with the pinned CLI and reads its report |
+| `serq` | runs a serQ program in process with pyserq and reads its report |
 | `dist` | Deterministic, Exponential, Erlang, balanced H2, Uniform, Discrete, HitMiss, Bernoulli; exact moments and serQ sampler expressions |
 | `stats` | Welford moments, batch means (20 batches), replication CIs, quantiles |
 | `analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `mixtureCV2`, `pdFullCapacity`, `lookaheadCost`, …) |

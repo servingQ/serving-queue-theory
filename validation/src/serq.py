@@ -33,7 +33,7 @@ class SerqError(RuntimeError):
 
 
 def program_path(name: str) -> Path:
-    """`examples/<group>/<name>.serq` of the pinned serQ checkout."""
+    """`examples/<group>/<name>.sq` of the pinned serQ checkout."""
     hits = sorted(EXAMPLES.glob(f"*/{name}.sq"))
     if not hits:
         raise FileNotFoundError(f"no {EXAMPLES}/*/{name}.sq (run `make serq`)")
@@ -213,8 +213,3 @@ def parallel(fn, items):
     independent and deterministic, and releases the GIL, so the results do
     not depend on the worker count)."""
     return list(_POOL.map(fn, items))
-
-
-def have_serq() -> bool:
-    """pyserq reads the IR of the pinned release."""
-    return pyserq.IR_VERSION >= 1

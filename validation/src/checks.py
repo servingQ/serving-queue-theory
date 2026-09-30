@@ -2,7 +2,7 @@
 
 Each `Check` states which proposition and Lean theorems it exercises, what
 the theory predicts, what the simulation observed, and whether they agree.
-`tests/test_propositions.py` asserts every check; `validation.report` prints
+`tests/test_propositions.py` asserts every check; `report` prints
 them as a report. Scenarios live here once so the two cannot drift.
 
 Two kinds of check:

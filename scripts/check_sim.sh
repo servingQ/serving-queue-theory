@@ -2,7 +2,8 @@
 # validation: every Lean theorem a validation check cites must exist, then
 # ruff (format + lint), pytest (units, Lean instances, serQ adapters) and the
 # validation report, which runs every named check and fails if one fails.
-# Needs the serQ CLI pinned in validation/pyproject.toml (`make serq`).
+# Needs the serQ release pinned in validation/pyproject.toml (`make serq`),
+# whose pyserq `uv sync` builds.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.local/bin:$PATH"
