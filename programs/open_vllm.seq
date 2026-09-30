@@ -35,7 +35,7 @@ let a = 1.94e-4;       // s per prefill token
 let b = 6.51e-9;       // s per prefill token per context token
 let omega = 0.057;     // s per decode iteration
 let policy = 3;
-let keep = 1;          // 0: drop a finished session's blocks
+let keep_cache = 1;          // 0: drop a finished session's blocks
 
 pool live { cap cap; }
 pool slots { cap B; admit via engine; }
@@ -43,22 +43,22 @@ pool kv {
   cap C;
   block bs;
   preempt lifo;
-  evict by (policy == 5 ? 0 : queued,
+  evict by (policy == 5 ? 0 : waiting,
             policy == 0 ? size
-            : policy == 1 ? (queued ? 1 : p) * (a * size + b * size * size / 2) / size
-            : policy == 2 ? (queued ? 1 : p)
+            : policy == 1 ? (waiting ? 1 : p) * (a * size + b * size * size / 2) / size
+            : policy == 2 ? (waiting ? 1 : p)
                 * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2) / size
-            : policy == 3 ? (queued ? 1 : p)
+            : policy == 3 ? (waiting ? 1 : p)
                 * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2)
-                / (size * (queued ? 1 : Z))
-            : policy == 4 ? (queued ? 1 : p)
+                / (size * (waiting ? 1 : Z))
+            : policy == 4 ? (waiting ? 1 : p)
                 * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * bs + b * bs * (size - bs / 2))
-                / (bs * (queued ? 1 : Z))
+                / (bs * (waiting ? 1 : Z))
             : last);
 }
 stage engine : step {
-  budget max(ndec, floor(omega / a));   // whole tokens
-  cost max(omega, ntok * a + b * attn);
+  budget max(decoders, floor(omega / a));   // whole tokens
+  cost max(omega, tokens * a + b * attention);
   memory kv;
 }
 stage tool : delay;
@@ -104,9 +104,9 @@ session {
       observe response = now - t0;
       set K = prompt + o;
       set cold = 0;
-      branch (K > maxctx) { branch (keep) { end; } else { drop kv; end; } }
+      branch (K > maxctx) { branch (keep_cache) { end; } else { drop kv; end; } }
       run tool (~exp(Z));
-      branch with (p) { } else { branch (keep) { end; } else { drop kv; end; } }
+      branch with (p) { } else { branch (keep_cache) { end; } else { drop kv; end; } }
     }
   }
 }

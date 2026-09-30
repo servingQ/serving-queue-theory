@@ -26,7 +26,7 @@ OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SeqOracle.lean")
 # 5 added the statements `Release` and `Load` (a KV transfer between two pools),
 # which are outside the fragment: a program that uses them fails below.
 # 6 adds renewal arrivals and finite open runs, outside explicit-session semantics.
-IR_VERSION = 6
+IR_VERSION = 7
 
 
 class Fragment(Exception):

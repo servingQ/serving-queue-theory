@@ -15,7 +15,7 @@ let p = 0.9;      // resume probability
 let Z = 3.0;      // mean tool time (s)
 
 pool slot { cap 1; }
-pool kv { cap C; evict by (queued, size); }
+pool kv { cap C; evict by (waiting, size); }
 
 stage svc : fifo;
 stage tool : delay;

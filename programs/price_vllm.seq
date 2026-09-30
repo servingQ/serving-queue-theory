@@ -28,8 +28,8 @@ let omega = 0.057;     // s per decode iteration
 pool slots { cap B; admit via engine; }
 pool kv { cap 1e12; block bs; preempt lifo; evict lru; }
 stage engine : step {
-  budget max(ndec, floor(omega / a));
-  cost max(omega, ntok * a + b * attn);
+  budget max(decoders, floor(omega / a));
+  cost max(omega, tokens * a + b * attention);
   memory kv;
 }
 

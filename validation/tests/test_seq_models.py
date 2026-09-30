@@ -76,7 +76,7 @@ def test_finite_source_wait_matches_mva():
 
 STEP = """
 let a = 2e-5; let omega = 2e-4;
-stage engine : step {{ budget max(ndec, omega / a); cost max(omega, ntok * a); }}
+stage engine : step {{ budget max(decoders, omega / a); cost max(omega, tokens * a); }}
 workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
 session {{ run engine {work}; observe {obs} = now - t0; end; }}
 run {{ horizon {h}; warmup {w}; seed {seed}; }}
@@ -111,7 +111,9 @@ def test_pd_tandem_capacity():
 
 
 def test_lecture_pd_program_runs():
-    r = program("lecture_pd", {}, 1)
+    # the lecture's figure, kept here since seQ took it out of its examples
+    # (vrvrv/seQ#121): a KV transfer as a store-and-forward link
+    r = seq.run(seq.PROGRAMS / "lecture_pd.seq", sets={}, seed=1)
     assert r.turns > 500
     p = r.stage("prefill")
     assert p.utilization < 0.95
@@ -124,7 +126,7 @@ def test_ps_capacity_matches_batch_ps_server():
     cfg = BatchConfig.poisson_turns(lam, exp(1.0), Ps(Saturating(0.0, 8)), 20000.0, 4)
     b = batch.simulate(cfg)
     src = f"""
-        stage svc : ps(min(n, 8));
+        stage svc : ps(min(present, 8));
         workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
         session {{ run svc (~exp(1)); observe response = now - t0; end; }}
         run {{ horizon 20000; warmup 1000; seed 4; }}

@@ -67,7 +67,7 @@ def _run(cap: int, rate: float, policy: P, end_known: bool, seed: int) -> seq.Re
             "Lambda": rate,
             "cap": float(cap),
             "policy": _CODE[policy],
-            "keep": 0.0 if end_known else 1.0,
+            "keep_cache": 0.0 if end_known else 1.0,
         },
         seed=seed,
         horizon=HORIZON,
