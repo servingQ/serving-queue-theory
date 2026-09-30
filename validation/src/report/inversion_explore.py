@@ -1,12 +1,12 @@
 """Print affinity vs always-move mean response by rate and link bandwidth.
 
-uv run python -m inversion_explore
+uv run python -m report.inversion_explore
 """
 
 from checks import INVERSION_BANDWIDTHS, INVERSION_RATES
 from fmt import fixed, sci_fixed
-from models import routing
-from models.routing import RoutePolicy, RoutingConfig
+from sim import routing
+from sim.routing import RoutePolicy, RoutingConfig
 
 
 def main() -> None:

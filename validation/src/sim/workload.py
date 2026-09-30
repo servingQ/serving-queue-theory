@@ -15,7 +15,7 @@ from functools import cache
 from pathlib import Path
 
 from fmt import ssum
-from serq import DATA
+from sim.serq import DATA
 
 
 @dataclass(frozen=True)

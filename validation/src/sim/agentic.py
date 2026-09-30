@@ -21,11 +21,11 @@ import math
 from dataclasses import dataclass, field, replace
 from enum import Enum
 
-import serq
-from analytic import pk_wait
-from dist import Dist, Uniform, discrete, exp
 from fmt import number, ssum
-from stats import NAN_ESTIMATE, Estimate, Welford, batch_means
+from sim import laws, serq
+from sim.stats import NAN_ESTIMATE, Estimate, Welford, batch_means
+from theory.analytic import pk_wait
+from theory.dist import Dist, Uniform, discrete, exp
 
 
 @dataclass
@@ -214,9 +214,9 @@ def _source(cfg: AgenticConfig) -> str:
     class_law = (
         "0"
         if len(weights) == 1
-        else discrete(
-            [float(i) for i in range(len(weights))], [w / wsum for w in weights]
-        ).sample_expr()
+        else laws.expr(
+            discrete([float(i) for i in range(len(weights))], [w / wsum for w in weights])
+        )
     )
     src = _replace(
         src,
@@ -228,11 +228,11 @@ def _source(cfg: AgenticConfig) -> str:
         f"set tau = {_class_expr(cfg, lambda c: number(c.tool_time.mean()))};",
     )
     src = _replace(
-        src, "~uniform(1e4, 3e4)", _class_expr(cfg, lambda c: c.initial_tokens.sample_expr())
+        src, "~uniform(1e4, 3e4)", _class_expr(cfg, lambda c: laws.expr(c.initial_tokens))
     )
-    src = _replace(src, "~exp(1000)", _class_expr(cfg, lambda c: c.new_tokens.sample_expr()))
-    src = _replace(src, "~exp(300)", _class_expr(cfg, lambda c: c.output_tokens.sample_expr()))
-    src = _replace(src, "~exp(3)", _class_expr(cfg, lambda c: c.tool_time.sample_expr()))
+    src = _replace(src, "~exp(1000)", _class_expr(cfg, lambda c: laws.expr(c.new_tokens)))
+    src = _replace(src, "~exp(300)", _class_expr(cfg, lambda c: laws.expr(c.output_tokens)))
+    src = _replace(src, "~exp(3)", _class_expr(cfg, lambda c: laws.expr(c.tool_time)))
     E = EvictionPolicy
     key = {
         E.ShortestFirst: "evict by (waiting, size);",

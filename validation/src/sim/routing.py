@@ -9,11 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 
-import serq
-from dist import Uniform, exp
 from fmt import number, rround
-from models.agentic import CostModel, ProgramClass
-from stats import Estimate, Welford
+from sim import laws, serq
+from sim.agentic import CostModel, ProgramClass
+from sim.stats import Estimate, Welford
+from theory.dist import Uniform, exp
 
 
 class RoutePolicy(Enum):
@@ -78,10 +78,10 @@ def simulate(cfg: RoutingConfig) -> RoutingReport:
     assert cfg.replicas == 4, "routing.sq currently declares four replicas"
     src = serq.program_path("routing").read_text()
     for pattern, repl in [
-        ("~uniform(5000, 15000)", cfg.cls.initial_tokens.sample_expr()),
-        ("~exp(500)", cfg.cls.new_tokens.sample_expr()),
-        ("~exp(200)", cfg.cls.output_tokens.sample_expr()),
-        ("~exp(Z)", cfg.cls.tool_time.sample_expr()),
+        ("~uniform(5000, 15000)", laws.expr(cfg.cls.initial_tokens)),
+        ("~exp(500)", laws.expr(cfg.cls.new_tokens)),
+        ("~exp(200)", laws.expr(cfg.cls.output_tokens)),
+        ("~exp(Z)", laws.expr(cfg.cls.tool_time)),
     ]:
         assert pattern in src, f"routing.sq lacks {pattern}"
         src = src.replace(pattern, repl, 1)

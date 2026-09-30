@@ -26,9 +26,26 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import cache
 
-import serq_price
-import serq_replay
-from analytic import (
+from constants import TRACE_CAP_FACTORS, TRACE_POOLS, TRACE_RATES
+from fmt import disp, fixed, fmax, fmin, fold_max, sci_fixed, ssum
+from sim import agentic, batch, pd, price_vllm, queue, replay_vllm, routing
+from sim.agentic import (
+    AgenticConfig,
+    EvictionPolicy,
+    FetchMode,
+    OffloadPolicy,
+    Open,
+    ProgramClass,
+)
+from sim.batch import BatchConfig, BatchReport, Fifo, Ps
+from sim.pd import Aggregated, Disaggregated, PdConfig, Poisson, Saturated
+from sim.queue import QueueConfig
+from sim.replay_vllm import TraceRow, trace_cap
+from sim.routing import RoutePolicy, RoutingConfig
+from sim.stats import Estimate, Welford, batch_means, paired_differences, replications
+from sim.workload import weka
+from theory import eviction
+from theory.analytic import (
     agg_capacity,
     agg_capacity_i,
     exp_fit,
@@ -46,27 +63,20 @@ from analytic import (
     ps_num,
     ps_price,
 )
-from constants import TRACE_CAP_FACTORS, TRACE_POOLS, TRACE_RATES
-from dist import Deterministic, Dist, Erlang, HitMiss, Uniform, discrete, exp, hyperexp_balanced
-from fmt import disp, fixed, fmax, fmin, fold_max, sci_fixed, ssum
-from models import agentic, batch, eviction, pd, queue, routing
-from models.agentic import (
-    AgenticConfig,
-    EvictionPolicy,
-    FetchMode,
-    OffloadPolicy,
-    Open,
-    ProgramClass,
+from theory.batch import Constant, Saturating, fifo_admitted, phi_limit, ps_mean_number
+from theory.dist import (
+    Deterministic,
+    Dist,
+    Erlang,
+    HitMiss,
+    Uniform,
+    discrete,
+    exp,
+    hyperexp_balanced,
 )
-from models.batch import BatchConfig, BatchReport, Constant, Fifo, Ps, Saturating, ps_mean_number
-from models.eviction import Item, varied
-from models.pd import Aggregated, Disaggregated, PdConfig, Poisson, Saturated
-from models.queue import QueueConfig
-from models.routing import RoutePolicy, RoutingConfig
-from rng import StdRng
-from serq_replay import TraceRow, trace_cap
-from stats import Estimate, Welford, batch_means, replications
-from workload import weka
+from theory.eviction import Item, varied
+from theory.pd import split_capacity
+from theory.rng import StdRng
 
 
 class Kind(Enum):
@@ -273,13 +283,13 @@ def miss_price_bracket() -> Check:
 
 def prefill_pays_the_miss() -> Check:
     """Props. price and decode on a replica with the vLLM v1 engine's rules
-    (`serq_price`): forcing a fraction `δ` of turns to miss raises the number
+    (`price_vllm`): forcing a fraction `δ` of turns to miss raises the number
     in the prefill stage by an amount bracketed by the M/G/1 price at the
     stage's effective service `P/r̄`, and changes the number in the decode
     stage by less than 1 %."""
     ok, obs, head = True, [], ""
     for delta in (0.01, 0.05):
-        m = serq_price.price_scenario(delta)
+        m = price_vllm.price_scenario(delta)
         if not head:
             head = (
                 f"r̄={fixed(m.avail, 3)}, ρ_P={fixed(m.rho_p, 3)}, L_P {m.l_p} vs M/G/1 "
@@ -454,7 +464,7 @@ def ps_price_scenario(delta: float) -> MissPriceRun:
     server = Ps(Constant(1.0))
     r0 = batch.simulate(BatchConfig.poisson_turns(lam, base, server, 1.0e6 / lam, 220))
     r1 = batch.simulate(BatchConfig.poisson_turns(lam, d, server, 1.0e6 / lam, 220))
-    diffs = [lam * x for x in batch.paired_differences(r0.responses, r1.responses)]
+    diffs = [lam * x for x in paired_differences(r0.responses, r1.responses)]
     phi = ps_price(1.0, rho, s_m - s_h)
     lo = lam * delta * phi
     rho1 = rho + lam * delta * (s_m - s_h)
@@ -506,7 +516,7 @@ def footprint_scenario() -> tuple[FootprintRow, ...]:
         rng = StdRng.seed_from_u64(230 + i)
         w = Welford()
         for _ in range(1_000_000):
-            w.push(float(batch.fifo_admitted(m, dist, rng)))
+            w.push(float(fifo_admitted(m, dist, rng)))
         rows.append(
             FootprintRow(
                 law, exp_fit(d, m), Estimate(w.mean(), 1.96 * math.sqrt(w.variance() / w.n()))
@@ -557,7 +567,7 @@ def lps_scenario() -> tuple[LpsRow, ...]:
         [("D", Deterministic(1.0)), ("Exp", exp(1.0)), ("H2", hyperexp_balanced(1.0, 4.0))]
     ):
         for j, u in enumerate([0.5, 0.8, 0.9]):
-            rho = u * batch.phi_limit(capped)
+            rho = u * phi_limit(capped)
             lam = rho / d.mean()
             seed = 240 + 3 * i + j
             lps = BatchConfig.poisson_turns(lam, d, Ps(base), 4.0e5 / lam, seed)
@@ -899,7 +909,7 @@ def pd_capacity_matches() -> Check:
     for np_, bnet in [(10, 1000.0), (11, 1000.0), (12, 1000.0), (11, 10.0)]:
         cfg = pd_cfg(32, Disaggregated(np_), 1.0, 1.0, 0.5, (2.0, 1.0), bnet)
         r = pd.simulate(cfg)
-        want = pd.split_capacity(cfg, np_)
+        want = split_capacity(32, np_, 1.0, 1.0, 2.0, 1.0, bnet, 1.0)
         ok &= rel(r.throughput, want) < 0.02
         obs.append(f"N_P={np_} B/K={disp(bnet)}: {fixed(r.throughput, 2)} vs {fixed(want, 2)}")
     return Check(
@@ -950,9 +960,7 @@ def pd_win_condition_decisions() -> Check:
                 # the best integer one (the last of equal maxima, as Rust's max_by).
                 best_np, best_c = None, None
                 for np_ in range(1, n):
-                    c = pd.split_capacity(
-                        pd_cfg(n, Disaggregated(np_), 1.0, 1.0, i, (gp, 1.0), bnet), np_
-                    )
+                    c = split_capacity(n, np_, 1.0, 1.0, gp, 1.0, bnet, 1.0)
                     if best_c is None or c >= best_c:
                         best_np, best_c = np_, c
                 agg_s = pd.simulate(
@@ -1028,7 +1036,7 @@ def trace_replay_variance_sources() -> Check:
     corpus = weka()
     rate = TRACE_RATES[-1]
     rows: list[TraceRow] = [
-        serq_replay.trace_row(rate, kv, trace_cap(corpus, kv, TRACE_CAP_FACTORS[0]))
+        replay_vllm.trace_row(rate, kv, trace_cap(corpus, kv, TRACE_CAP_FACTORS[0]))
         for kv in TRACE_POOLS
     ]
     open_has_no_mixture = rows[0].mixture_share.mean < 1e-9 and rows[0].hit_rate.mean > 0.999

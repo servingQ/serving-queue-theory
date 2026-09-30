@@ -1,7 +1,7 @@
 """Print every validation check as a Markdown report.
 
-    uv run python -m report            # report to stdout
-    uv run python -m report out.md     # also write a file
+    uv run python -m report.validation            # report to stdout
+    uv run python -m report.validation out.md     # also write a file
 
 Exits non-zero if any check fails.
 """

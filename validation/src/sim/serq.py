@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import pyserq
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[3]
 PROGRAMS = REPO / "programs"
 DATA = REPO / "validation" / "data"
 SERQ_HOME = Path(os.environ.get("SERQ_HOME", REPO / ".serq"))

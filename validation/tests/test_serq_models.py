@@ -3,10 +3,16 @@ adapters against alternate serQ scenarios."""
 
 import pytest
 
-import serq
-from analytic import finite_source_mm1, mm1_wait, pk_wait
-from checks import pd_cfg
-from dist import (
+from sim import agentic, batch, pd, queue, routing, serq
+from sim.agentic import AgenticConfig, Closed
+from sim.batch import BatchConfig, Fifo, Ps
+from sim.pd import Aggregated, Disaggregated, PdConfig, Poisson, Saturated
+from sim.queue import QueueConfig
+from sim.routing import RoutePolicy, RoutingConfig
+from sim.stats import Estimate
+from theory.analytic import finite_source_mm1, mm1_wait, pk_wait
+from theory.batch import Saturating
+from theory.dist import (
     Bernoulli,
     Deterministic,
     HitMiss,
@@ -15,13 +21,8 @@ from dist import (
     exp,
     hyperexp_balanced,
 )
-from models import agentic, batch, pd, queue, routing
-from models.agentic import AgenticConfig, Closed
-from models.batch import BatchConfig, Fifo, Ps, Saturating
-from models.pd import Aggregated, Disaggregated, PdConfig, Poisson, Saturated
-from models.queue import QueueConfig
-from models.routing import RoutePolicy, RoutingConfig
-from stats import Estimate
+from theory.pd import split_capacity
+from theory.queue import lindley_waits
 
 EXAMPLES_PRESENT = serq.EXAMPLES.exists()
 pytestmark = pytest.mark.skipif(
@@ -107,8 +108,7 @@ def test_pd_tandem_capacity():
     want = 32.0 / (1.0 + 1.0 + 0.5)
     assert abs(agg.stage("agg").throughput - want) / want < 0.02
     for np_, bnet in [(10, 1000.0), (11, 1000.0), (12, 1000.0), (11, 10.0)]:
-        cfg = pd_cfg(32, Disaggregated(np_), 1.0, 1.0, 0.5, (2.0, 1.0), bnet)
-        want = pd.split_capacity(cfg, np_)
+        want = split_capacity(32, np_, 1.0, 1.0, 2.0, 1.0, bnet, 1.0)
         r = program("pd_tandem", {"mode": 1, "NP": np_, "bnet": bnet}, 3)
         assert abs(r.stage("decode").throughput - want) / want < 0.02
 
@@ -164,7 +164,7 @@ def test_pd_open_poisson_load_uses_the_seq_program():
 def test_engine_agrees_with_lindley():
     cfg = QueueConfig.mg1(0.8, hyperexp_balanced(1.0, 5.0), 50_000, 3)
     des = queue.simulate(cfg)
-    lin = queue.lindley_waits(cfg)
+    lin = lindley_waits(cfg.interarrival, cfg.service, cfg.customers, cfg.warmup, cfg.seed)
     assert len(des.waits) == len(lin)
     assert max(abs(a - b) for a, b in zip(des.waits.tolist(), lin, strict=True)) < 1e-8
 

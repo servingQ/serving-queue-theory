@@ -5,7 +5,8 @@ the PK formula; with exponential service it is M/M/1. Non-Poisson arrivals
 (e.g. `hyperexp_balanced`) leave the model of Props. mm1–cache and enter the
 regime of Kingman's bound. serQ's `mg1.sq` draws interarrival and service
 times from separate streams, so two runs that differ only in the service law
-see the same arrivals (common random numbers).
+see the same arrivals (common random numbers); `theory.queue` reproduces
+those streams by Lindley's recursion.
 """
 
 from __future__ import annotations
@@ -15,11 +16,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-import serq
-from dist import Dist, exp
-from fmt import fmax, ssum
-from rng import StdRng
-from stats import Estimate, Welford, batch_means
+from fmt import ssum
+from sim import laws, serq
+from sim.stats import Estimate, Welford, batch_means
+from theory.dist import Dist, exp
 
 
 @dataclass
@@ -67,11 +67,11 @@ def _source(cfg: QueueConfig) -> str:
     src = serq.program_path("mg1").read_text()
     src = src.replace("stage svc : fifo;", f"stage svc : fifo({cfg.servers});")
     assert "arrive poisson(lam);" in src, "mg1.sq arrival declaration changed"
-    src = src.replace("arrive poisson(lam);", f"arrive renewal({cfg.interarrival.sample_expr()});")
+    src = src.replace("arrive poisson(lam);", f"arrive renewal({laws.expr(cfg.interarrival)});")
     start = src.find("    set s = law ==")
     assert start >= 0, "mg1 service sampler"
     end = src.index(";", start) + 1
-    return src[:start] + f"    set s = {cfg.service.sample_expr()};" + src[end:]
+    return src[:start] + f"    set s = {laws.expr(cfg.service)};" + src[end:]
 
 
 def simulate(cfg: QueueConfig) -> QueueReport:
@@ -130,22 +130,3 @@ def simulate(cfg: QueueConfig) -> QueueReport:
         utilization=float(utilization),
         service=Welford(services[cfg.warmup : total]),
     )
-
-
-def lindley_waits(cfg: QueueConfig) -> list[float]:
-    """Waiting times of a single-server FIFO queue by Lindley's recursion
-    `W_{n+1} = max(0, W_n + S_n - A_{n+1})`, drawing from the streams serQ's
-    `mg1.sq` uses (`seed`, `seed ^ 0x9E3779B97F4A7C15`). An independent
-    check of the event engine: for one server the two agree to rounding."""
-    arr = StdRng.seed_from_u64(cfg.seed)
-    svc = StdRng.seed_from_u64(cfg.seed ^ 0x9E37_79B9_7F4A_7C15)
-    total = cfg.warmup + cfg.customers
-    cfg.interarrival.sample(arr)  # the first arrival
-    out, w = [], 0.0
-    for n in range(total):
-        out.append(w)
-        s = cfg.service.sample(svc)
-        if n + 1 < total:
-            a = cfg.interarrival.sample(arr)
-            w = fmax(w + s - a, 0.0)
-    return out[cfg.warmup :]

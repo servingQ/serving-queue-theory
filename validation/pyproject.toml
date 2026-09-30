@@ -12,7 +12,8 @@ dev = ["pytest>=8.3", "ruff>=0.11"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# the modules sit flat in src/ (`import checks`, `import serq`)
+# the layers sit in src/ (`from theory.dist import ...`, `from sim import serq`,
+# `import checks`, `python -m report.validation`)
 [tool.hatch.build.targets.wheel]
 only-include = ["src"]
 sources = ["src"]

@@ -16,11 +16,11 @@ import math
 from dataclasses import dataclass
 from functools import cache
 
-import serq
 from constants import CAL_DECODE_STEP, CAL_PREFILL_LINEAR, OPEN_CAP, OPEN_CAPS, OPEN_SEEDS
 from fmt import ssum
-from models.agentic import EvictionPolicy as P
-from stats import Estimate, replications
+from sim import serq
+from sim.agentic import EvictionPolicy as P
+from sim.stats import Estimate, replications
 
 PROGRAM = serq.PROGRAMS / "open_vllm.sq"
 # Session arrival rates (per s): at the default cap and the priced order, the

@@ -1,13 +1,13 @@
-"""Probability laws of the scenarios: exact moments, serQ sampler expressions,
-and sampling with rand's `StdRng` (serQ's `Dist`, `engine/dist.rs`)."""
+"""Probability laws of the scenarios: exact moments and sampling with rand's
+`StdRng` (serQ's `Dist`, `engine/dist.rs`). `sim.laws` writes a law in
+serQ's sampler."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 
-from fmt import number
-from rng import StdRng
+from theory.rng import StdRng
 
 
 class Dist:
@@ -26,10 +26,6 @@ class Dist:
         return self.variance() / (m * m)
 
     def sample(self, rng: StdRng) -> float:
-        raise NotImplementedError
-
-    def sample_expr(self) -> str:
-        """The law as an expression in serQ's sampler."""
         raise NotImplementedError
 
 
@@ -51,9 +47,6 @@ class Deterministic(Dist):
     def sample(self, rng: StdRng) -> float:
         return self.x
 
-    def sample_expr(self) -> str:
-        return f"~det({number(self.x)})"
-
 
 @dataclass(frozen=True)
 class Exponential(Dist):
@@ -67,9 +60,6 @@ class Exponential(Dist):
 
     def sample(self, rng: StdRng) -> float:
         return _sample_exp(rng, self.mean_)
-
-    def sample_expr(self) -> str:
-        return f"~exp({number(self.mean_)})"
 
 
 @dataclass(frozen=True)
@@ -92,9 +82,6 @@ class Erlang(Dist):
             acc += _sample_exp(rng, phase)
         return acc
 
-    def sample_expr(self) -> str:
-        return f"~erlang({self.k}, {number(self.mean_)})"
-
 
 @dataclass(frozen=True)
 class HyperExp(Dist):
@@ -112,12 +99,6 @@ class HyperExp(Dist):
         mean = self.mean1 if rng.random_f64() < self.p else self.mean2
         return _sample_exp(rng, mean)
 
-    def sample_expr(self) -> str:
-        return (
-            f"(~bernoulli({number(self.p)}) ? ~exp({number(self.mean1)}) : "
-            f"~exp({number(self.mean2)}))"
-        )
-
 
 @dataclass(frozen=True)
 class Uniform(Dist):
@@ -133,9 +114,6 @@ class Uniform(Dist):
 
     def sample(self, rng: StdRng) -> float:
         return self.lo + (self.hi - self.lo) * rng.random_f64()
-
-    def sample_expr(self) -> str:
-        return f"~uniform({number(self.lo)}, {number(self.hi)})"
 
 
 @dataclass(frozen=True)
@@ -164,16 +142,6 @@ class Discrete(Dist):
                 return v
         return self.values[-1]
 
-    def sample_expr(self) -> str:
-        assert self.values and len(self.values) == len(self.probs)
-        tail = number(self.values[-1])
-        suffix = self.probs[-1]
-        for value, prob in reversed(list(zip(self.values[:-1], self.probs[:-1], strict=True))):
-            suffix += prob
-            if prob > 0.0:
-                tail = f"(~bernoulli({number(prob / suffix)}) ? {number(value)} : {tail})"
-        return tail
-
 
 @dataclass(frozen=True)
 class HitMiss(Dist):
@@ -190,9 +158,6 @@ class HitMiss(Dist):
     def sample(self, rng: StdRng) -> float:
         return self.hit if rng.random_f64() < self.p_hit else self.miss
 
-    def sample_expr(self) -> str:
-        return f"(~bernoulli({number(self.p_hit)}) ? {number(self.hit)} : {number(self.miss)})"
-
 
 @dataclass(frozen=True)
 class Bernoulli(Dist):
@@ -206,9 +171,6 @@ class Bernoulli(Dist):
 
     def sample(self, rng: StdRng) -> float:
         return 1.0 if rng.random_f64() < self.p else 0.0
-
-    def sample_expr(self) -> str:
-        return f"~bernoulli({number(self.p)})"
 
 
 def exp(mean: float) -> Exponential:

@@ -17,12 +17,11 @@ import math
 from dataclasses import dataclass
 from functools import cache
 
-import serq
-from analytic import miss_price, num_in_system
 from constants import CAL_DECODE_STEP, CAL_PREFILL_LINEAR, CAL_PREFILL_QUADRATIC
 from fmt import ssum
-from models.batch import paired_differences
-from stats import Estimate, batch_means
+from sim import serq
+from sim.stats import Estimate, batch_means, paired_differences
+from theory.analytic import miss_price, num_in_system
 
 PROGRAM = serq.PROGRAMS / "price_vllm.sq"
 HIT_TOKENS = 512.0
