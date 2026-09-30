@@ -1,7 +1,10 @@
 """Unit tests of the library pieces that do not run serQ."""
 
 import math
+import tomllib
+from pathlib import Path
 
+import pyserq
 from pyserq import Rng
 
 import fmt
@@ -21,6 +24,14 @@ from theory.dist import (
 from theory.eviction import Item, Weighted
 
 # ---------------------------------------------------------------- rng ----
+
+
+def test_pyserq_is_the_pinned_release():
+    """pyserq (PyPI) and the serQ checkout (examples, oracle IR) are one release."""
+    pin = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    tag = pin["tool"]["serq"]["tag"]
+    assert f"v{pyserq.__version__}" == tag
+    assert f"pyserq=={pyserq.__version__}" in pin["project"]["dependencies"]
 
 
 def test_rng_is_rand_0_9_std_rng():

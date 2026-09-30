@@ -3,7 +3,7 @@
 `scripts/fetch_serq.sh` (`make serq`) checks out the release pinned in
 `validation/pyproject.toml` into `.serq/src`, whose `examples/` hold the
 general programs (`mg1`, `ps`, `closed`, `pd_tandem`, `pd_open`, `routing`,
-...) and whose `pyserq/` is the binding `uv sync` builds. A run is
+...); pyserq, from PyPI, is the same release. A run is
 `pyserq.compile` then `pyserq.run`, whose report has the fields of
 `serq run --json` by name. This module adds only what pyserq lacks: an
 observation's samples as numpy arrays.

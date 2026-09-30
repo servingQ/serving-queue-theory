@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # serQ (https://github.com/vrvrv/serQ), the serving-deployment language: the
-# example programs, the Python binding pyserq that the validation package
-# runs (`uv sync` builds it from .serq/src/pyserq), the vLLM oracle with its
+# example programs the validation package runs with pyserq (from PyPI, the
+# same release), the vLLM oracle with its
 # test vectors (lean/ServingQueueTheory/SerqOracle.lean is generated from
 # them), and the CLI `serq` the scripts in scripts/exp run. This script
 # checks out the release pinned in validation/pyproject.toml ([tool.serq])

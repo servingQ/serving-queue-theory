@@ -3,8 +3,9 @@
 Paper-specific validation and report generation for `paper/main.tex`, in
 Python. serQ is the simulation engine: every simulated system is a serQ
 program (`programs/*.sq` here, the general ones in serQ's `examples/`), run
-in process by pyserq, which `uv sync` builds from the release pinned in
-`pyproject.toml` (`[tool.serq]`) with serQ's Rust toolchain. This
+in process by pyserq, which `uv sync` installs from PyPI at the release
+pinned in `pyproject.toml` (`[tool.serq]`, whose checkout holds the
+examples). This
 package holds the configurations, the analytic references, the offline
 eviction instances, the statistics and the table generation.
 

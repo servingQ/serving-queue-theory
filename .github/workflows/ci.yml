@@ -105,14 +105,14 @@ jobs:
       - uses: ./.github/actions/serq-access
         with:
           deploy-key: ${{ secrets.SEQ_DEPLOY_KEY }}
-      # The pinned release, its CLI and pyserq's build are made with serQ's own
-      # Rust toolchain; cache them by the pin.
+      # The pinned release's checkout (its examples); pyserq comes from PyPI,
+      # so nothing is built here.
       - uses: actions/cache@v4
         with:
           path: .serq
-          key: serq-${{ runner.os }}-${{ hashFiles('validation/pyproject.toml') }}
-      - name: serQ CLI (the release pinned in validation/pyproject.toml)
-        run: scripts/fetch_serq.sh
+          key: serq-src-${{ runner.os }}-${{ hashFiles('validation/pyproject.toml') }}
+      - name: serQ checkout (the release pinned in validation/pyproject.toml)
+        run: scripts/fetch_serq.sh --src
       - uses: astral-sh/setup-uv@v6
         with:
           working-directory: validation
