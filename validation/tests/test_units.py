@@ -1,9 +1,9 @@
-"""Unit tests of the library pieces that do not run seQ."""
+"""Unit tests of the library pieces that do not run serQ."""
 
 import math
 
-from validation import fmt
-from validation.dist import (
+import fmt
+from dist import (
     Deterministic,
     Erlang,
     HitMiss,
@@ -12,11 +12,11 @@ from validation.dist import (
     exp,
     hyperexp_balanced,
 )
-from validation.models import eviction
-from validation.models.eviction import Item, Weighted
-from validation.rng import StdRng
-from validation.stats import Welford, batch_means, quantile
-from validation.workload import TraceCorpus, weka
+from models import eviction
+from models.eviction import Item, Weighted
+from rng import StdRng
+from stats import Welford, batch_means, quantile
+from workload import TraceCorpus, weka
 
 # ---------------------------------------------------------------- rng ----
 

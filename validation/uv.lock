@@ -121,6 +121,10 @@ wheels = [
 ]
 
 [[package]]
+name = "pyserq"
+source = { directory = "../.serq/src/pyserq" }
+
+[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -167,6 +171,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
+    { name = "pyserq" },
 ]
 
 [package.dev-dependencies]
@@ -176,7 +181,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=2.2" }]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.2" },
+    { name = "pyserq", directory = "../.serq/src/pyserq" },
+]
 
 [package.metadata.requires-dev]
 dev = [

@@ -1,10 +1,10 @@
 /-
-# The paper's replicas as seQ programs
+# The paper's replicas as serQ programs
 
-The two deployments of the paper written in seQ (`Seq.lean`): the
+The two deployments of the paper written in serQ (`Serq.lean`): the
 disaggregated replica of the lecture (Lecture 1, Example L1:ex:program)
 and the colocated two-resource replica of §2.2, both checked well formed;
-the colocated one also in seQ's surface syntax, equal to the constructor
+the colocated one also in serQ's surface syntax, equal to the constructor
 form by `rfl`.
 
 Attribute slots: `0 = K` (prefix tokens), `1 = n` (new tokens), `2 = o`
@@ -14,12 +14,12 @@ admission).
 Key theorems: `disaggregatedReplica_wf`, `colocatedReplica_wf`,
 `colocatedReplica'_eq`.
 -/
-import ServingQueueTheory.Seq
+import ServingQueueTheory.Serq
 
 namespace ServingQueueTheory
 namespace Deployments
 
-open SeqLang
+open SerqLang
 
 /-- Prefill cost `P(n, K) = a n + b n (K + n/2)` of Definition L1:def:costs. -/
 noncomputable def prefillCost (a b n K : ℝ) : ℝ := a * n + b * n * (K + n / 2)

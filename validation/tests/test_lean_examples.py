@@ -2,7 +2,7 @@
 closed form was mistranscribed from Lean, one of these fails. Test names
 follow the Lean theorem names."""
 
-from validation.analytic import (
+from analytic import (
     agg_capacity,
     agg_capacity_i,
     decode_local,
@@ -23,8 +23,8 @@ from validation.analytic import (
     utilization,
     via_prefill_pool,
 )
-from validation.dist import HitMiss, discrete
-from validation.models.eviction import Item, evict_cost, shortest_first_lean
+from dist import HitMiss, discrete
+from models.eviction import Item, evict_cost, shortest_first_lean
 
 
 def close(a, b):

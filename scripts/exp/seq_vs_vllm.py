@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Compare a seQ replay of the GPU testbed (`.seq/src/examples/replay/vllm_replay.seq`)
+"""Compare a serQ replay of the GPU testbed (`.serq/src/examples/replay/vllm_replay.sq`)
 with the measured vLLM runs (`data/exp/gpu/e2b/<run>/rounds.jsonl`,
 research/testbed-gpu.md), turn by turn.
 
     python3 scripts/exp/seq_vs_vllm.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b \
-        --seq .seq/src --out data/exp/seq/gpu.txt s50_base s42_base s35_base s30_base s25_base s35_m10
+        --seq .serq/src --out data/exp/seq/gpu.txt s50_base s42_base s35_base s30_base s25_base s35_m10
 
-For every run: the seQ program is run with the run's spacing and trace
+For every run: the serQ program is run with the run's spacing and trace
 (`_m10` runs use the forced-miss trace), its observations are dumped, and
 the turns are paired by (session, round). Reported inside the analysis
 window (90 s after the first arrival to the last arrival): the hit /
@@ -22,8 +22,8 @@ import os
 import subprocess
 import sys
 
-# the CLI of the pinned seQ release (scripts/fetch_seq.sh)
-ROOT_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".seq", "bin")
+# the CLI of the pinned serQ release (scripts/fetch_serq.sh)
+ROOT_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".serq", "bin")
 from statistics import mean
 
 
@@ -78,10 +78,10 @@ def load_gpu(path):
 
 
 def run_seq(seq_dir, trace, spacing, dump):
-    prog = os.path.join(seq_dir, "programs", "vllm_replay.seq")
+    prog = os.path.join(seq_dir, "programs", "vllm_replay.sq")
     os.makedirs(dump, exist_ok=True)
     csv = os.path.abspath(os.path.join(seq_dir, "programs", "data", trace + ".csv"))
-    seq = os.path.join(ROOT_BIN, "seq-lang")
+    seq = os.path.join(ROOT_BIN, "serq")
     args = [prog, "--trace", csv, "--set", f"spacing={spacing}"]
     # what ran, as IR (the program with its constants folded and the trace)
     subprocess.run([seq, "ir", *args], check=True, stdout=open(os.path.join(dump, "program.ir.json"), "w"))
@@ -127,7 +127,7 @@ def report(name, gpu, model, last):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpu", required=True)
-    ap.add_argument("--seq", default=".seq/src")
+    ap.add_argument("--seq", default=".serq/src")
     ap.add_argument("--out")
     ap.add_argument("runs", nargs="+")
     args = ap.parse_args()

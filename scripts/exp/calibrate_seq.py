@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Calibrate the two overhead constants of .seq/src/examples/replay/vllm_replay.seq
+"""Calibrate the two overhead constants of .serq/src/examples/replay/vllm_replay.sq
 (c_it: fixed seconds per iteration, c0: seconds per request outside the
 engine) on the light-load A100 runs and report every run.
 
@@ -43,10 +43,10 @@ def model(run, spacing, hi, c_it, c0, tmp):
     trace = "short_m10" if "m10" in run else "short_base"
     if run.endswith("_s1"):
         trace += "_s1"
-    csv = os.path.abspath(os.path.join(ROOT, ".seq", "src", "programs", "data", trace + ".csv"))
-    prog = os.path.join(ROOT, ".seq", "src", "programs", "vllm_replay.seq")
+    csv = os.path.abspath(os.path.join(ROOT, ".serq", "src", "programs", "data", trace + ".csv"))
+    prog = os.path.join(ROOT, ".serq", "src", "programs", "vllm_replay.sq")
     d = os.path.join(tmp, "d")
-    subprocess.run([os.path.join(ROOT, ".seq", "bin", "seq-lang"), "run", prog, "--trace", csv,
+    subprocess.run([os.path.join(ROOT, ".serq", "bin", "serq"), "run", prog, "--trace", csv,
                     "--set", f"spacing={spacing}", "--set", f"c_it={c_it}", "--set", f"c0={c0}",
                     "--dump", d], check=True, stdout=subprocess.DEVNULL)
 

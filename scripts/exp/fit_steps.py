@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Fit the step-cost expression of .seq/src/examples/replay/vllm_replay.seq to the
+"""Fit the step-cost expression of .serq/src/examples/replay/vllm_replay.sq to the
 A100 step sweeps (data/exp/gpu_seq/steps.jsonl, scripts/exp/lambda/seq_cases.py).
 
-Two forms, both in seQ's step quantities (ntok, npre, ndec, kvb = KV held by
+Two forms, both in serQ's step quantities (ntok, npre, ndec, kvb = KV held by
 the scheduled decoders, attn = sum over prefill chunks n (K + n/2)):
   sum: t = c + d ndec + e kvb + a npre + b attn
   max: t = c + max(w + e kvb + d ndec, a ntok + b attn)
