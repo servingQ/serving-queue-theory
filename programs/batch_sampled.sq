@@ -1,5 +1,6 @@
 // Paper's open/closed sampled-work queue with session feedback. The adapter
-// chooses the arrival law, service law, capacity curve and exact batch cap.
+// (sim.batch) chooses the arrival kind and the server kind, gives the defs
+// below their bodies (`defs=`) and sets the exact batch cap.
 let Lambda = 0.7;
 let N = 16;
 let p = 0;
@@ -8,15 +9,21 @@ let beta = 0;
 let phi_cap = inf;
 let service_rate = 1;
 
+// the work of a turn, the tool time, and the PS capacity at `present` turns
+def prefill_work() = ~exp(1);
+def decode_work() = ~det(0);
+def tool_time() = ~det(0);
+def capacity() = service_rate;
+
 pool batch { cap B; }
-stage svc : ps(service_rate);
+stage svc : ps(capacity());
 stage tool : delay;
 
 workload {
   arrive poisson(Lambda);
   turn {
-    set prefill = ~exp(1);
-    set decode = ~det(0);
+    set prefill = prefill_work();
+    set decode = decode_work();
   }
 }
 
@@ -33,7 +40,7 @@ session {
     }
     observe response = now - ready;
     observe work = work;
-    run tool (~det(0));
+    run tool (tool_time());
     branch with (p) { } else { end; }
   }
 }

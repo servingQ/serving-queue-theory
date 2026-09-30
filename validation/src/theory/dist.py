@@ -1,5 +1,5 @@
-"""Probability laws of the scenarios: exact moments and sampling with rand's
-`StdRng` (serQ's `Dist`, `engine/dist.rs`). `sim.laws` writes a law in
+"""Probability laws of the scenarios: exact moments and sampling with rand
+0.9's `StdRng` (`pyserq.Rng`; serQ's `Dist`, `engine/dist.rs`). `sim.laws` writes a law in
 serQ's sampler."""
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from theory.rng import StdRng
+from pyserq import Rng
 
 
 class Dist:
@@ -25,11 +25,11 @@ class Dist:
         m = self.mean()
         return self.variance() / (m * m)
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         raise NotImplementedError
 
 
-def _sample_exp(rng: StdRng, mean: float) -> float:
+def _sample_exp(rng: Rng, mean: float) -> float:
     # 1 - U is in (0, 1], so the logarithm stays finite.
     return -mean * math.log(1.0 - rng.random_f64())
 
@@ -44,7 +44,7 @@ class Deterministic(Dist):
     def second_moment(self) -> float:
         return self.x * self.x
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         return self.x
 
 
@@ -58,7 +58,7 @@ class Exponential(Dist):
     def second_moment(self) -> float:
         return 2.0 * self.mean_ * self.mean_
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         return _sample_exp(rng, self.mean_)
 
 
@@ -74,7 +74,7 @@ class Erlang(Dist):
         k = float(max(self.k, 1))
         return self.mean_ * self.mean_ * (1.0 + 1.0 / k)
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         k = max(self.k, 1)
         phase = self.mean_ / k
         acc = 0.0
@@ -95,7 +95,7 @@ class HyperExp(Dist):
     def second_moment(self) -> float:
         return 2.0 * (self.p * self.mean1 * self.mean1 + (1.0 - self.p) * self.mean2 * self.mean2)
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         mean = self.mean1 if rng.random_f64() < self.p else self.mean2
         return _sample_exp(rng, mean)
 
@@ -112,7 +112,7 @@ class Uniform(Dist):
         lo, hi = self.lo, self.hi
         return (lo * lo + lo * hi + hi * hi) / 3.0
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         return self.lo + (self.hi - self.lo) * rng.random_f64()
 
 
@@ -133,7 +133,7 @@ class Discrete(Dist):
             acc += p * v * v
         return acc
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         u = rng.random_f64()
         acc = 0.0
         for v, p in zip(self.values, self.probs, strict=True):
@@ -155,7 +155,7 @@ class HitMiss(Dist):
     def second_moment(self) -> float:
         return self.p_hit * self.hit * self.hit + (1.0 - self.p_hit) * self.miss * self.miss
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         return self.hit if rng.random_f64() < self.p_hit else self.miss
 
 
@@ -169,7 +169,7 @@ class Bernoulli(Dist):
     def second_moment(self) -> float:
         return self.p
 
-    def sample(self, rng: StdRng) -> float:
+    def sample(self, rng: Rng) -> float:
         return 1.0 if rng.random_f64() < self.p else 0.0
 
 

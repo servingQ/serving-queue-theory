@@ -112,20 +112,18 @@ def simulate(cfg: BatchConfig) -> BatchReport:
     src = (serq.PROGRAMS / "batch_sampled.sq").read_text()
     if isinstance(cfg.population, Closed):
         src = _replace(src, "arrive poisson(Lambda);", "arrive closed(N);")
-    src = _replace(src, "~exp(1)", laws.expr(cfg.prefill))
-    src = _replace(src, "~det(0)", laws.expr(cfg.decode))
-    src = _replace(src, "run tool (~det(0));", f"run tool ({laws.expr(cls.tool_time)});")
+    defs = {
+        "prefill_work": laws.expr(cfg.prefill),
+        "decode_work": laws.expr(cfg.decode),
+        "tool_time": laws.expr(cls.tool_time),
+    }
     if isinstance(cfg.server, Fifo):
-        src = _replace(src, "stage svc : ps(service_rate);", "stage svc : fifo;")
+        src = _replace(src, "stage svc : ps(capacity());", "stage svc : fifo;")
         phi, rate = Constant(1.0), 1.0
     else:
         phi = cfg.server.phi
         if isinstance(phi, Saturating):
-            src = _replace(
-                src,
-                "stage svc : ps(service_rate);",
-                "stage svc : ps(min(present, phi_cap) / (1 + beta * (min(present, phi_cap) - 1)));",
-            )
+            defs["capacity"] = "min(present, phi_cap) / (1 + beta * (min(present, phi_cap) - 1))"
         rate = phi.c if isinstance(phi, Constant) else 1.0
     if isinstance(phi, Constant):
         beta, phi_cap = 0.0, math.inf
@@ -144,7 +142,9 @@ def simulate(cfg: BatchConfig) -> BatchReport:
         "phi_cap": phi_cap,
         "service_rate": rate,
     }
-    r = serq.run(source=src, sets=sets, seed=cfg.seed, warmup=cfg.warmup, horizon=cfg.horizon)
+    r = serq.run(
+        source=src, sets=sets, defs=defs, seed=cfg.seed, warmup=cfg.warmup, horizon=cfg.horizon
+    )
     response, ttft = r.observe("response"), r.observe("ttft")
     responses, ttfts = _ordered(response), _ordered(ttft)
     rv = np.array([x[1] for x in responses])

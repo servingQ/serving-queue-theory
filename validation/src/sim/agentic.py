@@ -205,7 +205,8 @@ _HIT = "(s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (
 _TRANSFER = "(work(link) + size / bw)"
 
 
-def _source(cfg: AgenticConfig) -> str:
+def _program(cfg: AgenticConfig) -> tuple[str, dict[str, str]]:
+    """`agentic_model.sq`, and the bodies of its defs for `cfg`."""
     src = (serq.PROGRAMS / "agentic_model.sq").read_text()
     if isinstance(cfg.population, Open):
         src = _replace(src, "arrive closed(N);", "arrive poisson(Lambda);")
@@ -218,34 +219,30 @@ def _source(cfg: AgenticConfig) -> str:
             discrete([float(i) for i in range(len(weights))], [w / wsum for w in weights])
         )
     )
-    src = _replace(
-        src,
-        "set K = 0; set cold = 1; set p = 0.9;",
-        f"set K = 0; set cold = 1; set cls = {class_law}; "
-        f"set p = {_class_expr(cfg, lambda c: number(c.resume_prob))}; "
-        f"set mean_new = {_class_expr(cfg, lambda c: number(c.new_tokens.mean()))}; "
-        f"set mean_out = {_class_expr(cfg, lambda c: number(c.output_tokens.mean()))}; "
-        f"set tau = {_class_expr(cfg, lambda c: number(c.tool_time.mean()))};",
-    )
-    src = _replace(
-        src, "~uniform(1e4, 3e4)", _class_expr(cfg, lambda c: laws.expr(c.initial_tokens))
-    )
-    src = _replace(src, "~exp(1000)", _class_expr(cfg, lambda c: laws.expr(c.new_tokens)))
-    src = _replace(src, "~exp(300)", _class_expr(cfg, lambda c: laws.expr(c.output_tokens)))
-    src = _replace(src, "~exp(3)", _class_expr(cfg, lambda c: laws.expr(c.tool_time)))
+    defs = {
+        "program_class": class_law,
+        "resume_prob": _class_expr(cfg, lambda c: number(c.resume_prob)),
+        "mean_new_tokens": _class_expr(cfg, lambda c: number(c.new_tokens.mean())),
+        "mean_output_tokens": _class_expr(cfg, lambda c: number(c.output_tokens.mean())),
+        "mean_tool_time": _class_expr(cfg, lambda c: number(c.tool_time.mean())),
+        "initial_tokens": _class_expr(cfg, lambda c: laws.expr(c.initial_tokens)),
+        "new_tokens": _class_expr(cfg, lambda c: laws.expr(c.new_tokens)),
+        "output_tokens": _class_expr(cfg, lambda c: laws.expr(c.output_tokens)),
+        "tool_time": _class_expr(cfg, lambda c: laws.expr(c.tool_time)),
+    }
     E = EvictionPolicy
     key = {
-        E.ShortestFirst: "evict by (waiting, size);",
-        E.LongestFirst: "evict by (waiting, -size);",
-        E.Lru: "evict by (waiting, last);",
-        E.Random: "evict by (waiting, ~uniform(0, 1));",
-        E.Density: "evict by (waiting, (waiting ? 1 : p) * (a + b * size / 2));",
-        E.Priced: "evict by (waiting, (waiting ? 1 : p) * price(svc, s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (d + dv * (size + mean_new)), a * size + b * size * size / 2) / size);",
-        E.PricedMemory: "evict by (waiting, (waiting ? 1 : p) * price(svc, s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (d + dv * (size + mean_new)), a * size + b * size * size / 2) / (size * (waiting ? 1 : tau)));",
+        E.ShortestFirst: "size",
+        E.LongestFirst: "-size",
+        E.Lru: "last",
+        E.Random: "~uniform(0, 1)",
+        E.Density: "(waiting ? 1 : p) * (a + b * size / 2)",
+        E.Priced: "(waiting ? 1 : p) * price(svc, s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (d + dv * (size + mean_new)), a * size + b * size * size / 2) / size",
+        E.PricedMemory: "(waiting ? 1 : p) * price(svc, s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (d + dv * (size + mean_new)), a * size + b * size * size / 2) / (size * (waiting ? 1 : tau))",
     }.get(cfg.eviction)
     if key is None:
         raise ValueError("block-level eviction belongs to the batch model")
-    src = _replace(src, "evict by (waiting, size);", key)
+    defs["evict_key"] = key
     O, blocking = OffloadPolicy, cfg.fetch == FetchMode.Blocking
     if cfg.offload == O.Never:
         spill = "0"
@@ -263,7 +260,7 @@ def _source(cfg: AgenticConfig) -> str:
             if blocking
             else f"!waiting && {_TRANSFER} < p * price(svc, {_HIT}, {_MISS})"
         )
-    src = _replace(src, "when (0)", f"when ({spill})")
+    defs["spills"] = spill
     if cfg.offload == O.Never:
         fetch = "0"
     elif cfg.offload == O.Always:
@@ -274,9 +271,8 @@ def _source(cfg: AgenticConfig) -> str:
         fetch = "work(link) + K / bw < (a * K + b * K * K / 2) * (1 + queued(slot))"
     else:
         fetch = "work(link) + K / bw < price(svc, s0 + a * mean_new + b * mean_new * (K + mean_new / 2) + mean_out * (d + dv * (K + mean_new)), a * K + b * K * K / 2)"
-    src = _replace(src, "blocking == 0 && 1", f"blocking == 0 && ({fetch})")
-    src = _replace(src, "blocking == 1 && 1", f"blocking == 1 && ({fetch})")
-    return src
+    defs["fetches"] = fetch
+    return src, defs
 
 
 def simulate(cfg: AgenticConfig) -> AgenticReport:
@@ -300,8 +296,9 @@ def simulate(cfg: AgenticConfig) -> AgenticReport:
         "bw": cfg.tier_bandwidth,
         "blocking": 1.0 if cfg.fetch == FetchMode.Blocking else 0.0,
     }
+    src, defs = _program(cfg)
     r = serq.run(
-        source=_source(cfg), sets=sets, seed=cfg.seed, warmup=cfg.warmup, horizon=cfg.horizon
+        source=src, sets=sets, defs=defs, seed=cfg.seed, warmup=cfg.warmup, horizon=cfg.horizon
     )
 
     def values(name):

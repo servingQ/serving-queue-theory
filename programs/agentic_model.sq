@@ -1,5 +1,7 @@
-// Paper agentic queue. The Python adapter (sim.agentic) supplies class laws and policy
-// expressions; serQ owns the event loop, queues, cache and transfer stages.
+// Paper agentic queue. The Python adapter (sim.agentic) gives the defs below
+// their bodies (`defs=`): the class of a new program and its laws, the eviction
+// key, the spill and fetch conditions; serQ owns the event loop, queues, cache
+// and transfer stages.
 let N = 16;
 let Lambda = 0.05;
 let C = 4e5;
@@ -12,12 +14,29 @@ let dv = 0;
 let bw = 1e6;
 let blocking = 0;
 
+// a new program's class, and each class's resume probability and mean work
+def program_class() = 0;
+def resume_prob() = 0.9;
+def mean_new_tokens() = 1000;
+def mean_output_tokens() = 300;
+def mean_tool_time() = 3;
+// a class's laws (they may read `cls`)
+def initial_tokens() = ~uniform(1e4, 3e4);
+def new_tokens() = ~exp(1000);
+def output_tokens() = ~exp(300);
+def tool_time() = ~exp(3);
+// the policies: the eviction key after `waiting`, when a victim spills to the
+// tier, when a turn fetches its spilled KV
+def evict_key() = size;
+def spills() = 0;
+def fetches() = 1;
+
 pool slot { cap 1; }
 pool tier { cap inf; }
 pool kv {
   cap C;
-  evict by (waiting, size);
-  spill tier via link (size / bw) when (0);
+  evict by (waiting, evict_key());
+  spill tier via link (size / bw) when (spills());
 }
 
 stage svc : fifo;
@@ -26,10 +45,14 @@ stage link : fifo;
 
 workload {
   arrive closed(N);
-  init { set K = 0; set cold = 1; set p = 0.9; }
+  init {
+    set K = 0; set cold = 1; set cls = program_class(); set p = resume_prob();
+    set mean_new = mean_new_tokens(); set mean_out = mean_output_tokens();
+    set tau = mean_tool_time();
+  }
   turn {
-    set n = cold ? ~uniform(1e4, 3e4) : ~exp(1000);
-    set o = ~exp(300);
+    set n = cold ? initial_tokens() : new_tokens();
+    set o = output_tokens();
   }
 }
 
@@ -45,7 +68,7 @@ session {
     }
     set staged = 0;
     set stall = 0;
-    branch (cachedin(tier) > 0 && blocking == 0 && 1) {
+    branch (cachedin(tier) > 0 && blocking == 0 && fetches()) {
       run link (K / bw);
       set staged = 1;
       observe fetched = 1;
@@ -54,7 +77,7 @@ session {
     set enqueued = now;
     hold slot (1) {
       observe wait = now - enqueued;
-      branch (cachedin(tier) > 0 && blocking == 1 && 1) {
+      branch (cachedin(tier) > 0 && blocking == 1 && fetches()) {
         set fetch_start = now;
         run link (K / bw);
         set stall = now - fetch_start;
@@ -85,7 +108,7 @@ session {
       drop tier;
       end;
     }
-    set z = ~exp(3);
+    set z = tool_time();
     observe think = z;
     run tool (z);
     branch with (p) { } else { drop kv; drop tier; end; }

@@ -2,6 +2,8 @@
 
 import math
 
+from pyserq import Rng
+
 import fmt
 from sim import laws
 from sim.stats import Welford, batch_means, quantile
@@ -17,31 +19,19 @@ from theory.dist import (
     hyperexp_balanced,
 )
 from theory.eviction import Item, Weighted
-from theory.rng import StdRng
 
 # ---------------------------------------------------------------- rng ----
 
 
-def test_std_rng_matches_rand_0_9():
-    # Reference values printed by rand 0.9.5's StdRng.
-    r = StdRng.seed_from_u64(5)
-    first = r.next_u64()
-    r = StdRng.seed_from_u64(5)
-    assert r.next_u64() == first
-    r = StdRng.seed_from_u64(11)
-    draws = [(r.range_u64(1, 200), r.range_u32(4, 12), r.range_f64(0.1, 0.6)) for _ in range(3)]
-    assert all(1 <= a <= 200 and 4 <= b <= 12 and 0.1 <= c <= 0.6 for a, b, c in draws)
-
-
-def test_std_rng_stream_crosses_buffers():
-    # next_u64 reads two consecutive words of one continuous key stream.
-    r = StdRng.seed_from_u64(9)
-    words = [r.next_u32() for _ in range(2 * 256 * 16 + 3)]
-    r = StdRng.seed_from_u64(9)
-    r.next_u32()
-    pairs = [r.next_u64() for _ in range(256 * 16)]
-    assert pairs[0] == (words[2] << 32) | words[1]
-    assert pairs[-1] == (words[2 * 256 * 16] << 32) | words[2 * 256 * 16 - 1]
+def test_rng_is_rand_0_9_std_rng():
+    # The draws the port of rand 0.9's StdRng made (theory/rng.py, removed
+    # with serQ rc8): the offline eviction instances and the footprint
+    # Monte Carlo depend on this stream.
+    r = Rng(5)
+    assert r.next_u64() == 6311119817046432122
+    assert r.random_f64() == 0.006618081401074782
+    assert (r.range_u64(1, 200), r.range_u32(4, 12)) == (91, 11)
+    assert r.range_f64(0.1, 0.6) == 0.2257269152734617
 
 
 # --------------------------------------------------------------- dist ----
@@ -64,7 +54,7 @@ def test_moments_are_exact():
 
 def test_seeded_sampling_matches_moments():
     for d in [exp(2.0), Uniform(1.0, 3.0), discrete([100.0, 3700.0], [0.75, 0.25])]:
-        rng = StdRng.seed_from_u64(7)
+        rng = Rng(7)
         xs = [d.sample(rng) for _ in range(100_000)]
         assert abs(sum(xs) / len(xs) - d.mean()) < 0.03 * max(abs(d.mean()), 1.0)
 
@@ -156,7 +146,7 @@ def _items(cs):
 
 def test_lean_definition_matches_greedy():
     assert eviction.shortest_first_lean([4, 5, 6], 6) == [4, 5]
-    rng = StdRng.seed_from_u64(0)
+    rng = Rng(0)
     for _ in range(2000):
         inst = eviction.random_instance(rng, 8, 30, eviction.UNIFORM)
         lean = eviction.shortest_first_lean(sorted(i.c for i in inst.items), inst.delta)
@@ -174,7 +164,7 @@ def _brute_force(items, delta):
 
 
 def test_dp_matches_brute_force():
-    rng = StdRng.seed_from_u64(1)
+    rng = Rng(1)
     for resume in [eviction.UNIFORM, eviction.varied(0.05)]:
         for _ in range(200):
             inst = eviction.random_instance(rng, 10, 25, resume)
@@ -194,7 +184,7 @@ def test_counterexample_of_prop_blind_i():
 
 
 def test_guarded_is_two_approx_against_brute_force():
-    rng = StdRng.seed_from_u64(11)
+    rng = Rng(11)
     worst_plain = 0.0
     for _ in range(2000):
         n = rng.range_u32(1, 10)

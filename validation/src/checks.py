@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import cache
 
+from pyserq import Rng
+
 from constants import TRACE_CAP_FACTORS, TRACE_POOLS, TRACE_RATES
 from fmt import disp, fixed, fmax, fmin, fold_max, sci_fixed, ssum
 from sim import agentic, batch, pd, price_vllm, queue, replay_vllm, routing
@@ -76,7 +78,6 @@ from theory.dist import (
 )
 from theory.eviction import Item, varied
 from theory.pd import split_capacity
-from theory.rng import StdRng
 
 
 class Kind(Enum):
@@ -513,7 +514,7 @@ def footprint_scenario() -> tuple[FootprintRow, ...]:
     rows = []
     for i, (law, d) in enumerate(laws):
         dist = discrete([x[0] for x in d], [x[1] for x in d])
-        rng = StdRng.seed_from_u64(230 + i)
+        rng = Rng(230 + i)
         w = Welford()
         for _ in range(1_000_000):
             w.push(float(fifo_admitted(m, dist, rng)))
@@ -827,7 +828,7 @@ def guarded_density_two_approx() -> Check:
     )  # fmt: skip
 
 
-def _memory_instance(rng: StdRng, n: int) -> list[eviction.Weighted]:
+def _memory_instance(rng: Rng, n: int) -> list[eviction.Weighted]:
     """States with price `w_i` and byte-seconds `c_i = tokens × τ_i`."""
     out = []
     for _ in range(n):
@@ -841,7 +842,7 @@ def memory_threshold_rule() -> Check:
     """Prop. memory: (i) the θ-threshold set costs no more than any set
     freeing at least as many byte-seconds; (ii) at block level, the density
     prefix plus the completing block costs at most OPT plus that block."""
-    rng = StdRng.seed_from_u64(180)
+    rng = Rng(180)
     thresholds = ok_i = 0
     ok = True
     for _ in range(2000):

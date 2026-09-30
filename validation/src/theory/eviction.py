@@ -16,9 +16,9 @@ from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
+from pyserq import Rng
 
 from fmt import fmax, rround
-from theory.rng import StdRng
 
 
 @dataclass(frozen=True)
@@ -211,12 +211,12 @@ class Instance:
     delta: int
 
 
-def _delta(rng: StdRng, total: int) -> int:
+def _delta(rng: Rng, total: int) -> int:
     frac = rng.range_f64(0.1, 0.6)
     return max(int(rround(total * frac)), 1)
 
 
-def random_instance(rng: StdRng, n: int, max_c: int, resume: Resume) -> Instance:
+def random_instance(rng: Rng, n: int, max_c: int, resume: Resume) -> Instance:
     """`n` programs with `c_i` uniform on `1..=max_c`, `ΔC` a uniform fraction
     in `[0.1, 0.6]` of the total."""
     items = []
@@ -239,7 +239,7 @@ class WeightedInstance:
     delta: int
 
 
-def random_weighted_instance(rng: StdRng, n: int, max_c: int) -> WeightedInstance:
+def random_weighted_instance(rng: Rng, n: int, max_c: int) -> WeightedInstance:
     """`c_i` uniform on `1..=max_c`, `w_i` log-uniform on `[1e-4, 1e5]`."""
     items = []
     for _ in range(n):
@@ -280,12 +280,12 @@ def ratios(inst: Instance) -> Ratios:
 
 def sweep(count: int, n: int, max_c: int, resume: Resume, seed: int) -> list[Ratios]:
     """Score the heuristics on `count` random instances."""
-    rng = StdRng.seed_from_u64(seed)
+    rng = Rng(seed)
     return [ratios(random_instance(rng, n, max_c, resume)) for _ in range(count)]
 
 
 def sweep_weighted(count: int, n: int, max_c: int, seed: int) -> list[Ratios]:
-    rng = StdRng.seed_from_u64(seed)
+    rng = Rng(seed)
     out = []
     for _ in range(count):
         inst = random_weighted_instance(rng, n, max_c)

@@ -56,7 +56,8 @@ rerun `make tables` and `make figs`, and reread the prose in
 `simulation.tex` against the new tables.
 
 The package reproduces the Rust crate it replaced bit for bit:
-`rng` is rand 0.9's `StdRng` (ChaCha12) with its range samplers,
+the generator is rand 0.9's `StdRng` (ChaCha12) with its range samplers,
+which pyserq exposes as `Rng` (the one name `theory` takes from pyserq),
 `fmt` is Rust's float formatting and `f64::round`, and sums run
 left to right (`fmt.ssum`), so the offline eviction instances, the
 footprint Monte Carlo and every generated file are unchanged. serQ's
@@ -75,19 +76,18 @@ leaves every layer may use. `tests/test_layers.py` enforces the directions.
 |--------|-------|-------|
 | `theory.analytic` | one function per Lean definition (`mm1Wait`, `pkWait`, `missPrice`, `psNum`, `psPrice`, `stationaryMean`, `expFit`, `pdFullCapacity`, …) | |
 | `theory.dist` | the scenarios' laws: exact moments and seeded sampling | |
-| `theory.rng` | rand 0.9's `StdRng` | |
 | `theory.queue` | Lindley's recursion on the streams of `mg1.sq`, an independent reproduction of a serQ run | §2.1 |
 | `theory.batch` | the PS capacity `φ(n)`, the mean number at a PS queue, and `fifo_admitted` for footprint | §2, Props. price, decode, footprint |
 | `theory.pd` | the capacity of an integer prefill/decode split | App. B |
 | `theory.eviction` | offline eviction instances with an exact DP optimum; SF, density and guarded density greedy, on `p c²` or arbitrary weights | §3.1 |
 | `sim.serq` | runs a serQ program in process with pyserq (`compile`, `run`); pyserq's report, with an observation's samples as numpy arrays | all |
-| `sim.laws` | a law of `theory.dist` as an expression in serQ's sampler | |
+| `sim.laws` | a law of `theory.dist` as an expression in serQ's sampler, the body of a program's `def` (`defs=`) | |
 | `sim.stats` | Welford moments, batch-means and replication intervals, paired differences | |
 | `sim.workload` | replayed real sessions (`TraceCorpus`, the bundled WEKA sessions, read by `pyserq.read_trace`) | §4.2 |
 | `sim.queue` | serQ's `mg1.sq` as a G/G/c FIFO queue | §2.1–2.2 |
-| `sim.batch` | `programs/batch_sampled.sq`: sampled-work FIFO, PS and exact LPS session checks | §2, Props. price, decode |
+| `sim.batch` | `programs/batch_sampled.sq`: sampled-work FIFO, PS and exact LPS session checks; the work laws and the PS capacity are the program's defs | §2, Props. price, decode |
 | `sim.price_vllm`, `sim.open_vllm`, `sim.replay_vllm` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: `programs/{price,open,replay}_vllm.sq` (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
-| `sim.agentic` | `programs/agentic_model.sq`: programs cycling queue → service → tool on one replica with finite KV; eviction and offload policies, including the congestion-priced ones | §2.2–2.3, §3.1–3.2 |
+| `sim.agentic` | `programs/agentic_model.sq`: programs cycling queue → service → tool on one replica with finite KV; eviction and offload policies, including the congestion-priced ones; the class laws and the policies are the program's defs, given by `defs=` | §2.2–2.3, §3.1–3.2 |
 | `sim.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem | App. B |
 | `sim.routing` | serQ's `routing.sq`: affinity, myopic, lookahead routing | §3.3 |
 | `checks` | the named checks; each cites paper labels and Lean theorems | all |
