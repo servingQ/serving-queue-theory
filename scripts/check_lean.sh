@@ -13,7 +13,7 @@ if grep -rn --include='*.lean' -E '\bsorry\b' ServingQueueTheory ServingQueueThe
 fi
 
 echo "== seQ oracle theorems current =="
-( cd .. && scripts/fetch_seq.sh --src && python3 scripts/gen_seq_oracle.py --check )
+( cd .. && scripts/fetch_seq.sh --src && python3 scripts/gen_seq_oracle.py --check && python3 scripts/test_seq_oracle.py )
 
 echo "== axiom audit =="
 lake env lean scripts/AxiomAudit.lean 2>&1 | perl -0pe 's/\n[ \t]+/ /g' | tee axioms.log

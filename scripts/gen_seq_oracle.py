@@ -26,7 +26,12 @@ OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SeqOracle.lean")
 # 5 added the statements `Release` and `Load` (a KV transfer between two pools),
 # which are outside the fragment: a program that uses them fails below.
 # 6 adds renewal arrivals and finite open runs, outside explicit-session semantics.
-IR_VERSION = 7
+# 8 adds multi-stage runs and whole-batch exclusive prefill, outside the fragment.
+# 9 reevaluates non-FIFO queue keys and supplies Waited, also outside it.
+# The committed corpus is still the pinned v7 release. FIFO programs in
+# v7/v8/v9 have the same fragment semantics; do not reinterpret other constructs.
+IR_VERSION = 9
+SUPPORTED_IR_VERSIONS = (7, 8, IR_VERSION)
 
 
 class Fragment(Exception):
@@ -139,6 +144,8 @@ class Lean:
                 k, e = v
                 out.append(f"{pad}observe {k} = {self.top(e)};")
             elif kind == "Run":
+                if v.get("also"):
+                    raise Fragment("multi-stage Run.also is outside the fragment")
                 s = one_ref(v["stage"], "run")
                 mode = {"Plain": "", "Prefill": " prefill", "Decode": " decode"}[v["mode"]]
                 if (s == 0) == (mode == ""):
@@ -146,6 +153,8 @@ class Lean:
                 g = f" growing {one_ref(v['growing'], 'growing')}" if v["growing"] else ""
                 out.append(f"{pad}run {s}{mode} ({self.top(v['work'])}){g};")
             elif kind == "Hold":
+                if v.get("lease") is not None:
+                    raise Fragment("a hold with a lease is outside the fragment")
                 ps = []
                 for r, u, fits in v["pools"]:
                     f = f" fits ({self.top(fits)})" if fits is not None else ""
@@ -222,9 +231,12 @@ class Lean:
 
 
 def load(name):
-    ir = json.load(open(os.path.join(ODIR, name + ".ir.json")))
-    if ir["version"] != IR_VERSION:
-        raise Fragment(f"{name}: IR version {ir['version']} (this generator reads {IR_VERSION})")
+    with open(os.path.join(ODIR, name + ".ir.json")) as source:
+        ir = json.load(source)
+    if ir["version"] not in SUPPORTED_IR_VERSIONS:
+        raise Fragment(f"{name}: IR version {ir['version']} (this generator reads {SUPPORTED_IR_VERSIONS})")
+    if ir.get("share") is not None:
+        raise Fragment(f"{name}: shared multi-stage execution is outside the fragment")
     if ir.get("arrivals") is not None:
         raise Fragment(f"{name}: finite arrival limits are outside the fragment")
     return ir, Lean(ir)
