@@ -1,10 +1,10 @@
 """Run seQ programs with the pinned CLI and read their reports.
 
 `scripts/fetch_seq.sh` (`make seq`) installs the release pinned in
-`validation/pyproject.toml` into `.seq/`: the CLI `.seq/bin/seq-lang` and the
+`validation/pyproject.toml` into `.seq/`: the CLI `.seq/bin/serq` and the
 source checkout `.seq/src`, whose `examples/` hold the general programs
 (`mg1`, `ps`, `closed`, `pd_tandem`, `pd_open`, `routing`, ...). A run is
-`seq-lang run FILE --json --dump DIR`: the JSON summary gives the observe
+`serq run FILE --json --dump DIR`: the JSON summary gives the observe
 statistics, stages and pools; the dump gives every observation as
 `time,session,turn,value`, loaded only when a caller asks for samples.
 """
@@ -29,7 +29,7 @@ REPO = Path(__file__).resolve().parents[3]
 PROGRAMS = REPO / "programs"
 DATA = REPO / "validation" / "data"
 SEQ_HOME = Path(os.environ.get("SEQ_HOME", REPO / ".seq"))
-SEQ_BIN = Path(os.environ.get("SEQ_LANG", SEQ_HOME / "bin" / "seq-lang"))
+SEQ_BIN = Path(os.environ.get("SEQ_LANG", SEQ_HOME / "bin" / "serq"))
 EXAMPLES = SEQ_HOME / "src" / "examples"
 
 
@@ -38,10 +38,10 @@ class SeqError(RuntimeError):
 
 
 def program_path(name: str) -> Path:
-    """`examples/<group>/<name>.seq` of the pinned seQ checkout."""
-    hits = sorted(EXAMPLES.glob(f"*/{name}.seq"))
+    """`examples/<group>/<name>.sq` of the pinned serQ checkout."""
+    hits = sorted(EXAMPLES.glob(f"*/{name}.sq"))
     if not hits:
-        raise FileNotFoundError(f"no {EXAMPLES}/*/{name}.seq (run `make seq`)")
+        raise FileNotFoundError(f"no {EXAMPLES}/*/{name}.sq (run `make seq`)")
     return hits[0]
 
 

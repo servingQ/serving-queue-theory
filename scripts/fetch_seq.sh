@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# seQ (https://github.com/vrvrv/seQ), the serving-deployment language: the CLI
-# `seq-lang` that the validation package runs, the example programs, and the
+# serQ (https://github.com/vrvrv/serQ), the serving-deployment language: the CLI
+# `serq` that the validation package runs, the example programs, and the
 # vLLM oracle with its test vectors (the Lean model of the language,
 # lean/ServingQueueTheory/Seq*.lean, is generated from them). This script
 # checks out the release pinned in validation/pyproject.toml ([tool.seq])
-# into .seq/src and builds its CLI into .seq/bin/seq-lang with seQ's own
+# into .seq/src and builds its CLI into .seq/bin/serq with serQ's own
 # pinned Rust toolchain (`--src`: the checkout only).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -19,16 +19,16 @@ if [ "$(cat .seq/tag 2>/dev/null)" != "$REF" ]; then
   if [ -n "$REV" ]; then
     mkdir -p .seq/src
     git -C .seq/src init -q
-    git -C .seq/src -c advice.detachedHead=false fetch -q --depth 1 https://github.com/vrvrv/seQ "$REV"
+    git -C .seq/src -c advice.detachedHead=false fetch -q --depth 1 https://github.com/vrvrv/serQ "$REV"
     git -C .seq/src -c advice.detachedHead=false checkout -q FETCH_HEAD
   else
-    git -c advice.detachedHead=false clone -q --depth 1 --branch "$TAG" https://github.com/vrvrv/seQ .seq/src
+    git -c advice.detachedHead=false clone -q --depth 1 --branch "$TAG" https://github.com/vrvrv/serQ .seq/src
   fi
   echo "$REF" > .seq/tag
 fi
-if [ $SRC_ONLY = 0 ] && [ ! -x .seq/bin/seq-lang ]; then
+if [ $SRC_ONLY = 0 ] && [ ! -x .seq/bin/serq ]; then
   # build with seQ's own pinned toolchain (.seq/src/rust-toolchain.toml)
   (cd .seq/src && export PATH="$HOME/.cargo/bin:$PATH" && { rustup toolchain install >/dev/null 2>&1 || true; } \
      && cargo install -q --locked --path . --root .. --force)
 fi
-echo "OK: seQ $REF (.seq/src$([ $SRC_ONLY = 0 ] && echo ', .seq/bin/seq-lang'))"
+echo "OK: serQ $REF (.seq/src$([ $SRC_ONLY = 0 ] && echo ', .seq/bin/serq'))"

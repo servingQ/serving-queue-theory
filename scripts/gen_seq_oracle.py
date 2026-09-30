@@ -26,7 +26,9 @@ OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SeqOracle.lean")
 # 5 added the statements `Release` and `Load` (a KV transfer between two pools),
 # which are outside the fragment: a program that uses them fails below.
 # 6 adds renewal arrivals and finite open runs, outside explicit-session semantics.
-IR_VERSION = 7
+# 7 makes `choose` compare a tuple of keys. 8 lets a run hold several stages
+# at once (`Run.also`, under `Program.share`), outside the fragment.
+IR_VERSION = 8
 
 
 class Fragment(Exception):
@@ -139,6 +141,8 @@ class Lean:
                 k, e = v
                 out.append(f"{pad}observe {k} = {self.top(e)};")
             elif kind == "Run":
+                if v.get("also"):
+                    raise Fragment("a run over several stages (`also`)")
                 s = one_ref(v["stage"], "run")
                 mode = {"Plain": "", "Prefill": " prefill", "Decode": " decode"}[v["mode"]]
                 if (s == 0) == (mode == ""):
@@ -204,7 +208,7 @@ class Lean:
         if not ss:
             raise Fragment("the workload must be explicit sessions (`CArrival::Sessions`)")
         if ir["trace"] is not None:
-            raise Fragment("a trace file: inline it (`seq-lang ir --inline-trace`)")
+            raise Fragment("a trace file: inline it (`serq ir --inline-trace`)")
         for st in ir["blocks"][ir["init"]]:
             if "Set" not in st or any(st["Set"][0] not in {a for a, _ in s["attrs"]} for s in ss):
                 raise Fragment("`init` does more than every session's presets override")

@@ -26,8 +26,8 @@ timeout 1200 ~/vllm-rbln-dynkv/.venv/bin/python .seq/src/tools/vllm_replay_oracl
   $OARGS --out "$D/oracle.csv" 2>&1 | grep -v "^INFO\|WARNING\|Triton\|Model Runner\|SSM" | tail -2
 P=(.seq/src/examples/replay/vllm_replay.seq --set N="$N" --set blocks="$BLOCKS" "${RARGS[@]}"
    --set spacing="$SP" "$@" --trace .seq/src/examples/replay/data/$TRACE.csv)
-.seq/bin/seq-lang ir "${P[@]}" > "$D/program.ir.json"      # what ran, as IR
-.seq/bin/seq-lang run "${P[@]}" --dump "$D/seq" > "$D/seq.txt"
+.seq/bin/serq ir "${P[@]}" > "$D/program.ir.json"      # what ran, as IR
+.seq/bin/serq run "${P[@]}" --dump "$D/seq" > "$D/seq.txt"
 python3 - "$D" <<'EOF'
 import sys
 D = sys.argv[1]

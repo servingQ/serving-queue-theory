@@ -22,7 +22,7 @@ import tempfile
 from concurrent.futures import ProcessPoolExecutor
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
-SEQ = os.path.join(ROOT, ".seq", "bin", "seq-lang")
+SEQ = os.path.join(ROOT, ".seq", "bin", "serq")
 VARIANTS = [
     ("vllm", "programs/replay_vllm.seq", ["lru=0"]),
     ("vllm-lru", "programs/replay_vllm.seq", ["lru=1"]),

@@ -15,9 +15,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/validation"]
 
-# The seQ release this repository runs (scripts/fetch_seq.sh reads it).
+# The serQ release this repository runs (scripts/fetch_seq.sh reads it).
+# A commit of serQ's main until v0.1.0-rc6 is tagged: IR 8 and the serQ
+# rename (serq CLI, .sq programs) are not in a release yet.
 [tool.seq]
-tag = "v0.1.0-rc5"
+rev = "b15444a3bcda7494a5f956b7b45336f0db48071c"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -46,7 +46,7 @@ def model(run, spacing, hi, c_it, c0, tmp):
     csv = os.path.abspath(os.path.join(ROOT, ".seq", "src", "programs", "data", trace + ".csv"))
     prog = os.path.join(ROOT, ".seq", "src", "programs", "vllm_replay.seq")
     d = os.path.join(tmp, "d")
-    subprocess.run([os.path.join(ROOT, ".seq", "bin", "seq-lang"), "run", prog, "--trace", csv,
+    subprocess.run([os.path.join(ROOT, ".seq", "bin", "serq"), "run", prog, "--trace", csv,
                     "--set", f"spacing={spacing}", "--set", f"c_it={c_it}", "--set", f"c0={c0}",
                     "--dump", d], check=True, stdout=subprocess.DEVNULL)
 

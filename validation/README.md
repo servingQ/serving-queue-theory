@@ -29,7 +29,7 @@ the `\tbd{}` cells of the paper (AGENTS.md rule 7).
 ## Run
 
 ```bash
-make seq      # from the repo root: the pinned seQ CLI into .seq/bin/seq-lang
+make seq      # from the repo root: the pinned serQ CLI into .seq/bin/serq
 make sim      # Lean-name check, ruff, pytest, validation report
 make report   # print the validation report only
 make tables   # regenerate ../paper/sim/*.tex and ../paper/sim/data/*.csv

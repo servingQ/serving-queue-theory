@@ -6,7 +6,7 @@ description: >
   read-only deploy key.
 inputs:
   deploy-key:
-    description: private half of the read-only deploy key on vrvrv/seQ (secret SEQ_DEPLOY_KEY)
+    description: private half of the read-only deploy key on vrvrv/serQ (secret SEQ_DEPLOY_KEY)
     required: true
 runs:
   using: composite
@@ -21,4 +21,4 @@ runs:
         mkdir -p ~/.ssh && printf '%s\n' "$KEY" > ~/.ssh/seq && chmod 600 ~/.ssh/seq
         ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
         git config --global core.sshCommand "ssh -i ~/.ssh/seq -o IdentitiesOnly=yes"
-        git config --global url."git@github.com:vrvrv/seQ".insteadOf "https://github.com/vrvrv/seQ"
+        git config --global url."git@github.com:vrvrv/serQ".insteadOf "https://github.com/vrvrv/serQ"

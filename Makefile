@@ -27,7 +27,7 @@ site: paper lectures   ## the public page (docs/, mkdocs.yml) with the PDFs, int
 sim:              ## validation: Lean-name check, ruff, pytest and validation report
 	scripts/check_sim.sh
 
-seq:              ## the seQ release pinned in validation/pyproject.toml: .seq/src (programs, oracle vectors) and the CLI .seq/bin/seq-lang
+seq:              ## the seQ release pinned in validation/pyproject.toml: .seq/src (programs, oracle vectors) and the CLI .seq/bin/serq
 	scripts/fetch_seq.sh
 
 tables:           ## regenerate paper/sim/*.tex and paper/sim/data/*.csv (validation.paper_tables)

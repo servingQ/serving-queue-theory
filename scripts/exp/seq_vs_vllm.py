@@ -81,7 +81,7 @@ def run_seq(seq_dir, trace, spacing, dump):
     prog = os.path.join(seq_dir, "programs", "vllm_replay.seq")
     os.makedirs(dump, exist_ok=True)
     csv = os.path.abspath(os.path.join(seq_dir, "programs", "data", trace + ".csv"))
-    seq = os.path.join(ROOT_BIN, "seq-lang")
+    seq = os.path.join(ROOT_BIN, "serq")
     args = [prog, "--trace", csv, "--set", f"spacing={spacing}"]
     # what ran, as IR (the program with its constants folded and the trace)
     subprocess.run([seq, "ir", *args], check=True, stdout=open(os.path.join(dump, "program.ir.json"), "w"))
