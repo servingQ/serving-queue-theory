@@ -14,7 +14,7 @@ and eviction, program-aware routing). The deliverables are:
 | Path | Deliverable |
 |------|-------------|
 | `paper/main.tex` | ICML-2026-format paper draft (tectonic, two-column) |
-| `lectures/{queueing-primer,queueing-pd}/notes.tex` | two lecture-note courses on the paper's theory (tectonic); the PDFs are built by CD, never committed |
+| `lectures/queueing-serving/notes.tex` | unified lecture-note course on the paper's theory (tectonic); the PDFs are built by CD, never committed |
 | `docs/`, `mkdocs.yml`, `.github/workflows/publish.yml` | the **public** page https://vrvrv.github.io/serving-queue-theory/ with the paper and lecture-note PDFs (README, "What CD publishes") |
 | `research/` | internal working notes: plan, testbed, serQ pin, design notes, review rounds; not published |
 | `lean/ServingQueueTheory/` | Lean 4 + Mathlib proofs of every proposition in the paper |

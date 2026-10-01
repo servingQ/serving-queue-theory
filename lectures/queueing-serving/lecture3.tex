@@ -1,14 +1,12 @@
-\chapter{The Prefill Instance as an M/G/1 Queue: the Price of a Miss}\label{sec:L3}
+\chapter{The M/G/1 Queue and the Pollaczek--Khinchine Formula: the Price of a Miss}\label{sec:L3}
 
 In \cref{sec:L2} the service times were exponential, so the state of the queue
 was summarised by a single number, the number of customers. Prefill work is not
 exponential. It is a general distribution that mixes short appends (hits) with
-long recomputations (misses). A prefill instance runs prefills only, one after
-another in arrival order, so it is a single first-in first-out server whose
-service time is the prefill work. The goal of this lecture is to compute its mean
-waiting time (the Pollaczek--Khinchine formula), and then to differentiate it to
-obtain the price of a miss: the total delay one prefix miss adds. The key message
-is a single one.
+long recomputations (misses). The goal of this chapter is to compute the mean
+waiting time of a FIFO queue with a general service distribution (the
+Pollaczek--Khinchine formula), and then to differentiate it to prove the central
+proposition of the paper, the price of a miss. The key message is a single one.
 \emph{The mean wait of a FIFO queue depends not only on the mean of the work but
 also on its second moment.}
 
@@ -32,12 +30,6 @@ the \term{sojourn time} is $W_q+S$. $L_q$ and $L$ are the time averages of the
 number of customers in the waiting room and in the whole system (waiting room
 and server), respectively.
 \end{definition}
-
-\serving{A prefill instance is an M/G/1 queue in this sense, except for the Poisson
-assumption (\cref{L3:rem:finite}). A turn is a customer; its work $S$ is its prefill
-time on the instance, which runs prefills only and at full capacity; the load is
-$\rho_P=\lambda\E[S]$; and the time to first token is the sojourn time $W_q+S$. We
-write $\rho$ for $\rho_P$ in this lecture.}
 
 Unlike the exponential distribution, a general service distribution is not
 memoryless (\cref{prop:memoryless}). How much longer a customer who has already
@@ -91,9 +83,19 @@ is $\rho$ (\cref{cor:busy}) and $R=0$ during idle time, so the average over busy
 time is $\lambda\E[S^2]/(2\rho)=\E[S^2]/(2\E[S])$.
 \end{proof}
 
-We write $\mathrm{CV}^2=\Var[S]/\E[S]^2$ for the \term{squared coefficient of variation}
-of the work, so that the mean residual over busy time is
-$\E[S^2]/(2\E[S])=\frac{\E[S]}{2}(1+\mathrm{CV}^2)$.
+\begin{remark}[Inspection paradox]\label{L3:rem:inspection}
+$\E[S^2]/(2\E[S])=\frac{\E[S]}{2}(1+\mathrm{CV}^2)$, where
+$\mathrm{CV}^2=\Var[S]/\E[S]^2$ is the \term{squared coefficient of variation}.
+The intuition ``a customer in service has, on average, about half of its service
+left'' fails because, when we look at the server at a random time, the
+probability of catching a long service is proportional to its length. Indeed,
+the service observed at a busy instant has the \term{length-biased
+distribution} with density $x\,G(\mathrm{d}x)/\E[S]$, whose mean is
+$\E[S^2]/\E[S]$; the observation instant is uniform within that service, so the
+mean remaining time is half of it. This is the \term{inspection paradox}. For the
+exponential distribution $\mathrm{CV}^2=1$, so the mean residual equals $\E[S]$
+itself, in agreement with memorylessness.
+\end{remark}
 
 \section{The Pollaczek--Khinchine formula}
 
@@ -167,13 +169,7 @@ particular:
 \end{enumerate}
 \end{corollary}
 
-\begin{proof}
-Substituting $\E[S^2]=\E[S]^2(1+\mathrm{CV}^2)$ into \cref{L3:eq:pk} and using
-$\lambda\E[S]=\rho$ gives \cref{L3:eq:pk-cv}. With $\rho$ and $\E[S]$ fixed, the
-right side is strictly increasing in $\mathrm{CV}^2$. (i) and (ii) substitute
-$\mathrm{CV}^2=1,0$. For an exponential law with mean $1/\mu$ this is
-$\rho/(\mu(1-\rho))$, the M/M/1 waiting time.
-\end{proof}
+\begin{proof}See \cref{L3:ex:variance}.\end{proof}
 
 \begin{remark}
 Contrast this with the PS queue of \cref{sec:L2} (\cref{def:ps}). The mean number
@@ -185,8 +181,8 @@ under FIFO, but not under PS, where all customers share the server.
 
 \section{Mixtures of hits and misses}
 
-The prefix cache of the prefill instance decides whether each turn is a hit or a
-miss, and hence sets the law of the prefill work.
+The KV cache policy decides whether each turn is a hit or a miss, and hence sets
+the law of the prefill work.
 
 \begin{definition}[Hit/miss mixture work]\label{L3:def:mixture}
 Let $S^{\mathrm{hit}}$ and $S^{\mathrm{miss}}$ be square-integrable nonnegative
@@ -205,29 +201,19 @@ Let $m_1(h)=\E[S_h]$, $m_2(h)=\E[S_h^2]$ and $\rho(h)=\lambda m_1(h)$.
 \end{enumerate}
 \end{corollary}
 
-\begin{proof}
-(i) By the law of total expectation
-$m_k(h)=h\E[(S^{\mathrm{hit}})^k]+(1-h)\E[(S^{\mathrm{miss}})^k]$, $k=1,2$, and
-its slope in $h$ is $\E[(S^{\mathrm{hit}})^k]-\E[(S^{\mathrm{miss}})^k]\le0$
-(since $0\le S^{\mathrm{hit}}\le S^{\mathrm{miss}}$, $k$-th powers preserve the
-order).
-(ii) Since $\rho$ is nonincreasing, $\rho(h)\le\rho(h_0)<1$. If
-$h_0\le h\le h'$, then $0\le\lambda m_2(h')\le\lambda m_2(h)$ and
-$1-\rho(h')\ge1-\rho(h)>0$, so the numerator decreases and the denominator
-increases, giving $W(h')\le W(h)$.
-\end{proof}
+\begin{proof}See \cref{L3:ex:mixture}.\end{proof}
 
 \section{The price of a miss}
 
 \Cref{cor:mixture} gives only a direction. A scheduler needs a \emph{magnitude}.
-If the prefill instance drops the cached prefix of a particular program $i$, so that
-its next turn is a miss, by how much does the delay of the whole instance grow?
+If we drop the KV state of a particular program $i$, so that its next turn is a
+miss, by how much does the delay of the whole prefill stage grow?
 
-\begin{definition}[Mean number at the prefill instance and policy change]\label{L3:def:policy-change}
-Model the prefill instance as an M/G/1 FIFO queue with arrival rate $\lambda$, work
+\begin{definition}[Mean number in the prefill stage and policy change]\label{L3:def:policy-change}
+Model the prefill stage as an M/G/1 FIFO queue with arrival rate $\lambda$, work
 $S$ ($m_1=\E[S]$, $m_2=\E[S^2]<\infty$) and load $\rho=\lambda m_1<1$. Let
-$W=\lambda m_2/(2(1-\rho))$ be the PK wait and $L_P$ the mean number at the
-instance (waiting and in service). By Little's law
+$W=\lambda m_2/(2(1-\rho))$ be the PK wait and $L_P$ the mean number in the
+prefill stage (waiting and in service). By Little's law
 \[
   L_P=\lambda(W+m_1)=\rho+\frac{\lambda^2m_2}{2(1-\rho)}.
 \]
@@ -237,10 +223,10 @@ $S_i^{\mathrm{hit}}\ge0$ into misses with work
 $S_i^{\mathrm{miss}}=S_i^{\mathrm{hit}}+\Delta S_i$, $\Delta S_i\ge0$. The moments of
 the work become
 \[
-  m_1'=m_1+A,\quad A=\sum_iq_i\Delta S_i,\qquad
-  m_2'=m_2+B,\quad B=\sum_iq_i\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr),
+  m_1'=m_1+\delta_1,\quad \delta_1=\sum_iq_i\Delta S_i,\qquad
+  m_2'=m_2+\delta_2,\quad \delta_2=\sum_iq_i\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr),
 \]
-and the new load is $\rho'=\rho+\lambda A$. We write $L_P'$ for the new mean
+and the new load is $\rho'=\rho+\lambda\delta_1$. We write $L_P'$ for the new mean
 number and $\Delta L_P=L_P'-L_P$ for the change.
 \end{definition}
 
@@ -258,30 +244,30 @@ Then
 \end{theorem}
 
 \begin{proof}
-Write $u=1-\rho>0$. Then $1-\rho'=u-\lambda A>0$, and since $A\ge0$,
-$0<u-\lambda A\le u$. Applying the PK formula (\cref{thm:pk}) to the new work,
+Write $u=1-\rho>0$. Then $1-\rho'=u-\lambda\delta_1>0$, and since $\delta_1\ge0$,
+$0<u-\lambda\delta_1\le u$. Applying the PK formula (\cref{thm:pk}) to the new work,
 \[
-  \Delta L_P=\lambda A+\frac{\lambda^2}{2}\Bigl(\frac{m_2+B}{u-\lambda A}-\frac{m_2}{u}\Bigr)
-  =\lambda A+\frac{\lambda^2}{2}\cdot\frac{u(m_2+B)-(u-\lambda A)m_2}{u(u-\lambda A)}
-  =\lambda A+\frac{Y}{u(u-\lambda A)},
+  \Delta L_P=\lambda\delta_1+\frac{\lambda^2}{2}\Bigl(\frac{m_2+\delta_2}{u-\lambda\delta_1}-\frac{m_2}{u}\Bigr)
+  =\lambda\delta_1+\frac{\lambda^2}{2}\cdot\frac{u(m_2+\delta_2)-(u-\lambda\delta_1)m_2}{u(u-\lambda\delta_1)}
+  =\lambda\delta_1+\frac{Y}{u(u-\lambda\delta_1)},
 \]
-where $Y=\frac{\lambda^2}{2}\bigl(uB+\lambda A m_2\bigr)\ge0$. On the other hand,
+where $Y=\frac{\lambda^2}{2}\bigl(u\delta_2+\lambda\delta_1m_2\bigr)\ge0$. On the other hand,
 taking the $q_i$-weighted sum of \cref{L3:eq:price} and using $W=\lambda m_2/(2u)$,
 \[
-  \lambda\sum_iq_i\Phi_i=\lambda A+\frac{\lambda^2B}{2u}+\frac{\lambda^2WA}{u}
-  =\lambda A+\frac{\lambda^2}{2u^2}\bigl(uB+\lambda Am_2\bigr)
-  =\lambda A+\frac{Y}{u^2}.
+  \lambda\sum_iq_i\Phi_i=\lambda\delta_1+\frac{\lambda^2\delta_2}{2u}+\frac{\lambda^2W\delta_1}{u}
+  =\lambda\delta_1+\frac{\lambda^2}{2u^2}\bigl(u\delta_2+\lambda\delta_1m_2\bigr)
+  =\lambda\delta_1+\frac{Y}{u^2}.
 \]
-\emph{Lower bound.} Since $u-\lambda A\le u$, $Y/(u(u-\lambda A))\ge Y/u^2$, and
+\emph{Lower bound.} Since $u-\lambda\delta_1\le u$, $Y/(u(u-\lambda\delta_1))\ge Y/u^2$, and
 hence $\Delta L_P\ge\lambda\sum_iq_i\Phi_i$.
 
 \emph{Upper bound.} A direct computation gives
 \[
-  \frac{u}{u-\lambda A}\Bigl(\lambda A+\frac{Y}{u^2}\Bigr)-\Delta L_P
-  =\lambda A\Bigl(\frac{u}{u-\lambda A}-1\Bigr)+\frac{Y}{u(u-\lambda A)}-\frac{Y}{u(u-\lambda A)}
-  =\frac{(\lambda A)^2}{u-\lambda A}\ \ge0 .
+  \frac{u}{u-\lambda\delta_1}\Bigl(\lambda\delta_1+\frac{Y}{u^2}\Bigr)-\Delta L_P
+  =\lambda\delta_1\Bigl(\frac{u}{u-\lambda\delta_1}-1\Bigr)+\frac{Y}{u(u-\lambda\delta_1)}-\frac{Y}{u(u-\lambda\delta_1)}
+  =\frac{(\lambda\delta_1)^2}{u-\lambda\delta_1}\ \ge0 .
 \]
-Since $u/(u-\lambda A)=(1-\rho)/(1-\rho')$, the upper bound holds.
+Since $u/(u-\lambda\delta_1)=(1-\rho)/(1-\rho')$, the upper bound holds.
 \end{proof}
 
 \paragraph{Reading the three terms.} $\Phi_i$ is measured in seconds. Misses of
@@ -329,13 +315,7 @@ Fix the work law ($m_1>0$, $m_2>0$) and $\Delta S_i>0$, and let
 $\lambda\uparrow1/m_1$ (that is, $\rho\uparrow1$). Then $\Phi_i\to\infty$.
 \end{corollary}
 
-\begin{proof}
-Put $\rho=1-\varepsilon$ with $0<\varepsilon\le1/2$, so
-$\lambda=(1-\varepsilon)/m_1\ge1/(2m_1)$. The first two terms of $\Phi_i$ are
-nonnegative, and the third is
-$\lambda W\Delta S_i/\varepsilon=\lambda^2m_2\Delta S_i/(2\varepsilon^2)\ge m_2\Delta S_i/(8m_1^2\varepsilon^2)$,
-which diverges as $\varepsilon\to0$.
-\end{proof}
+\begin{proof}See \cref{L3:ex:diverge}.\end{proof}
 
 \begin{corollary}[Monotonicity in the context length]\label{cor:price-mono}
 Let the prefill cost be $P(n,K)=an+bn(K+n/2)$ ($a,b\ge0$; the cost of computing
@@ -345,42 +325,58 @@ $S^{\mathrm{miss}}=P(K+n,0)$. Then $\Delta S=aK+bK^2/2$, and with $\lambda,\rho,
 and the number $n$ of appended tokens fixed, $\Phi$ is nondecreasing in $K\ge0$.
 \end{corollary}
 
-\begin{proof}
-$P(K+n,0)-P(n,K)=a(K+n)+\tfrac b2(K+n)^2-an-bnK-\tfrac b2n^2=aK+\tfrac b2K^2$.
-Both $\Delta S$ and $S^{\mathrm{hit}}=an+bnK+bn^2/2$ are nonnegative and
-nondecreasing in $K$, and so is
-$S^{\mathrm{miss}}+S^{\mathrm{hit}}=2S^{\mathrm{hit}}+\Delta S$. The three terms of
-\cref{L3:eq:price} are nonnegative constants times $\Delta S$,
-$(S^{\mathrm{miss}}+S^{\mathrm{hit}})\Delta S$ and $\Delta S$, respectively, so all
-are nondecreasing in $K$.
-\end{proof}
+\begin{proof}See \cref{L3:ex:mono}.\end{proof}
 
-\serving{A prefill instance serves pending prefills in arrival order; if it splits a
-long prefill into chunks, the chunks do not reorder the queue, so a prefill that
-arrives behind a long miss cannot start until every chunk of that miss is done. As
-long as the order is FIFO, the head-of-line term (2) remains, whatever the chunk
-size. And since the first token is produced by the prefill instance, neither the
-KV transfer to the decode instance nor the decode itself enters the time to first
-token: $\Phi_i$ is the whole effect of a miss on TTFT, summed over all turns.}
-
-\serving{At the same load and with the same append, \cref{cor:price-mono} says
-that the price of a miss is larger for a program with a longer context. But what
-the scheduler compares is $p_i\Phi_i/c_i$, divided by the memory $c_i$ and
-weighted by the resume probability $p_i$, and that order can flip with the load,
-because the load changes the weights of the three terms of $\Phi_i$.}
+\serving{Chunked prefill interleaves chunks of a long prefill with decode steps, but
+pending prefills are still served in arrival order: a prefill behind a long miss waits
+for every chunk of it, as long as the oldest prefill may take all the budget the
+decode batch leaves. Then the head-of-line term (2) remains, whatever the chunk size; a
+per-prefill cap lets later prefills bypass the miss (\cref{L5:ex:colocated}).
+\Cref{cor:price-mono} says a longer context has a larger price, but the scheduler
+compares $p_i\Phi_i/c_i$, and that order can flip with the load (\cref{L5:ex:flip}).}
 
 \begin{remark}[Limits of the M/G/1 assumption]\label{L3:rem:finite}
-M/G/1 assumes an infinite customer population. In practice a prefill instance
-serves a few dozen live sessions at a time, and a session waiting for prefill cannot
-create its next turn, so arrivals slow down when the queue is long. The finite
-population model of Lecture~4 (\cref{prop:finite}) captures this effect exactly
-and shows that, for exponential work, the wait of the open formula is at least
-the finite-population wait at the same utilisation. In that case the $W$ of this
-lecture is a conservative (upper) estimate. For general work the relation between
-the two waits is a question for measurement.
+A pool holds a few dozen live sessions, and a session waiting for prefill cannot create
+its next turn, so arrivals slow down when the queue is long. For exponential work the
+finite-population model of \cref{sec:L4} shows that the open wait is an upper bound
+(\cref{prop:finite}); for general work the comparison is a question for measurement.
 \end{remark}
 
+\section{Summary}
+\begin{itemize}
+\item The FIFO wait depends on the second moment of the work, $\E[W_q]=\lambda\E[S^2]/(2(1-\rho))$.
+\item The price of a miss has an own-work, a head-of-line and a load term, and brackets the change in the mean number at prefill.
+\item It diverges near saturation and grows with the context; chunked prefill does not remove the head-of-line term.
+\end{itemize}
+
 \section{Exercises}
+
+\begin{exercise}\label{L3:ex:variance}
+Derive \eqref{L3:eq:pk-cv} from \cref{thm:pk} and check cases (i) and (ii) of
+\cref{cor:variance}.
+\emph{Hint:} $\E[S^2]=\E[S]^2(1+\mathrm{CV}^2)$ and $\lambda\E[S]=\rho$.
+\end{exercise}
+
+\begin{exercise}\label{L3:ex:mixture}
+Prove \cref{cor:mixture}.
+\emph{Hint:} $m_k(h)$ is affine in $h$ with slope
+$\E[(S^{\mathrm{hit}})^k]-\E[(S^{\mathrm{miss}})^k]\le0$; in (ii) the numerator of $W$
+falls and its denominator rises.
+\end{exercise}
+
+\begin{exercise}\label{L3:ex:diverge}
+Prove \cref{cor:price-diverge}.
+\emph{Hint:} with $\rho=1-\varepsilon$ and $\varepsilon\le1/2$, the load term of
+\eqref{L3:eq:price} is $\lambda^2m_2\Delta S_i/(2\varepsilon^2)\ge
+m_2\Delta S_i/(8m_1^2\varepsilon^2)$.
+\end{exercise}
+
+\begin{exercise}\label{L3:ex:mono}
+Prove \cref{cor:price-mono}.
+\emph{Hint:} expand $P(K+n,0)-P(n,K)$; each term of \eqref{L3:eq:price} is a
+nonnegative constant times $\Delta S$, $(S^{\mathrm{miss}}+S^{\mathrm{hit}})\Delta S$ or
+$\Delta S$, and $S^{\mathrm{miss}}+S^{\mathrm{hit}}=2S^{\mathrm{hit}}+\Delta S$.
+\end{exercise}
 
 \begin{exercise}\label{L3:ex:1}
 Show that the mean residual service time over busy time, $\E[S^2]/(2\E[S])$, is
@@ -393,6 +389,6 @@ check that it equals $\E[S]$ when $S$ is exponential.
 With the numbers of \cref{L3:ex:price} and $q=0.01$, compute $\Delta L_P$ exactly
 and check $0.1195\le\Delta L_P\le0.1252$. How does the ratio of the upper to the
 lower bound change as $q$ grows?
-\emph{Hint:} substitute $m_1+A$ and $m_2+B$ into
+\emph{Hint:} substitute $m_1+\delta_1$ and $m_2+\delta_2$ into
 $L_P=\lambda m_1+\lambda^2m_2/(2(1-\lambda m_1))$.
 \end{exercise}

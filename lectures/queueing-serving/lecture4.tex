@@ -3,10 +3,9 @@
 All models so far were \term{open systems}. Customers arrive from an infinite
 outside population, leave after service, and the arrival rate does not change
 when the queue is long. Agent sessions are different. A session submits a turn,
-which passes the prefill instance, the link and a decode instance, runs a tool on
-the response, and only then submits its next turn. A
+receives the response, runs a tool, and only then submits its next turn. A
 waiting session cannot create a new turn, so the longer the queue, the fewer the
-arrivals. This lecture treats this \emph{closed} structure
+arrivals. This chapter treats this \emph{closed} structure
 (\cref{L4:sec:closed}), computes the mean memory held by sessions
 (\cref{L4:sec:campbell}), and solves the combinatorial optimisation problem of
 what to drop when memory runs short (\cref{L4:sec:knapsack}).
@@ -35,14 +34,12 @@ and starts thinking again when its service is done. All think times and service
 times are mutually independent.
 \end{definition}
 
-\serving{Sessions are the customers of the closed loop prefill instance $\to$ link
-$\to$ decode instance $\to$ tool $\to$ prefill instance. Seen from the prefill
-instance, the server is the prefill server and everything else (transfer, decode,
-tool call and user response) is the ``think time''. A session waiting for prefill
-cannot submit its next turn. A memory pool holds a few million tokens and agent
-contexts reach hundreds of thousands of tokens, so an instance serves only about
-ten live sessions at a time; at this scale the $N=\infty$ approximation can be badly
-wrong.}
+\serving{Sessions are the customers of the closed loop. The think time is the
+time for tool execution and user response, and the server is the prefill stage.
+A session waiting for prefill cannot submit its next turn. A KV memory pool holds
+a few million tokens and real agent contexts reach hundreds of thousands of
+tokens, so a replica holds about 10 live sessions at a time. At this scale the
+$N=\infty$ approximation can be badly wrong.}
 
 Let $X(t)$ be the number of turns at the server (waiting or in service) at time
 $t$. There are $N-X(t)$ thinking sessions, each finishing its think time
@@ -87,12 +84,10 @@ both are probability distributions they are equal.
 \begin{remark}[Back to PASTA as $N\to\infty$]\label{L4:rem:arrival-limit}
 Fix $\lambda>0$ and $\mu>\lambda$, and let the think time grow with the population,
 $Z=N/\lambda$, so that the total arrival rate when all sessions think stays $\lambda$.
-Then $\pi_N(n)\propto\frac{N!}{(N-n)!\,N^n}\rho^n$ with $\rho=\lambda/\mu$, and
-$\frac{N!}{(N-n)!\,N^n}=\prod_{k<n}(1-k/N)$ lies in $[0,1]$ and tends to $1$. By
-dominated convergence (with dominating sequence $\rho^n$) both $\pi_N$ and
-$\pi_{N-1}$ converge to the M/M/1 law $(1-\rho)\rho^n$. So in the limit the law seen
-by an arriving turn equals the time-average law: this is PASTA. For a finite $N$ the
-arrival theorem measures exactly how far the closed system is from that limit.
+Then $\pi_N$ and $\pi_{N-1}$ both converge to the M/M/1 law $(1-\rho)\rho^n$
+(\cref{L4:ex:limit}), so in the limit an arriving turn sees the time-average law: this
+is PASTA. For finite $N$ the arrival theorem measures how far the closed system is from
+that limit.
 \end{remark}
 
 The arrival theorem lets us solve a closed system by recursion on the number of
@@ -124,27 +119,27 @@ substitution gives the remaining formulas.
 \end{proof}
 
 \begin{proposition}[Finite population]\label{prop:finite}
-Let $c=\mu Z>0$ and define $Q_n$ by the recursion of \cref{thm:mva}.
+Let $\gamma=\mu Z>0$ and define $Q_n$ by the recursion of \cref{thm:mva}.
 \begin{enumerate}[label=(\roman*)]
 \item $Q_n$ is nondecreasing in $n$, $0\le Q_n\le n$, and $Q_n$ is nonincreasing
-  in $c$. Moreover $\rho_N<1$ for all $N\ge1$.
+  in $\gamma$. Moreover $\rho_N<1$ for all $N\ge1$.
 \item $W_N\le\rho_N/(\mu(1-\rho_N))$. The right side is the open M/M/1 waiting
   time at the same utilisation (\cref{prop:mm1}).
 \end{enumerate}
 \end{proposition}
 
 \begin{proof}
-Put $g_c(q)=(1+q)/(c+1+q)$, so that $Q_n=n\,g_c(Q_{n-1})$. On $q\ge0$, $g_c$ is
-nondecreasing in $q$, nonincreasing in $c$, and $0<g_c\le1$.
+Put $g_\gamma(q)=(1+q)/(\gamma+1+q)$, so that $Q_n=n\,g_\gamma(Q_{n-1})$. On $q\ge0$, $g_\gamma$ is
+nondecreasing in $q$, nonincreasing in $\gamma$, and $0<g_\gamma\le1$.
 
-(i) $0\le Q_n\le n$ follows by induction from $g_c\le 1$. $Q_1=g_c(0)\ge0=Q_0$,
-and if $Q_n\ge Q_{n-1}$ then $Q_{n+1}=(n+1)g_c(Q_n)\ge n\,g_c(Q_{n-1})=Q_n$.
-For $c\le c'$, assuming $Q_{n-1}(c')\le Q_{n-1}(c)$,
-$Q_n(c')=n\,g_{c'}(Q_{n-1}(c'))\le n\,g_{c'}(Q_{n-1}(c))\le n\,g_c(Q_{n-1}(c))=Q_n(c)$.
-$\rho_N<1$ is equivalent to $Q_{N-1}>N-1-c$, so it suffices to show $Q_n>n-c$ for
-all $n\ge0$ by induction. For $n=0$ this is $0>-c$, and a computation gives
+(i) $0\le Q_n\le n$ follows by induction from $g_\gamma\le 1$. $Q_1=g_\gamma(0)\ge0=Q_0$,
+and if $Q_n\ge Q_{n-1}$ then $Q_{n+1}=(n+1)g_\gamma(Q_n)\ge n\,g_\gamma(Q_{n-1})=Q_n$.
+For $\gamma\le \gamma'$, assuming $Q_{n-1}(\gamma')\le Q_{n-1}(\gamma)$,
+$Q_n(\gamma')=n\,g_{\gamma'}(Q_{n-1}(\gamma'))\le n\,g_{\gamma'}(Q_{n-1}(\gamma))\le n\,g_\gamma(Q_{n-1}(\gamma))=Q_n(\gamma)$.
+$\rho_N<1$ is equivalent to $Q_{N-1}>N-1-\gamma$, so it suffices to show $Q_n>n-\gamma$ for
+all $n\ge0$ by induction. For $n=0$ this is $0>-\gamma$, and a computation gives
 \[
-  Q_{n+1}-(n+1-c)=\frac{c\,(Q_n+c-n)}{c+1+Q_n}>0 .
+  Q_{n+1}-(n+1-\gamma)=\frac{\gamma\,(Q_n+\gamma-n)}{\gamma+1+Q_n}>0 .
 \]
 
 (ii) Since $\rho_N<1$, the inequality is equivalent to
@@ -153,16 +148,16 @@ $Q_{N-1}(1-\rho_N)\le\rho_N$, that is, $Q_{N-1}\le\rho_N(1+Q_{N-1})=Q_N$, which 
 \end{proof}
 
 \begin{example}\label{L4:ex:two}
-With $N=2$ and $Z=2/\mu$ ($c=2$), $Q_1=1/3$, $\rho_2=2/(3+1/3)=3/5$ and
+With $N=2$ and $Z=2/\mu$ ($\gamma=2$), $Q_1=1/3$, $\rho_2=2/(3+1/3)=3/5$ and
 $W_2=1/(3\mu)$. The open formula at the same utilisation gives
 $\rho_2/(\mu(1-\rho_2))=3/(2\mu)$, which is $4.5$ times the actual wait.
 \end{example}
 
 \begin{remark}
-For exponential work and at the same utilisation, the open formula
-(\cref{thm:pk}) and the price of a miss built on it (\cref{thm:price})
-overestimate the wait (\cref{prop:finite}(ii)). For general work this comparison
-has not been proved. Moreover, at most $N$ turns exist, so $0\le L_P\le N$, and no
+For exponential work and at the same utilisation, the open formula (\cref{thm:pk})
+overestimates the wait (\cref{prop:finite}(ii)). For general work, and for the price
+of a miss built on the open formula (\cref{thm:price}), this comparison has not been
+proved. Moreover, at most $N$ turns exist, so $0\le L_P\le N$, and no
 policy change can raise the mean number of turns at the server by more than
 $N-L_P$. This cap does not depend on the work law.
 \end{remark}
@@ -178,10 +173,8 @@ do not generalise in this way.
 \section{M/G/\texorpdfstring{$\infty$}{infinity} and Campbell's theorem}\label{L4:sec:campbell}
 
 We now count memory. Live sessions do not wait for each other and each keeps its
-own KV, so from the point of view of memory the sessions are customers of a delay
-station. At the prefill instance the KV that stays between turns is the cached
-prefix of each paused session; at a decode instance it is the KV of the running
-turns.
+own KV cache, so from the point of view of memory the sessions are customers of a
+delay station.
 
 \begin{definition}[M/G/$\infty$]\label{L4:def:mginf}
 An M/G/$\infty$ system is a delay station with Poisson arrivals of rate $\lambda$
@@ -248,9 +241,9 @@ $m\to\infty$.
 
 \begin{corollary}[Mean resident KV]\label{cor:resident-kv}
 Let sessions arrive in a Poisson process of rate $\Lambda$, and let session $k$
-have an i.i.d.\ lifetime $T_s^{(k)}$ and KV size $K_k(u)\ge0$ at age $u$ (the
+have an i.i.d.\ lifetime $T_s^{(k)}$ and a context of $K_k(u)\ge0$ tokens at age $u$ (the
 lifetime and the trajectory may be dependent). In steady state (started at time
-$-\infty$), the mean total resident KV at a given instant is
+$-\infty$), the mean number of resident KV tokens at a given instant is
 \[
   \Lambda\,\E\Bigl[\int_0^{T_s}K(u)\dd u\Bigr].
 \]
@@ -276,10 +269,10 @@ with Little's law.
 
 \section{Eviction: the covering knapsack problem}\label{L4:sec:knapsack}
 
-When the prefill instance's pool runs short, cached prefixes of paused programs must be
-dropped (\term{eviction}); a decode instance that keeps paused KV faces the same problem
-with its own prices (\cref{sec:L5}). Program $i$ occupies $c_i>0$ bytes, and dropping it
-costs $w_i\ge0$ in expectation (e.g.\ $p_i$ times the price of a miss, \cref{thm:price}).
+When memory runs short, part of the KV of the paused programs must be dropped
+(\term{eviction}). Program $i$ occupies $c_i>0$ bytes, and dropping it has an
+expected cost $w_i\ge0$ (for example, the resume probability $p_i$ times the price
+of a miss, \cref{thm:price}).
 
 \begin{definition}[Covering knapsack problem]\label{L4:def:knapsack}
 For a finite set $I$ and a target $\Delta C>0$, the \term{covering knapsack
@@ -288,9 +281,19 @@ problem} is
   \min_{S\subseteq I}\ w(S):=\sum_{i\in S}w_i\quad\text{s.t.}\quad c(S):=\sum_{i\in S}c_i\ge\Delta C .
 \]
 Allowing $x\in[0,1]^I$ in place of $S$ and minimising $\sum w_ix_i$ subject to
-$\sum c_ix_i\ge\Delta C$ gives the \term{fractional version}, close to what engines
-solve, since they drop fixed-size blocks; $v_i=w_i/c_i$ is the \term{price per byte}.
+$\sum c_ix_i\ge\Delta C$ gives the \term{fractional version}, which assumes that cost is
+linear in the evicted fraction. We call $v_i=w_i/c_i$ the \term{price per byte}.
 \end{definition}
+
+\paragraph{Tail blocks are not fractional items.} Engines evict blocks from the tail
+of a cached prefix, not whole programs. Dropping the last $d$ of $K$ cached tokens adds
+\[
+  r_K(d)=P(n+d,K-d)-P(n,K)=a\,d+b\bigl(Kd-d^2/2\bigr),\qquad 0\le d\le K,
+\]
+of prefill work. The marginal cost $a+b(K-d)$ falls as $d$ grows, so the cost is
+concave in $d$, not linear. The threshold rule below is therefore exact for whole
+programs and for the linear relaxation, but it does not prove that greedy block
+eviction is optimal. \Cref{prop:blind} below also concerns whole programs.
 
 \begin{theorem}[Threshold rule \cite{dantzig1957}]\label{thm:threshold}
 \begin{enumerate}[label=(\roman*)]
@@ -307,49 +310,109 @@ solve, since they drop fixed-size blocks; $v_i=w_i/c_i$ is the \term{price per b
 we have $w_i\le\theta c_i$, so
 \[
   w(S)-w(T_\theta)=\sum_{S\setminus T_\theta}w_i-\sum_{T_\theta\setminus S}w_i
-  \ge\theta\bigl(c(S)-c(T_\theta)\bigr)\ge0 .
+  \ge\theta\bigl(c(S\setminus T_\theta)-c(T_\theta\setminus S)\bigr)=\theta\bigl(c(S)-c(T_\theta)\bigr)\ge0 .
 \]
-(ii) follows by the same exchange argument with $\theta$ the price per byte of the
-last, partially taken item.
+(ii) Let $x^*$ be the greedy solution and $\theta$ the price per byte of the last
+(partial) item. Then $x^*_i=1$ if $v_i<\theta$, $x^*_i=0$ if $v_i>\theta$, and
+$\sum c_ix^*_i=\Delta C$. For any feasible $x$,
+\[
+  \sum_iw_i(x_i-x^*_i)=\sum_i(w_i-\theta c_i)(x_i-x^*_i)+\theta\sum_ic_i(x_i-x^*_i) .
+\]
+Each term of the first sum is nonnegative (if $v_i<\theta$ both factors are
+$\le0$, if $v_i>\theta$ both are $\ge0$, and if $v_i=\theta$ the term is $0$). The
+second sum is $\theta(\sum c_ix_i-\Delta C)\ge0$.
 \end{proof}
 
-When programs must be dropped whole, price-per-byte order can be arbitrarily bad,
-and the standard repair (a greedy guarded by a guess of the most expensive dropped
-item) is within a factor 2 of the optimum \cite{csirik1991}. Real systems evict by a
-key fixed in advance rather than by a price, such as shortest context first (SF),
-least recently used (LRU) or a time-to-live; such keys do not look at the resume
-probability $p_i$.
+In the integer version, price-per-byte order can be arbitrarily bad. With target
+$\Delta C=2$ and three items $(c,w)=(1,1),(L,L),(2,3)$, price-per-byte order (ties
+broken in favour of the earlier item) takes the first two items at cost $1+L$,
+while the third item alone costs $3$. The ratio $(1+L)/3$ diverges as
+$L\to\infty$. The standard repair is the \emph{guarded greedy} algorithm, which
+guesses the most expensive evicted item and fills the rest in price-per-byte
+order; it is known to be within a factor $2$ of the optimum for all $w_i$
+\cite{csirik1991}.
+
+Real systems evict by a key fixed in advance rather than by a price: shortest
+context first (shortest-first, SF), least recently used (LRU), time-to-live
+expiry (TTL), and so on. Such keys do not look at the resume probability $p_i$.
 
 \begin{proposition}[Price-blind keys]\label{prop:blind}
 Consider the covering knapsack problem with $w_i=p_i\Phi_i$.
 \begin{enumerate}[label=(\roman*)]
-\item For every rule that chooses one of two programs from any information except
-  their resume probabilities, and every $R$, there are resume probabilities in
-  $(0,1]$ under which either program alone meets the target and the program the rule
-  chooses costs more than $R$ times the other: no such rule has a constant
-  approximation ratio.
-\item If every program resumes and $w_i=c_i^2$ (the quadratic term of the recompute
-  work), SF is price-per-byte order and costs at most twice the optimum; the factor 2
-  is tight (sizes $K$ and $K+1$ with target $K+1$).
+\item Consider a rule that chooses one of two programs from any information except
+  their resume probabilities. For every $R$ there are resume probabilities
+  $p\in(0,1]$ under which either program alone meets the target and the program
+  the rule chooses costs more than $R$ times the other. Hence no such rule has a
+  constant approximation ratio.
+\item If every program resumes ($p_i=1$) and the price is only the quadratic term
+  of the recompute work, so that $w_i=c_i^2$, then SF equals price-per-byte order,
+  costs at most $2$ times any feasible solution, and the constant $2$ cannot be
+  improved.
 \end{enumerate}
 \end{proposition}
 
-\begin{proof}[Proof of (i)]
-Take two programs of the same size $c$ that agree in everything the rule observes, and
-the target $\Delta C=c$. The rule drops a fixed one, $e$, whatever the resume
-probabilities; call the other $o$. With equal prices $\Phi$, $p_e=1$ and
-$p_o=1/(|R|+2)$, $w_e=\Phi>R\,w_o$, while the optimum is at most $w_o$.
+\begin{proof}
+(i) Take two programs of the same size $c>0$ that agree in everything the rule
+observes, and a target $\Delta C=c$. The rule's input does not depend on the
+resume probabilities, so it drops a fixed one, $e$; call the other $o$. Set
+$\Phi_e=\Phi_o=\Phi>0$, $p_e=1$ and $p_o=1/(|R|+2)$. Then
+$w_e=\Phi>R\,\Phi/(|R|+2)=R\,w_o$. The optimum is at most $w_o$, so the rule's
+ratio exceeds $R$.
+
+(ii) Since $w_i/c_i=c_i$, price-per-byte order is SF. SF takes programs from the
+shortest until the target is met, so it returns a feasible solution whenever the
+pool holds the target. Suppose SF takes $t_1\le\dots\le t_m$ in sorted order, and
+let $\ell=t_m$ and $\sigma=t_1+\dots+t_{m-1}<\Delta C$ (it did not stop earlier).
+Let $S$ be any feasible solution.
+
+\emph{Step 1: $\ell^2\le w(S)$.} Every program with $c_i<\ell$ is among the first
+$m-1$, and these free only $\sigma<\Delta C$. So $S$ contains a program with
+$c_i\ge\ell$.
+
+\emph{Step 2.} Put $f(x)=x(\ell-x)$ for $x<\ell$ and $f(x)=0$ for $x\ge\ell$. Then
+$f\ge0$ and $x^2\ge\ell x-f(x)$ for all $x\ge0$. Summing over $S$ and using
+$c(S)\ge\Delta C$, and noting that the terms with $f(c_i)>0$ occur only among
+$t_1,\dots,t_{m-1}$,
+\[
+  w(S)\ge\ell\,\Delta C-\sum_{j<m}t_j(\ell-t_j)=\ell(\Delta C-\sigma)+\sum_{j<m}t_j^2 .
+\]
+\emph{Step 3.} Since $\Delta C-\sigma>0$,
+$w(\mathrm{SF})=\sum_{j<m}t_j^2+\ell^2\le w(S)-\ell(\Delta C-\sigma)+\ell^2\le w(S)+\ell^2\le2\,w(S)$.
+
+Optimality of the constant 2: with sizes $K,K+1$ and $\Delta C=K+1$, SF takes $K$
+and then $K+1$ at cost $K^2+(K+1)^2$, while $\{K+1\}$ costs $(K+1)^2$. The ratio
+tends to $2$ as $K\to\infty$.
 \end{proof}
 
-Even under (ii), SF is not optimal: with contexts $4,5,6$ and target $6$ it drops
-$\{4,5\}$ at cost $41$, while $\{6\}$ costs $36$.
+\begin{example}\label{L4:ex:sf}
+Even in the situation of (ii), SF is not optimal. With contexts $4,5,6$ and target
+$6$, SF drops $\{4,5\}$ at cost $16+25=41$, while $\{6\}$ is feasible at cost $36$.
+\end{example}
+
+Part (i) says that when resume probabilities differ between programs, no fixed
+key can stand in for the price. How large such differences are in practice is a
+question about the workload and must be measured.
+
+\section{Summary}
+\begin{itemize}
+\item In a closed system the arrival theorem replaces PASTA, and mean value analysis gives the mean queue; for exponential work the open formula overstates the wait.
+\item Campbell's formula gives the mean resident KV, above the naive product when long sessions have long contexts.
+\item Eviction is a covering knapsack: the threshold rule solves its fractional version, and a key blind to resume probabilities has no constant ratio.
+\end{itemize}
 
 \section{Exercises}
 
+\begin{exercise}\label{L4:ex:limit}
+Prove the limit in \cref{L4:rem:arrival-limit}.
+\emph{Hint:} with $Z=N/\lambda$, $\pi_N(n)\propto\frac{N!}{(N-n)!\,N^n}\rho^n$, and
+$\frac{N!}{(N-n)!\,N^n}=\prod_{k<n}(1-k/N)$ lies in $[0,1]$ and tends to $1$; use
+dominated convergence with $\rho^n$.
+\end{exercise}
+
 \begin{exercise}
-For $N=2$ and $c=\mu Z$, compute $\sum_nn\,\pi_2(n)$ directly from
+For $N=2$ and $\gamma=\mu Z$, compute $\sum_nn\,\pi_2(n)$ directly from
 \eqref{L4:eq:piN} and check that it equals $Q_2$ of \cref{thm:mva}.
-\emph{Hint:} $G_2=1+2/c+2/c^2$.
+\emph{Hint:} $G_2=1+2/\gamma+2/\gamma^2$.
 \end{exercise}
 
 \begin{exercise}
@@ -358,3 +421,11 @@ without using \cref{L4:prop:mginf}.
 \emph{Hint:} at a delay station $W=\E[S]$, so use Little's law.
 \end{exercise}
 
+\begin{exercise}\label{L4:ex:growing}
+Sessions arrive at rate $\Lambda$ and live for $T_s$, with $\kappa$ KV bytes per token. A session's context grows
+linearly, $K(u)=k_0+gu$ at age $u$. Use \cref{cor:resident-kv} to show that the mean
+resident KV is $\kappa\Lambda\bigl(k_0\E[T_s]+g\E[T_s^2]/2\bigr)$. For exponential $T_s$,
+compare it with the naive estimate $\kappa\Lambda\E[T_s]\,(k_0+g\E[T_s]/2)$, which uses
+the mean lifetime alone.
+\emph{Hint:} $\E[T_s^2]=2\E[T_s]^2$ for an exponential lifetime.
+\end{exercise}

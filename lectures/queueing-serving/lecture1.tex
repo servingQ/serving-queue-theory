@@ -1,10 +1,8 @@
 \chapter{Probabilistic Foundations: Arrivals, Service, and Little's Law}\label{sec:L1}
 
-This lecture defines the vocabulary of queueing theory and proves three tools that
-every later lecture relies on: the memorylessness of the exponential distribution,
-the Poisson process together with PASTA, and Little's law. We assume undergraduate
-probability (conditional expectation, the strong law of large numbers, probability
-generating functions).
+This chapter defines the vocabulary of queueing theory and proves three tools that
+every later chapter relies on: the memorylessness of the exponential distribution,
+the Poisson process together with PASTA, and Little's law.
 
 \section{Queueing systems and performance measures}
 
@@ -89,13 +87,11 @@ essentially necessary and sufficient for stability \cite{loynes1962}. For the mo
 in these notes we assume $\rho<1$ as the stability condition and verify it model by
 model.
 
-\section{From a serving system to a queueing model}\label{L1:sec:projection}
+\section{The colocated replica as queues}\label{L1:sec:projection}
 
 A queueing model of a serving system is a projection: it keeps what decides who waits
 and for how long, and drops the rest. \Cref{fig:projection} shows the projection used
-throughout these notes. The stations it names (processor sharing, delay stations,
-closed loops) are defined formally in later lectures; here they are described only
-informally, so that every later theorem has a place in the picture.
+throughout these notes; its stations are defined formally in later chapters.
 
 \begin{figure}[t]
 \centering
@@ -116,19 +112,19 @@ informally, so that every later theorem has a place in the picture.
     \draw[fill=blue!8] (0.55*\i,-0.35) rectangle ++(0.5,0.7);
   \draw (-0.05,-0.35) -- (1.65,-0.35) (-0.05,0.35) -- (1.65,0.35);
   \node[station, fill=blue!8] (P) at (2.75,0) {FIFO};
-  \node[note, anchor=south] (Plab) at (1.9,0.75) {\textbf{Prefill} (Lecture 3)\\server = token budget};
+  \node[note, anchor=south] (Plab) at (1.9,0.75) {\textbf{Prefill} (Chapter 3)\\server = token budget};
   \node[note, anchor=north] (Pttft) at (2.75,-0.8) {TTFT $=W_q+S$};
   % decode batch as a PS station
   \node[station, minimum size=15mm, fill=red!8] (D) at (6.7,0) {};
   \foreach \a in {0,72,...,288}
     \fill[red!60!black] ($(D)+(\a:0.42)$) circle (1.5pt);
   \node[font=\footnotesize] at (D) {PS};
-  \node[note, anchor=south] (Dlab) at (6.25,0.9) {\textbf{Decode} (Lecture 2)\\capacity $\varphi(m)$};
+  \node[note, anchor=south] (Dlab) at (6.25,0.9) {\textbf{Decode} (Chapter 2)\\capacity $\varphi(m)$};
   % tool call as a delay station
   \node[draw, thick, rounded corners, fill=teal!8, minimum width=24mm, minimum height=11mm] (T) at (3.4,-2.8) {};
   \foreach \k in {-2,-1,0,1,2}
     \draw[teal!60!black] ($(T)+(0.42*\k,0)$) circle (0.16);
-  \node[note, anchor=north] (Tlab) at ($(T.south)+(0,-0.08)$) {\textbf{Tool call}: delay station, no queue (Lecture 4)};
+  \node[note, anchor=north] (Tlab) at ($(T.south)+(0,-0.08)$) {\textbf{Tool call}: delay station, no queue (Chapter 4)};
   % flows
   \draw[->] (-7.2,0) -- (-4.2,0);
   \node[note, anchor=south] at (-6.3,0.05) {new sessions\\Poisson $\Lambda$};
@@ -160,65 +156,30 @@ start of its prefill to the end of its decode (\cref{L5:sec:honest}).}
 \end{figure}
 
 \paragraph{Customers at two levels.} A \emph{turn} is a customer of the prefill and
-decode stations: it arrives, waits, is served and leaves. A \emph{session} is a customer
-at a coarser level: it circulates through prefill, decode and the tool call, and leaves
-only when the agent program ends. New sessions arrive from outside as a Poisson process
-of rate $\Lambda$, but the turns of a live session do not arrive independently of the
-state: the next turn exists only after the previous one has been served. The prefill and
-decode lectures look at turns; the lectures on closed systems, memory and admission look
-at sessions.
+decode stations: it arrives, waits, is served and leaves. A \emph{session} circulates
+through prefill, decode and the tool call, and leaves when the agent program ends. New
+sessions arrive as a Poisson process of rate $\Lambda$, but a session's next turn exists
+only after its previous one has been served, so turn arrivals depend on the state.
 
-\paragraph{Three stations.} \emph{Prefill} is a single FIFO server whose capacity is the
-token budget of an engine step: serving engines by default give that budget to the oldest
-pending prefill first. With Poisson arrivals this is the M/G/1 queue of
-\cref{sec:L3}; with a finite number $N$ of live sessions it is the closed system of
-\cref{sec:L4}. \emph{Decode} is a processor-sharing station: every step advances every
-turn in the batch by one token, so the batch shares the device equally, with a total
-rate $\varphi(m)$ that depends on the batch size $m$ (\cref{sec:L2}). The \emph{tool call}
-is a delay station: every session calls its own tool at once, without queueing, for a
-random think time.
+\paragraph{Stations and memory.} \emph{Prefill} is a FIFO server whose capacity is the
+token budget of an engine step, given to the oldest pending prefill first: the M/G/1
+queue of \cref{sec:L3}, or the closed system of \cref{sec:L4} with $N$ live sessions.
+\emph{Decode} is a processor-sharing station: each step advances every turn in the batch
+by one token, at a total rate $\varphi(m)$ for batch size $m$ (\cref{sec:L2}). The
+\emph{tool call} is a delay station. In the paper's model the memory pool of $M$ bytes
+is only a constraint on resident state (\cref{sec:L4}). Engines such as vLLM, which
+admit a turn only when its whole context fits and in arrival order, make memory a queue
+of slots as well (\cref{L2:sec:mmm}); on the paper's long-context testbed this queue set
+the waits (\cref{L5:sec:honest}).
 
-\paragraph{Memory is a constraint, and in some engines a queue.} The pool of $M$ bytes
-holds the KV cache of running turns and of paused sessions. In the paper's model
-nobody queues ``at'' the memory: the pool only bounds how much state can stay resident,
-and counting how much is resident on average is a calculation about sessions that stay
-in the system for a random time, which \cref{sec:L4} does with the M/G/$\infty$ model
-and Campbell's theorem. Many engines, however, admit a waiting turn only when its whole
-context fits, and in arrival order; vLLM does so by default (its scheduler checks that
-the full input sequence fits before admitting a request, and stops at the first request
-that does not). Memory is then a station as well. If every turn needs about $c$ bytes,
-the pool holds $m=\lfloor M/c\rfloor$ \emph{slots}; a turn holds its slot from the start
-of its prefill to the end of its decode, so the station is a multi-server queue
-$\cdot$/G/$m$ whose service time is the holding time $S+D$, and a turn that does not fit
-blocks everyone behind it (head-of-line blocking, now on memory). Two caveats: with
-unequal contexts a turn needs several slots and the station has no closed form; and in
-such engines the cache of paused sessions does not take slots away. Cached blocks that
-no running turn uses count as free: an admission that needs them evicts the least
-recently used ones, so the slots compete with the cache by turning hits into misses,
-not by blocking admission. (The paper's model, which lets a controller keep or drop a
-paused state at a price, is a policy these engines do not implement: their KV policy
-is LRU on the free blocks.) On the paper's testbed with long contexts this station,
-not the prefill queue, set the waits (\cref{L5:sec:honest}). The M/M/$m$ queue is an
-exercise of \cref{sec:L2}.
-
-\paragraph{The control changes the service law.} In classical queueing theory the
-service-time law is given. Here the KV policy chooses it: a turn whose prefix is still
-resident is a hit with short prefill work, and one whose prefix was dropped is a miss
-that recomputes the whole context. The policy therefore sets the distribution of $S$ at
-the prefill station, and the central question of \cref{sec:L3} is how a performance
-measure changes when that distribution changes.
-
-\paragraph{Performance.} The time to first token is the sojourn time at the prefill
-station, $\mathrm{TTFT}=W_q+S$. The objective is the mean number of turns in the two
-stations, $L=L_P+L_D$; by Little's law (\cref{thm:little}) it is the same as the mean
-delay per unit time.
-
-\paragraph{What the projection drops.} Work is measured in seconds rather than tokens
-and memory blocks; the budget left to prefill by the decode batch fluctuates, and the
-model replaces it by an average; the paper's model has no memory-admission station, so
-a turn whose KV does not fit waits for free blocks without the model seeing it; and
-session feedback makes turn arrivals non-Poisson.
-\Cref{sec:L5} returns to these gaps once the tools are in place.
+\paragraph{The cache chooses the service law.} In classical queueing theory the
+service-time law is given. Here the KV policy chooses it: a hit has short prefill work,
+a miss recomputes the whole context. The TTFT is the sojourn time at prefill,
+$W_q+S$, and the objective is $L=L_P+L_D$, which by Little's law (\cref{thm:little}) is
+the mean delay per unit time. The projection measures work in seconds, averages the
+budget the decode batch leaves to prefill, and treats turn arrivals as Poisson;
+\cref{sec:L5} returns to these gaps, and \cref{sec:L6} draws the same picture for
+disaggregated serving.
 
 \section{The exponential distribution and memorylessness}
 
@@ -291,7 +252,8 @@ $T_1,T_2,\dots$ are independent and each is $\mathrm{Exp}(\lambda)$.
 \begin{proof}[Proof ($\Rightarrow$)]
 For $0=t_0<t_1<\dots<t_n$ and small $h>0$ consider the event
 $E_h=\{S_j\in(t_j,t_j+h],\ j=1,\dots,n\}$. Let $F_h$ be the event that there is no
-arrival in $(t_{j-1}+h,t_j]$ and exactly one in each $(t_j,t_j+h]$. Then
+arrival in $(0,t_1]$ or in $(t_{j-1}+h,t_j]$ for $j\ge2$, and exactly one in each
+$(t_j,t_j+h]$. Then
 $F_h\subset E_h$, and $E_h\setminus F_h$ is contained in the event that some interval
 of length $h$ has two or more arrivals, which has probability $O(h^{n+1})$. By
 independent and Poisson increments,
@@ -319,39 +281,19 @@ using that $S_n$ is Gamma distributed together with memorylessness, and we omit 
 \end{enumerate}
 \end{proposition}
 
-\begin{proof}
-(i) Independent increments follow from the independent increments of the two
-processes and their mutual independence. For the increment over one interval, the
-generating function of independent Poisson variables is
-$\E[z^{X_1+X_2}]=e^{\lambda_1t(z-1)}e^{\lambda_2t(z-1)}=e^{(\lambda_1+\lambda_2)t(z-1)}$,
-so the sum is $\mathrm{Poisson}((\lambda_1+\lambda_2)t)$.
+\begin{proof}See \cref{L1:exr:superpose}.\end{proof}
 
-(ii) Let $X$ be the original increment over an interval of length $t$, $X_1$ the number
-kept, and $X_2=X-X_1$ the number discarded. Given $X=j+k$, the conditional
-probability that $X_1=j$ is binomial, $\binom{j+k}{j}p^j(1-p)^k$, so
-\[
-  \Prob(X_1=j,X_2=k)=e^{-\lambda t}\frac{(\lambda t)^{j+k}}{(j+k)!}\binom{j+k}{j}p^j(1-p)^k
-  =e^{-p\lambda t}\frac{(p\lambda t)^j}{j!}\cdot e^{-(1-p)\lambda t}\frac{((1-p)\lambda t)^k}{k!}.
-\]
-Thus on one interval $X_1,X_2$ are independent Poisson variables. On disjoint
-intervals the original increments and the coin flips are all independent, so all
-increments of the two processes are independent.
-\end{proof}
-
-\serving{If sessions arrive as a Poisson process (rate $\Lambda$ in the paper) and each
-turn is assigned independently to one of $J$ replicas, then by
+\serving{If sessions arrive as a Poisson process of rate $\Lambda$ and each turn is
+routed independently to one of $J$ replicas, then by
 \cref{prop:superpose}(ii) each replica also sees Poisson arrivals. The turns within a
-session, however, go around a closed loop (prefill $\to$ decode $\to$ tool), so the
-turn arrivals are not exactly Poisson. The closed models of \cref{sec:L4} are the tool
-for this gap.}
+session, however, go around a closed loop (prefill $\to$ decode $\to$ tool), so the turn arrivals are not exactly Poisson. The closed models of
+\cref{sec:L4} are the tool for this gap.}
 
 \section{PASTA: Poisson arrivals see time averages}
 
 The distribution of the state seen by arriving customers generally differs from the
-time-average distribution. For example, in a D/D/1 system with interarrival times
-exactly 1 and service times exactly $0.5$, the server is busy half of the time, yet
-every arriving customer finds it idle. With Poisson arrivals this discrepancy
-disappears.
+time-average distribution (\cref{L1:ex:lookahead}(b) below gives an example). With
+Poisson arrivals this discrepancy disappears.
 
 \begin{definition}[Lack of anticipation]\label{L1:def:lookahead}
 Given a state process $X=(X(t))_{t\ge0}$ and an arrival process $A$, we say that $A$
@@ -376,7 +318,7 @@ queue is. So the arrival instants are ``random inspection times'', and by
 of time it is busy, $\rho$.
 
 \emph{(b) No lack of anticipation: a single agent session.} One session alternates
-between a tool call (thinking, mean $Z$) and a turn at the server (mean $1/\mu$). Its
+between a tool call (mean $Z$) and a turn at a server (mean $1/\mu$). Its
 next turn can arrive only after its previous turn has left the server. If $X(t)=1$
 (the turn is being served), then no arrival can happen until the service ends; if
 $X(t)=0$, an arrival may come at any moment. Future arrivals depend on the current
@@ -385,37 +327,15 @@ server idle, while the server is busy a fraction $(1/\mu)/(Z+1/\mu)>0$ of the ti
 Arrivals do not see time averages. With $N$ sessions the same effect is weaker but
 present, and \cref{sec:L4} replaces PASTA by the arrival theorem for exactly this
 reason.
-
-\emph{(c) Lack of anticipation is not enough.} In the D/D/1 example above, the arrivals
-at times $1,2,3,\dots$ are deterministic, hence independent of everything, so they have
-lack of anticipation. Yet every arrival finds the server idle. What fails is the other
-hypothesis of \cref{thm:pasta}: the arrivals are not Poisson. They are locked in phase
-with the service, always landing after the previous customer has left. Poisson
-arrivals are spread uniformly over time and cannot lock onto any phase.
 \end{example}
 
 \begin{remark}[Why study PASTA if sessions violate it?]\label{L1:rem:why-pasta}
-Example~\ref{L1:ex:lookahead}(b) shows that a single agent session does not have lack
-of anticipation. PASTA is still the right starting point, for three reasons.
-\begin{enumerate}
-\item \emph{The prefill model rests on it.} The paper models the prefill stage as an
-  M/G/1 queue, and the proof of the Pollaczek--Khinchine formula (\cref{thm:pk}) uses
-  PASTA. The paper states that session feedback makes this an approximation and tests
-  it. One cannot judge an approximation without knowing what it approximates.
-\item \emph{Many sessions look Poisson.} Each session reacts to the state, but the
-  superposition of many independent sessions, each contributing a small share of the
-  arrivals, is close to a Poisson process; this is the Palm--Khinchine theorem
-  \cite{khinchine1960}. New sessions themselves arrive as a Poisson process in the
-  model, so the M/G/$\infty$ and Campbell calculations of \cref{sec:L4} use Poisson
-  arrivals without approximation.
-\item \emph{The exact closed-system answer is a corrected PASTA.} The arrival theorem
-  (\cref{thm:arrival}) says that an arriving turn sees the time averages of the system
-  with one session fewer, and it reduces to PASTA as the number of sessions grows
-  (\cref{L4:rem:arrival-limit}). For exponential work, \cref{prop:finite}(ii) shows
-  that the open formula built on PASTA overstates the wait at equal utilisation, so
-  PASTA gives a conservative estimate whose error the finite-population model
-  quantifies.
-\end{enumerate}
+Three reasons. The M/G/1 model of prefill and its Pollaczek--Khinchine formula
+(\cref{thm:pk}) rest on PASTA, so one must know what session feedback approximates.
+The superposition of many independent sessions is close to Poisson (the
+Palm--Khinchine theorem \cite{khinchine1960}), and new sessions are Poisson in the
+model. And the exact closed-system answer, the arrival theorem (\cref{thm:arrival}), is
+a corrected PASTA that reduces to it as the number of sessions grows.
 \end{remark}
 
 \begin{theorem}[PASTA \cite{wolff1982}]\label{thm:pasta}
@@ -495,6 +415,7 @@ In the form ``long-run time average $=$ expected reward per cycle / expected cyc
 length'', the renewal-reward theorem is used directly for the residual service time
 (the inspection paradox) in \cref{sec:L3}.
 
+
 \section{Little's law}
 
 \begin{theorem}[Little's law \cite{little1961,stidham1974}]\label{thm:little}
@@ -563,20 +484,36 @@ $L=L_q+\rho$.
 \end{proof}
 
 \begin{example}\label{L1:ex:little}
-Suppose $\lambda=2$ turns per second arrive at the prefill stage and the mean prefill
-work is $\E[S]=0.3$ seconds. By \cref{cor:busy} the server is busy a fraction
-$\rho=0.6$ of the time. If the observed mean number of waiting turns is $L_q=0.9$,
-then $W_q=L_q/\lambda=0.45$ seconds, the mean TTFT is $W_q+\E[S]=0.75$ seconds, and the
-mean number of turns in the stage is $L=\lambda\cdot0.75=1.5$.
+Suppose $\lambda=2$ turns per second arrive at a prefill instance and the mean prefill
+work is $\E[S]=0.3$ seconds. By \cref{cor:busy} the prefill server is busy a fraction
+$\rho_P=0.6$ of the time. If the observed mean number of turns waiting for it is
+$L_q=0.9$, then $W_q=L_q/\lambda=0.45$ seconds, the mean TTFT (with no wait for memory)
+is $W_q+\E[S]=0.75$ seconds, and the mean number of turns in the prefill stage (waiting or in service) is
+$L=\lambda\cdot0.75=1.5$.
 \end{example}
 
-The paper takes as its objective the mean number of turns in the prefill stage and in
-the decode batch, $L=L_P+L_D$. By \cref{thm:little} this equals the total delay
-accumulated per unit time, $\lambda\cdot(\text{mean sojourn time})$, so ``reduce the
-mean number of turns'' and ``reduce the mean delay'' are the same goal. The ``price of
-a miss'' of \cref{sec:L3} is defined precisely as a change in this $L_P$.
+The scheduler's objective is the mean number of turns in the stations, for example
+$L=L_P+L_D$ for the prefill server and the decode batch. By \cref{thm:little} this
+equals the total delay accumulated per unit time, $\lambda\cdot(\text{mean sojourn
+time})$, so ``reduce the mean number of turns'' and ``reduce the mean delay'' are the
+same goal. The ``price of a miss'' of \cref{sec:L3} is defined precisely as a change in
+$L_P$.
+
+\section{Summary}
+\begin{itemize}
+\item Prefill is a FIFO queue, decode a processor-sharing station, the tool call a delay station, and memory a constraint or a queue of slots.
+\item A Poisson process has independent exponential gaps; Poisson arrivals that do not anticipate the state see time averages (PASTA), but one session's turns do not.
+\item Little's law $L=\lambda W$ holds on every sample path on which the arrival rate and mean sojourn time exist, for any boundary of ``the system''.
+\end{itemize}
 
 \section{Exercises}
+
+\begin{exercise}\label{L1:exr:superpose}
+Prove \cref{prop:superpose}.
+\emph{Hint:} for (i) multiply the generating functions $\E[z^X]=e^{\lambda t(z-1)}$ of
+the independent increments; for (ii) condition on the total count $X=j+k$ in an
+interval, which splits binomially, and factor the joint law.
+\end{exercise}
 
 \begin{exercise}\label{L1:exr:race}
 For independent $X_1\sim\mathrm{Exp}(\mu_1)$ and $X_2\sim\mathrm{Exp}(\mu_2)$, show that
@@ -593,3 +530,5 @@ tool-call duration?
 \emph{Hint:} take the tool-call stage alone as ``the system'' and apply
 \cref{thm:little}.
 \end{exercise}
+
+

@@ -1,5 +1,5 @@
 \documentclass[11pt,a4paper,oneside]{report}
-\usepackage[margin=2.4cm]{geometry}
+\usepackage[margin=2.0cm]{geometry}
 \usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
@@ -9,20 +9,21 @@
 \usepackage{xcolor}
 \usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black]{hyperref}
 \usepackage[capitalize,noabbrev]{cleveref}
+\hypersetup{hypertexnames=false}
 \linespread{1.08}
-\renewcommand{\chaptername}{Lecture}
+\renewcommand{\chaptername}{Chapter}
 \setlist{nosep,leftmargin=1.8em}
 
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,fit,calc,backgrounds}
 \usepackage[most]{tcolorbox}
 % Boxed theorem-like environments: the heading sits on the top frame.
-% All share one counter (numbered within the lecture); each has its own
+% All share one counter (numbered within the chapter); each has its own
 % counter name so that \cref prints the right word.
 \tcbset{thmbox/.style={enhanced,
   colback=#1!3!white,colframe=#1!75!black,boxrule=0.6pt,arc=1.2mm,
   left=2mm,right=2mm,top=3.2mm,bottom=1.6mm,
-  before skip=11pt,after skip=9pt,
+  before skip=6pt,after skip=5pt,
   fonttitle=\bfseries\small,coltitle=white,
   attach boxed title to top left={xshift=3mm,yshift=-2.4mm},
   boxed title style={colback=#1!75!black,colframe=#1!75!black,arc=0.8mm,boxrule=0pt,
@@ -44,7 +45,7 @@
 \newboxthm{corollary}{Corollary}{orange}
 \newboxthm{example}{Example}{teal}
 \newboxthm{remark}{Remark}{gray}
-% Exercises are not boxed; they are numbered within the lecture.
+% Exercises are not boxed; they are numbered within the chapter.
 \newcounter{exercise}[chapter]
 \renewcommand{\theexercise}{\thechapter.\arabic{exercise}}
 \crefname{exercise}{Exercise}{Exercises}
@@ -52,15 +53,11 @@
   {\par\medskip\refstepcounter{exercise}\noindent
    \textbf{Exercise~\theexercise}\IfValueT{#1}{ (#1)}.\ \ignorespaces}
   {\par\medskip}
-\crefname{chapter}{Lecture}{Lectures}
+\crefname{chapter}{Chapter}{Chapters}
 \crefname{section}{Section}{Sections}
 \crefname{equation}{Eq.}{Eqs.}
 \creflabelformat{equation}{(#2#1#3)}
 
-\usepackage{algorithm}
-\usepackage[noend]{algpseudocode}
-\crefname{algorithm}{Algorithm}{Algorithms}
-\newcommand{\kw}[1]{\mathbf{#1}}  % keyword of the station language
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\Prob}{\mathbb{P}}
 \newcommand{\Var}{\operatorname{Var}}

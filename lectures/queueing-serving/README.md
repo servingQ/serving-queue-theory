@@ -1,0 +1,26 @@
+# Queueing Theory for LLM Serving
+
+One course, six chapters and an appendix: shared queueing foundations
+(chapters 1–4), a colocated scheduler (chapter 5), a PD extension (chapter 6),
+and the executable examples (appendix A, `release-check.tex`). `notes.tex` is the sole lecture PDF entry point.
+
+The executable examples target **serQ v0.1.0**, IR v9,
+commit `f9fe9f2cad9e7d88e585860572c3757c295d58c6`.
+`vllm.sq`, `vllm-library.sq`, `mg1.sq`, `ps.sq`, `closed.sq`, and
+`pd_tandem.sq` are copies of that release's examples/library, with the
+vLLM import adjusted locally. `lecture_pd.sq` implements the analytical
+continuous tandem. Its link uses `run link`, which only takes time;
+a production KV transfer has different pool lifetimes.
+`price.sq` checks the mean-availability miss-price approximation on a
+step engine with an explicit full-prompt admission gate.
+
+From the repository root:
+
+```sh
+make lectures
+make lecture-results
+```
+
+`results.tex` is generated from the comparison evidence by
+`scripts/check_lecture_results.py --tex`; it must not be edited by hand.
+See `research/lecture-integration.md` for the commands and findings.

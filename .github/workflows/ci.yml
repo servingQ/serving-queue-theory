@@ -129,3 +129,24 @@ jobs:
         with:
           name: sim-validation-report
           path: validation/validation-report.md
+
+  lectures:
+    name: Unified lectures (serQ v0.1.0)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/serq-access
+        with:
+          deploy-key: ${{ secrets.SEQ_DEPLOY_KEY }}
+      - name: Install tectonic
+        run: |
+          curl -sSL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.17.0/tectonic-0.17.0-x86_64-unknown-linux-musl.tar.gz" \
+            | tar xz -C /usr/local/bin tectonic
+      - name: Build the unified course
+        run: make lectures
+      - name: Validate the lecture examples against serQ v0.1.0
+        run: make lecture-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lecture-results
+          path: /tmp/sqt-lecture-check.json
