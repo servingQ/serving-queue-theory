@@ -1,4 +1,4 @@
-"""FIFO v7/v8/v9 translation and explicit boundaries for newer IR.
+"""FIFO v7-v10 translation and explicit boundaries for newer IR.
 
 Run after providing the serQ corpus: SERQ_SRC=/path/to/serQ python3 scripts/test_serq_oracle.py
 """

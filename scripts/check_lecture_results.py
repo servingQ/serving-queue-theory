@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Check the unified course against serQ 0.1.0; emit reproducible evidence.
+"""Check the unified course against the pinned serQ release; emit reproducible evidence.
 
---serq must name the v0.1.0 binary. --baseline and --baseline-source are
+--serq must name that release's binary. --baseline and --baseline-source are
 optional: compare with the repository's previous release without requiring
 that its numerical results stay identical. No serving measurements are made.
 """
@@ -63,7 +63,7 @@ def main():
     args = ap.parse_args()
     assert bool(args.baseline) == bool(args.baseline_source)
     ir = json.loads(subprocess.check_output([str(args.serq), 'ir', str(PROGRAMS / 'mg1.sq')], text=True))
-    assert ir['version'] == 9, f"expected IR v9, got {ir['version']}"
+    assert ir['version'] == 10, f"expected IR v10, got {ir['version']}"
     checks, comparisons = [], []
     for path in PROGRAMS.glob('*.sq'):
         if path.name.endswith('library.sq'):
@@ -180,7 +180,7 @@ def main():
     args.out.write_text(json.dumps(result, indent=2)+'\n')
     if args.tex:
         rows = [r'\begin{center}\small', r'\begin{tabular}{@{}lrr@{}}',
-                r'\toprule', r'Metric (seconds) & Previous runtime & serQ v0.1.0 \\', r'\midrule']
+                r'\toprule', rf'Metric (seconds) & Previous runtime & serQ {current["release"]} \\', r'\midrule']
         if comparisons:
             for key, label in [('ttft','TTFT'), ('response','Turn response')]:
                 before = sum(c['baseline'][key] for c in comparisons)/len(comparisons)

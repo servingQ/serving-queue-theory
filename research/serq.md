@@ -28,8 +28,8 @@ pinned serQ release:
 | `programs/replay_vllm.sq`, `validation/src/sim/replay_vllm.py` | §4.2's vLLM-rule replay; `scripts/exp/serq_replay42.py` runs LRU and finished-session ablations (`research/serq-replay42.md`) | pyserq; `.serq/bin/serq` for the ablations |
 | `scripts/exp/*serq*`, `diff_serq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.serq/bin/serq`, `.serq/src/examples`, `.serq/src/tools` |
 
-The pin is `v0.1.0` under `[tool.serq]` in `validation/pyproject.toml`, IR 9, and its
-pyserq, `pyserq==0.1.0` from PyPI (a test holds the two to one release), is
+The pin is `v0.1.1` under `[tool.serq]` in `validation/pyproject.toml`, IR 10, and its
+pyserq, `pyserq==0.1.1` from PyPI (a test holds the two to one release), is
 the validation package's engine: `sim/serq.py` uses pyserq's
 report objects and adds only numpy arrays of the samples,
 `sim/workload.py` reads a trace with `pyserq.read_trace`, and `theory`
@@ -38,7 +38,13 @@ draws from `pyserq.Rng` (rand 0.9's `StdRng`). `agentic_model.sq` and
 expression `def`s, which the adapters give bodies with `defs=` (`--def`);
 the IR is the one the spliced text had. serQ's own examples (`mg1`,
 `routing`, `pd_tandem`, `pd_open`) have no such defs, so the adapters still
-splice their laws into the text. IR 9 orders a
+splice their laws into the text. IR 10 makes a hold's `cache` clause what
+consumes the session's own cached prefix (serQ #234: a hold without it
+leaves the entry where it is, so a reservation written around the
+request's hold on the same pool no longer costs it its hit; `cache (0)` is
+the old meaning); `SerqExec.lean`'s `admit` follows, and no program here
+holds a pool with entries without `cache`, so the oracle theorems and the
+validation numbers are unchanged. IR 9 orders a
 pool's waiting queue when a request is selected; no program here uses
 `queue by`, so their FIFO queues keep their meaning. IR 6 added renewal
 arrivals and requires finite runs to finish within their horizon; the queue

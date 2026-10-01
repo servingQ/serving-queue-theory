@@ -5,7 +5,7 @@ Design and status of the simulation checks. Read
 phase, and the empirical programme (E1–E6) follows it.
 
 Status (2026-10-01): `validation/` is a Python package using pyserq 0.1.0
-in process, with serQ v0.1.0 (IR 9) pinned in `validation/pyproject.toml`.
+in process, with serQ v0.1.1 (IR 10) pinned in `validation/pyproject.toml`.
 The CLI is needed for the experiment scripts and lecture verifier; the
 validation package reads pyserq report objects, not CLI JSON/dump files.
 `research/serq.md` documents the runtime and source checkout.

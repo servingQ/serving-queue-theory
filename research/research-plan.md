@@ -22,6 +22,16 @@ record the runs made at that time; they do not imply a server is still running.
 Keep this section current at the end of every work block.
 
 **Done.**
+- **serQ v0.1.1 pinned, IR 10 (2026-10-01).** The pin moved to the release
+  that fixes the overlapping-hold bug Lecture 7 ran into (serQ #230: a hold
+  without `cache` now leaves the session's prefix where it is; IR 10, same
+  shape). Companion here: `scripts/gen_serq_oracle.py` reads 10,
+  `SerqExec.lean`'s `admit` consumes the own prefix only with a `cache`
+  clause, `SerqOracle.lean` regenerated (version field only; the theorems
+  are unchanged since no oracle program holds a pool with entries without
+  `cache`). Also from the release: `serq --version` and `serq_version` in
+  the report, a note on a test observe that never held, and the linker
+  rejecting a `set present` (serQ #231, the course's old `n` accident).
 - **Metastability, Lecture 7 (2026-10-01, serQ #120; lecture note only, not
   the paper).** Serving results proved in Lean (`CacheOrder.lean`,
   `Metastability.lean`): saturated rounds (LRU 0 hits, any rule ≤ `C`, pinning

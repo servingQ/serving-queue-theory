@@ -133,7 +133,7 @@ jobs:
           path: validation/validation-report.md
 
   lectures:
-    name: Unified lectures (serQ v0.1.0)
+    name: Unified lectures (serQ v0.1.1)
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
