@@ -19,7 +19,8 @@ scripts/ CI checks (see below)
 | 2 | Pollaczek–Khinchine: `E[S²] = Var + mean²`; equal-mean/higher-variance workload waits longer (`3.43×` example) | `PollaczekKhinchine` | `secondMoment_eq_variance_add_sq`, `pkWait_lt_of_variance_lt` |
 | 3 | KV reuse lowers `E[S]`, `ρ`, and PK delay monotonically in hit rate (`ρ: 0.9 → 0.252`) | `CacheReuse` | `pkWait_mixture_antitone` |
 | 4 | Option value: enabling offloading never hurts an optimal controller; *always* offloading can | `OptionValue` | `optimal_cost_antitone_in_actions`, `always_offload_can_be_worse` |
-| 5 | PD disaggregation: `min(N_P/s_P, N_D/s_D) ≤ N/(s_P+s_D)`, equality at rate matching; exact 4-bottleneck win condition; both regimes realisable | `PDDisaggregation` | `pd_le_agg`, `pd_beats_agg_iff`, `pd_wins_example`, `pd_loses_example` |
+| 5 | PD disaggregation (capacity only): `min(N_P/s_P, N_D/s_D) ≤ N/(s_P+s_D)`, equality at rate matching; exact 4-bottleneck win condition; both regimes realisable | `PDDisaggregation` | `pd_le_agg`, `pd_beats_agg_iff`, `pd_wins_example`, `pd_loses_example` |
+| 5b | Decode sojourn at equal throughput (PD follow-up, issue #28): scaling arrival rate and PS capacity together keeps the occupancy law and divides the sojourn; a dedicated decode engine `(λ/f, φ)` is the colocated `(λ, fφ)` scaled by `1/f`; a smaller share of the capacity at the same demand leaves more turns in the batch | `DecodeScaling` | `psMeanNumber_scale`, `dedicated_sojourn`, `psMeanNumber_anti_share`, `request_weighted_tpot_not_from_means` |
 | 6 | Shortest-context-first eviction is **not** optimal (`{4,5,6}, ΔC=6`: 41 vs 36); breaks further with resume probabilities | `Eviction` | `shortestFirst_optimality_claim_false` |
 | 7 | Program-aware routing: myopic vs lookahead disagreement condition; affinity is never unconditionally optimal; PPD append-prefill rule | `Routing` | `lookahead_prefers_iff`, `affinity_not_always_optimal`, `append_prefill_rule` |
 

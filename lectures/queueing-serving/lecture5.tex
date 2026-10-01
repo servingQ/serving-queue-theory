@@ -414,6 +414,14 @@ and which are modelling choices.
   the pool, not by the queue, and adds to the PK wait. The capacity
   function $\varphi$ depends on the footprint law and the admission rule
   and must be calibrated, not derived.
+\item \emph{A modelling choice:} $\varphi$ is fixed by a step rule that
+  serves the decode batch at every step. An engine that gives a prefill a
+  step of its own stops its decodes for that step, so its decode capacity
+  falls with the prefill load; there a miss adds no decode demand but
+  shrinks the capacity, and a smaller share of the capacity at the same
+  demand leaves more turns in the batch (\cref{thm:L-mono} at the load
+  $\rho_D/f$). \Cref{prop:decode-price,L2:cor:decode-hit} are about the
+  first kind of engine.
 \end{itemize}
 
 \paragraph{What the testbed showed about the last point.} On the paper's testbed with
