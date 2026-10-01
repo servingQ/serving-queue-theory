@@ -9,13 +9,13 @@ Do not edit. The programs, the deployments and the workloads below are
 translations of that IR, the same IR the serQ tests run.
 
 Six scenarios run one request program, `vllmRequest` (serQ
-`programs/vllm_request.sq`): wait until the arrival, hold a slot and the
+`examples/oracle/vllm_request.sq`): wait until the arrival, hold a slot and the
 KV blocks of the chunk the engine's budget leaves (admission needs room for
 the whole prompt), prefill growing the hold, decode growing it. The
 theorems say that the executable semantics gives, for every request, the
 step of its first token and of its last token, and the number of
 preemptions, that the real scheduler gives. The seventh, `vllmTurn` (serQ
-`programs/vllm_replay.sq` on a unit step clock, the trace inlined as the
+`examples/replay/vllm_replay.sq` on a unit step clock, the trace inlined as the
 sessions' turns), is a multi-turn replay with a prefix cache: hits, a
 partial hit and misses caused by eviction; its theorem gives, for every
 turn, the send step, the time to first token, the latency and the cached
@@ -33,7 +33,7 @@ namespace Oracle
 
 open Exec
 
-/-- The vLLM request program (serQ `programs/vllm_request.sq`), translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = computed, 9 = prompt, 10 = o, 11 = arrive, 12 = known. Observations: 0 = first, 1 = done. Pools: 0 = reqs, 1 = kv. Stages: 0 = engine, 1 = gate. -/
+/-- The vLLM request program (serQ `examples/oracle/vllm_request.sq`), translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = computed, 9 = prompt, 10 = o, 11 = arrive, 12 = known. Observations: 0 = first, 1 = done. Pools: 0 = reqs, 1 = kv. Stages: 0 = engine, 1 = gate. -/
 def vllmRequest : Prog := [route|
   run 1 (x.attr 11);
   hold 0 (1), 1 (min (if (if (x.attr 8) < (x.attr 9) then 1 else 0) ≠ 0 then (x.attr 9) else ((x.attr 8) + 1)) x.budgetLeft) fits (if (if (x.attr 8) < (x.attr 9) then 1 else 0) ≠ 0 then (x.attr 9) else ((x.attr 8) + 1)) {
@@ -103,7 +103,7 @@ theorem vllm_seqcap :
 
 /-! ### A multi-turn scenario with a prefix cache -/
 
-/-- The vLLM replay program (serQ `programs/vllm_replay.sq`) on a unit step clock, translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = computed, 9 = prev, 10 = prevout, 11 = t0, 12 = prompt, 13 = hitmax, 14 = known, 15 = c. Observations: 0 = cached_tokens, 1 = prefix, 2 = sent, 3 = ttft, 4 = latency. Pools: 0 = kv, 1 = reqs. Stages: 0 = engine, 1 = front, 2 = gate, 3 = tool. -/
+/-- The vLLM replay program (serQ `examples/replay/vllm_replay.sq`) on a unit step clock, translated from its IR. Attributes: 2 = turn_no, 3 = new, 4 = out, 5 = think, 6 = more, 7 = forced, 8 = computed, 9 = prev, 10 = prevout, 11 = t0, 12 = prompt, 13 = hitmax, 14 = known, 15 = c. Observations: 0 = cached_tokens, 1 = prefix, 2 = sent, 3 = ttft, 4 = latency. Pools: 0 = kv, 1 = reqs. Stages: 0 = engine, 1 = front, 2 = gate, 3 = tool. -/
 def vllmTurn : Prog := [route|
   run 2 (x.serial * 3);
   set 9 = 0;

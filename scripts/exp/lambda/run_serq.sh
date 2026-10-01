@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../../.."
 PORT=8020; BASE=http://127.0.0.1:$PORT; MODEL=Qwen/Qwen3-8B
 export BASE MODEL DP_SIZE=0 REPLAYER=replayer/replay_text_trace.py
 T=data/exp/traces
-log() { echo "[run_seq] $(date '+%F %T') $*"; }
+log() { echo "[run_serq] $(date '+%F %T') $*"; }
 drain() {
   while pgrep -f "replay_text_trac[e].py" >/dev/null; do sleep 5; done
   while curl -s -m 5 "$BASE/metrics" | grep -E "^vllm:num_requests_(running|waiting)\{" | awk '{s+=$2} END {exit !(s>0)}'; do sleep 5; done

@@ -4,7 +4,7 @@
 // engine's rules (the ones the request-for-request comparison with the real
 // scheduler established, serQ `docs/language.md` §7), a live-session cap,
 // the RBLN-calibrated time model and eviction by price per byte-second.
-// research/seq-replay42.md compares it with the old validation model's rules.
+// research/serq-replay42.md compares it with the old validation model's rules.
 //
 // Engine rules, replacing the old validation model's:
 //  * the engine admits waiting turns at the start of an iteration with the

@@ -147,7 +147,7 @@ def test_pd_single_device_aggregated_capacity():
     assert abs(r.throughput - 1.0) < 0.02 and r.station_utilization[0] > 0.99
 
 
-def test_pd_open_poisson_load_uses_the_seq_program():
+def test_pd_open_poisson_load_uses_the_serq_program():
     cfg = PdConfig.from_means(
         8, Disaggregated(2), Poisson(1.5), 1.0, 3.0, 0.0, (1.0, 1.0), float("inf"), 1.0
     )
@@ -190,7 +190,7 @@ def test_ttft_stops_after_prefill():
 # -------------------------------------------------------------- routing --
 
 
-def test_affinity_and_myopic_match_the_seq_example():
+def test_affinity_and_myopic_match_the_serq_example():
     for code, pol in [
         (0, RoutePolicy.Affinity),
         (3, RoutePolicy.Myopic),
@@ -204,7 +204,7 @@ def test_affinity_and_myopic_match_the_seq_example():
             assert abs(ours.observe("hitrate").mean - theirs.hit_rate) < 0.05
 
 
-def test_routing_adapter_renders_distribution_samples_in_seq():
+def test_routing_adapter_renders_distribution_samples_in_serq():
     cfg = RoutingConfig.example(0.6, RoutePolicy.Lookahead)
     cfg.cls.initial_tokens = discrete([5_000.0, 15_000.0], [0.25, 0.75])
     cfg.cls.new_tokens = HitMiss(0.8, 100.0, 1_000.0)

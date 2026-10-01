@@ -1,5 +1,9 @@
 # Response to the memory-model review, round 2 (2026-09-26)
 
+Historical review: paths to the former Rust validation crate below refer to
+the reviewed snapshot. Current validation is Python/pyserq in `validation/`;
+see `research/serq.md` and `research/simulation-design.md`.
+
 | # | Action | Done | Where / result |
 |---|--------|------|----------------|
 | 1 | Sub-block copy semantics (N1) | yes | memory_model.py `try_admit`: a sub-block hit needs `need` free blocks besides its touched tail, gets a new tail, and the source returns ownerless to the MRU end (also on a failed match); memory-model.md statement 2 rewritten with the lines you gave. s15: 631/681 misses, κ 0.80, mean TTFT 5.4/6.7 s (was 235, 0.83 agreement, 3.9 s); unforced misses in the light arms 25/29, 26/29 (were 0) |

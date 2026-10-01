@@ -6,7 +6,7 @@ The program is the replica of the trace-replay scenario (same corpus,
 Poisson session arrivals, live-session cap, batch cap 8, RBLN cost fit,
 eviction by price per byte-second) with the engine rules that the
 request-for-request comparison of serQ against the real vLLM scheduler
-established (`research/seq-replay42.md`). The rows are computed from the
+established (`research/serq-replay42.md`). The rows are computed from the
 program's per-turn observations: a turn hits iff it reuses its whole
 reusable prefix; prefill service in stage time is `work / availability`,
 the availability being the share of the iteration budget the decoding turns

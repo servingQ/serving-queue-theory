@@ -17,9 +17,9 @@ replay** (E4), **placement test** (E5), **faithfulness scoring** (E6).
 The codes survive in directory names (`data/exp/e1`, `e2`, `e2b`),
 macros (`\eOne*`, `\eTwo*`, `\eTwob*`) and older review files.
 
-State on 2026-09-26 (paper v0.14, committed at the end of the session). What is done, running and next, so a
-fresh session can continue without the chat history. Keep this section
-current at the end of every work block.
+Current integration state as of 2026-10-01. Dated measurement entries below
+record the runs made at that time; they do not imply a server is still running.
+Keep this section current at the end of every work block.
 
 **Done.**
 - **Metastability, Lecture 7 (2026-10-01, serQ #120; lecture note only, not
@@ -34,9 +34,20 @@ current at the end of every work block.
   (PS chain fails; a one-at-a-time chain fits partly). serQ issues #230–#232.
   Record: `research/metastability.md`. Lecture 6's Tarski proposition is now
   titled "Knaster–Tarski".
+- **serQ naming and integration cleanup (2026-10-01).** Runtime notes,
+  experiment entry points and review filenames now use `serq`; references
+  follow the renames. Removed obsolete Cargo/Rust paths, completed-work
+  next steps and whole-session-replica summaries from current instructions.
+  Corrected section/appendix mapping and the block-prefix threshold caveat.
+  Acquisition paths and previous-runtime metadata remain historical evidence;
+  CI prefers `SERQ_DEPLOY_KEY` with the provisioned secret as fallback.
+  Validation: `make check` passed (120 audited theorems, 59 paper citations,
+  49 unit/adapter tests, 35 simulation checks, 21 lecture checks). The renamed
+  comparison entry point replayed 3 321 turns with the pinned serQ runtime.
+
 - **Unified lecture course (2026-09-30).** The primer and PD notes are now
   `lectures/queueing-serving/notes.tex`: common theory once, colocated and PD
-  applications in chapters 5–6. All obsolete Route/seQ language exposition
+  applications in chapters 5–6. All obsolete Route/type/grammar exposition
   removed from the course. Executable examples target serQ v0.1.0, IR v9,
   using the existing pin in `validation/pyproject.toml`; `make lecture-results`
   verifies them. A preceding PD program had its PS capacity variable
@@ -49,7 +60,7 @@ current at the end of every work block.
 - **serQ v0.1.0 pinned, pyserq from PyPI (2026-09-30).** `validation`
   installs `pyserq==0.1.0` from PyPI and checks out serQ `v0.1.0` for the
   example programs, the oracle IR files (IR 9) and the CLI; a test holds
-  the two to one release (`research/seq.md`). On the way (rc6–rc8) the
+  the two to one release (`research/serq.md`). On the way (rc6–rc8) the
   package dropped its copies of what pyserq now has: the report classes,
   the trace parser, the port of rand's `StdRng` (`pyserq.Rng`), and most
   program-text splices (named `def`s given with `defs=`). `paper/sim/` is
@@ -66,140 +77,45 @@ current at the end of every work block.
   the serQ CLI of `scripts/exp`. `make tables`
   regenerates `paper/sim/` (~7 min); `make sim` runs ruff, pytest and the
   report (~5 min).
-- **IR first (2026-09-27, serQ v0.1.0-dev2).** A serQ program is defined by
-  its IR (serQ `docs/ir.md`): versioned JSON, validated on load, with the
-  workload instance (explicit sessions) as data. The vLLM request program
-  had three hand-kept copies (a Rust test string, the Lean `vllmRequest`,
-  `vllm.sq`); now `programs/vllm_request.sq` compiles per scenario to
-  `tools/oracle/*.ir.json`, the serQ test runs those files, and
-  `SerqOracle.lean`'s program, deployments and request tables are
-  translated from them (same six theorems). Experiment scripts pass traces
-  with `--trace` and record `program.ir.json`. **Done (dev3):** sessions
-  carry their turns in the IR (`--inline-trace`), the Lean executable
-  semantics reads them (`Exec.Workload`, delays on every stage but the
-  engine), and `vllmTurn` with the cache theorem is generated from
-  `cache_trace.ir.json`; no oracle program is hand-written any more.
-- **The language is serQ, a separate project (2026-09-27).** The serving-
-  deployment language, its interpreter and CLI
-  (`serq`), the example programs and the vLLM oracle with its test
-  vectors are https://github.com/vrvrv/serQ (release v0.1.0-dev3); this
-  repository uses the pinned release as a Cargo git dependency and through
-  `.serq/` (`research/seq.md`). The Lean model of the language stays here
-  (`lean/ServingQueueTheory/Seq{,Exec,Oracle,Serve}.lean`, the oracle
-  theorems generated from serQ's IR files by `scripts/gen_serq_oracle.py`),
-  as do the paper's replica programs (`Deployments.lean`). CI reads serQ
-  with a read-only deploy key (secret `SEQ_DEPLOY_KEY`, `research/seq.md`).
-- **serQ, second pass (2026-09-27).** The vLLM program now reproduces
-  the real scheduler request for request on the full short-context trace
-  (3 321/3 321; six semantic gaps found by differential replay and fixed in
-  the language: admission served by the engine, whole-prompt gate, partial
-  reuse with dead blocks, `end` keeps the cache, admission order, release
-  order); the six scenarios are Lean theorems (`SerqOracle.lean`,
-  `decide +kernel`) and hold on the real A100 engine; the paper's "prefill
-  from what decode leaves" equals vLLM's admission order unless a
-  per-request chunk cap is set (`SerqServe.lean`, cited in §2.2). The A100
-  miss under-prediction (117 vs 426) was these semantic gaps; with them fixed
-  the model's remaining error is the time model (two overhead constants),
-  `serQ `docs/language.md`` §8. Review round with serQ:
-  `research/reviews/2026-09-27-seq-round1*.md`.
-- **serQ v0.1.0-rc1 pinned (2026-09-29).** This release advances the oracle
-  vectors to IR v5. `scripts/gen_serq_oracle.py` and `SerqOracle.lean` read the
-  new version; the three simulator programs use `reserve` for admission,
-  and the open-session program declares its probabilistic branch.
-- **serQ v0.1.0-rc0 first pinned (2026-09-28).** The first release candidate:
-  the per-session block is `session { … }` (IR v3, field `session`), the
-  serving vocabulary (`admit … keep`, `prefill`, `decode`, `tool`,
-  `transfer`) and `branch with (p)` are sugar over the kernel, the vLLM
-  programs' request pool is `reqs`, and `serq draw` exists. Here:
-  `programs/*_vllm.sq` and the inline test programs say `session`,
-  `scripts/gen_serq_oracle.py` read IR v3, `SerqOracle.lean` was regenerated
-  (only its doc comments changed: pool `reqs`); the paper's replicas in
-  `Deployments.lean` still use the kernel forms, and the Lean type and
-  quotation keep the name `Route`/`[route| … ]`.
-  **Hypothesis H-pin (new):** pinning a queued turn's cached prefix (the
-  vLLM rule leaves it evictable until the turn is scheduled) removes the
-  wait channel of Lecture 5 and moves the cliff; in simulation of the A100
-  trace at 3.0 s spacing the full-hit rate is 0.24 under the vLLM rule and
-  0.80 with pinning. Test: patch vLLM to touch a waiting request's cached
-  blocks at `add_request` (and untouch on abort), replay 3.0 s and 2.5 s
-  (`scripts/exp/lambda/steptrace/pinpatch.py`). **Result (A100, served,
-  2026-09-27, one run per point):** at 2.5 s the vLLM rule collapses (TTFT
-  34.6 s, full-hit 0.22) and the pinned engine does not (0.88 s, 0.78;
-  serQ pre-registered 0.89 s, 0.75); at 3.0 s both are off the cliff
-  (0.44 → 0.41 s). Data `data/exp/gpu_seq/trace/`, table in
-  `serQ `docs/language.md`` §8. The Lambda instance was terminated after
-  the runs. Candidate for the paper's §3.3 admission step (needs a same-day
-  unpinned 2.5 s rerun with the tracer and seeds before it goes in).
-  **§4.2 replay in serQ (done 2026-09-27, `research/seq-replay42.md`,
-  `programs/replay_{twostage,vllm}.sq`, `scripts/exp/seq_replay42.py`):**
-  the qualitative conclusions stay (open replica all hits; the admission
-  cap decides thrashing under every rule set; priced ≤ LRU in TTFT); the
-  quoted numbers move under vLLM's rules (block tail eviction makes misses
-  partial: TTFT 1.3–3.7× lower, mixture share of variance much lower; a
-  priced key that keeps finished sessions' blocks loses hit rate, so the
-  §3 scheduler needs the program's end). **User decision: (b), done the
-  same day:** §4.2 runs `programs/replay_vllm.sq` through
-  `serq_replay` in `paper_tables` (tables, Reuse column,
-  macros, prose of `simulation.tex` and the intro sentence regenerated;
-  `replay_twostage.sq` removed). Open for the paper: §3 could state that
-  the price key needs the program's end under vLLM (the `keep=0`
-  ablation), and the LRU-vs-priced margin on the trace is small (up to
-  1.65× in TTFT) next to the synthetic `tab:sim-evict-dyn`.
-  **Follow-up the same day (items 1–4, user request):** (1) the
-  eviction/admission experiment (`tab:sim-evict-dyn`, `tab:sim-admission`,
-  `fig:sim-admission`) runs `programs/open_vllm.sq` (vLLM rules, testbed
-  cost, rates 0.03/0.05) through `validation::serq_open`: priced orders
-  ≈ shortest-first, LRU 1.7–3.0× TTFT, the cap decides thrashing, and with
-  the end unknown the byte-second price loses its lead (text of §4.2 and
-  §3.1); thrashing is now "reuse below half" (partial misses); serQ dev4
-  made the interpreter 5–15× faster (identical results). (2) §3.1: the
-  block problem is not a fractional knapsack (tail recompute concave,
-  `tailRecompute_marginal_antitone`, `tailRecompute_subadditive`); the
-  threshold results are stated with programs as units; `prop:blind` (i)
-  holds for tail blocks (`price_blind_rule_unbounded_cost`), (ii) is about
-  whole programs. (3) `TwoStage` documented as the §2.2 model. (4) The old
-  libqueuingsim replay and open-session evidence paths and their examples
-  are gone; the check `trace_replay_variance_sources` runs the vLLM-rule
-  replay and expects a positive mixture share (it was > 0.3 under
-  whole-session eviction; 0.06–0.23 now).
-  **Then `TwoStage` removed (user request):** it was used by no in-model
-  check (`miss_price_bracket` runs on a plain M/G/1); its one check,
-  where a miss is paid, runs `programs/price_vllm.sq` through
-  `validation::serq_price` (check `prefill_pays_the_miss`, `tab:sim-ps`
-  rows 8–9): ΔL_P inside the bracket at its upper end; the decode batch
-  changes by 0.3 % (not 0: a miss's prefill lengthens shared iterations),
-  so the check bounds it by 1 % and §4.2 says so. Gone with it: the
-  `open_session_cfg` scenario, the serQ-vs-TwoStage cross-check, the
-  `trace_html` example and the TwoStage unit tests.
-  **Next for serQ** (in order): (1) keep a growing hold's position integral
-  (fractional chunks lose a block when rounded, found in the replay port);
-  (2) identify the served overhead constants
-  from a served step trace with synchronous against asynchronous
-  scheduling at light load; (3) Kani harnesses, then Aeneas, on a pure pool
-  core of `serQ src/sim.rs` against `SerqLang.Step` and
-  `Exec.makeRoom_room`.
-- **serQ (2026-09-27): the serving-deployment language of Lecture 1
-  rebuilt as a programming language for the formal verification and
-  simulation of serving systems.** serQ (Rust parser, interpreter,
-  CLI), `lean/ServingQueueTheory/Serq.lean` (syntax, pool semantics,
-  memory invariant `SerqLang.Step.invariant`, the two replicas as
-  programs, the surface syntax `[route| … ]` inside Lean),
-  `serQ programs/*.sq` (M/G/1, PS, M/M/1//N, the agentic replica,
-  the paper's two-resource replica, PD tandem, routing, vLLM v1, vLLM
-  on the A100 replaying the short trace). Validated against the closed
-  forms, the hand-written `libqueuingsim` models (now run under `make
-  sim`, `validation/tests/seq_*.rs`), the real upstream vLLM
-  scheduler on six deterministic scenarios (6/6 step-exact,
-  `serQ tests/vllm_oracle.rs`) and the ten measured A100 runs (one
-  calibrated parameter; mean TTFT within 10–30 % below the cliff, the
-  cliff at 2.5 s reproduced; `data/exp/seq/gpu.txt`). Spec
-  `serQ `docs/language.md``; review of the lecture's version against
-  vLLM, design, self-review and the verification-tooling survey
-  `serQ `docs/review.md``. Next for serQ: an executable Lean semantics
-  (`#eval`) fed by the oracle scenarios, Aeneas/Kani on the pool core,
-  cross-session prefix sharing, a fluid option for the step stage, and
-  the eviction under-prediction on the A100 (117 vs 426 misses at
-  3.5 s).
+- **serQ integration (current).** The language is a separate project,
+  https://github.com/vrvrv/serQ. This repository runs its pinned v0.1.0
+  release (IR 9) through pyserq and `.serq/bin/serq`, not a Cargo git
+  dependency. `research/serq.md` documents the pin, upgrade procedure and CI
+  access. The Lean modules are `Serq{,Exec,Oracle,Serve}.lean`;
+  `scripts/gen_serq_oracle.py` generates the oracle statements from the
+  release's IR, and `scripts/test_serq_oracle.py` checks the translator's
+  accepted fragment. This proves the named fragment, not every IR-v9 feature.
+- **vLLM-rule paper simulations (ported 2026-09-27).** The price,
+  eviction/admission and WEKA replay experiments run
+  `programs/{price,open,replay}_vllm.sq` through
+  `validation/src/sim/{price,open,replay}_vllm.py`. `make tables` generates
+  the paper's tables and macros. The old `TwoStage` server, whole-session
+  replay and Rust cross-checks were removed. Block eviction gives partial
+  misses, so the replay reports reused-prefix share alongside hit rate;
+  the price check allows the small decode-occupancy change of shared
+  iterations rather than asserting it is zero.
+- **Scheduler comparisons (recorded 2026-09-27).** Differential replay
+  identified admission, reuse and release-order gaps and matched the
+  request decisions on the recorded short-context trace. The review record
+  is `research/reviews/2026-09-27-serq-round*.md`. The Lean oracle covers
+  the deterministic scenarios and the multi-turn cache trace; it is not a
+  proof of arbitrary production runs. Historical A100 comparisons and the
+  waiting-prefix pinning experiment remain experimental evidence, not
+  current-release measurements. The Lambda instance was terminated after
+  those runs. Their acquisition paths retain `seq` in the directory names
+  (`research/serq.md`, "Historical evidence").
+- **Replay ablations (recorded 2026-09-27).**
+  `research/serq-replay42.md` and its generated tables compare the paper's
+  vLLM-rule configuration with LRU and dropping finished-session blocks.
+  `scripts/exp/serq_replay42.py` reruns these ablations. End-of-program
+  information matters to the priced eviction key. The superseded comparison
+  against whole-session eviction is available in git history; it is not a
+  second current paper replica.
+- **Open runtime research.** Identify served overhead constants using
+  synchronous versus asynchronous scheduling; validate the pool core with
+  Kani/Aeneas against the formal fragment. The old requests for an executable
+  Lean semantics and for the vLLM replay port are complete and no longer
+  next steps. Further runtime work belongs in the serQ repository.
 - Paper v0.13 (2026-09-26, after the user's feedback and a clarity
   review `research/reviews/2026-09-26-clarity.md`): §4 renamed "Results"
   (4.1 real-world traces, 4.2 simulation, 4.3 testbed); a "Background"
@@ -335,7 +251,7 @@ current at the end of every work block.
    measurements into §4.3 / App. D via `make exp`.
    Original plan (review round 3):
    (a) User decision: may `memory_model.py` output enter the paper as
-   `make exp` tables labelled model output (AGENTS.md rule 7 now admits
+   `make tables` output labelled simulation (AGENTS.md rule 7 now admits
    simulator numbers only via `paper/simulation.tex`)? (b) Decode probe
    on an idle server, E1-style: decode step time vs batch b ∈
    {1,2,3,4,5,8} (compiled buckets 1,4,8) and context, mixed contexts,
@@ -348,7 +264,8 @@ current at the end of every work block.
    parameter from E2/E2b. (e) Then the model-based price of a miss at
    50k contexts (force single turns to miss, measure the added summed
    TTFT) against the bracket of `prop:price`; later port the pool
-   mechanics into libqueuingsim so §4.2's replica is the validated one.
+   mechanics into the serQ replay and validate them against held-out runs.
+   The replay port is complete; held-out real-system scoring remains open.
 1. **A100 testbed (user decision, 2026-09-26).** Reproduce the cost fit
    and both replays on GPU vLLM, then run the pending experiments there
    (offloading test with LMCache, eviction replay with 16-token blocks,
@@ -371,7 +288,7 @@ current at the end of every work block.
 2. Review round 6 (same prompt shape; focus: the second seed, the price
    table, the GPU rows once they exist).
 3. E6-lite: replay `cc_traj` and the short trace in the calibrated
-   simulator (needs a `TraceCorpus` loader for that JSONL) and compare
+   simulator (needs a JSONL adapter to serQ's trace corpus) and compare
    with `tab:e2`/`tab:e2b` per rank (Kendall τ, TTFT MAPE).
 4. Remaining review-3 leftovers: UNVERIFIED venue notes in
    `paper/refs.bib`.
@@ -404,7 +321,7 @@ law). The replica has **two resources and a memory pool**:
 - decode bandwidth: `D = o (β K + ω/n)`; KV reads do not amortise over
   the batch, weights do. Decode stage = PS with capacity φ(n),
   insensitive. Hit/miss does not change D.
-- memory: `β K` bytes while resident; shared by paused states and the
+- memory: `κ K` bytes while resident; shared by paused states and the
   batch; admission cap; shadow price θ per byte-second.
 
 Cost-model check (roofline, 70B-class, not paper numbers): hit prefill
@@ -418,8 +335,9 @@ of s (TP1); decode of 444 tokens ≈ several s (KV reads ≈ 14 ms/step at
 - `prop:decode` (PS): L_D monotone in ρ_D and insensitive; a miss adds
   no decode demand. Used for admission (load factor) and to separate the
   stages.
-- `prop:memory`: θ-threshold rule is optimal for the relaxed problem;
-  block-level density order is optimal up to one block.
+- The memory threshold uses whole programs as items in the relaxed problem.
+  Tail-block recomputation is concave, so block eviction is not a linear
+  fractional knapsack; do not apply its density-optimality claim to tail blocks.
 - footprint examples (prose in §2.2, was `prop:footprint` until v0.7): KV footprint variance can shrink or grow the batch
   that fits in memory (no fixed sign), so φ's saturation must be
   measured.
@@ -444,7 +362,7 @@ The model is one causal chain (paper §2):
 KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L → policy
 ```
 
-## 2. Paper structure (v0.7: sessions + two-resource replica + memory price; §3 proposes the scheduler)
+## 2. Current paper structure
 
 | § | Content | Our results | Cited results (prose) |
 |---|---------|-------------|----------------|
@@ -459,9 +377,11 @@ KV policy → hit rate p → (E[S], E[S²]) → (ρ, E[W_q]) → delay cost L �
 | 3.2 | Placement: `eq:lookahead`, `eq:rhostar` (inversion load ρ* = μ(M+F)/(1+μ(M+F)), monotone in M, F; lower bound for any real alternative) as prose | inline `\provedby` (`affinity_loses_iff`, `inversionLoad_*`) | none |
 | 3.3 | Admission and offloading (thrashing = Ao et al. 2026 instability with reuse; Campbell resident-KV estimate → cap; keep/offload/drop; option value; fixed rules as constants in one sentence) | none (design) | Campbell (M/G/∞), Ao et al. 2026 |
 | 4.1 | What the traces say (`sec:exp-traces`, `tab:traces`; TTFT and resume tables in App. C) | none (workload measurements) | cc-traces-weka |
-| 4.2 | Uncalibrated simulation (`paper/simulation.tex`: summaries + `tab:sim-inmodel`, `fig:sim-admission`, `tab:sim-trace`; other tables in App. B) | none (checks of the props above) | none |
-| App. D | Experimental design for a real system (`app:design` = `sec:exp-real`): overview table + one paragraph E1–E6; result-table layouts in §4.2a below | none | none |
-| App. A | Human-readable proofs (price, decode, blind) | | |
+| 4.2 | Replayed production sessions on simulated vLLM rules with a testbed-calibrated cost model (`paper/simulation.tex`); synthetic checks summarized here, detailed in App. B | none (simulation checks) | none |
+| 4.3 | Testbed measurements: cost fit, long-context replay, short-context replay and price test | none (serving measurements) | none |
+| App. E | Experimental design for a real system (`app:design` = `sec:exp-real`): overview table + one paragraph E1–E6; result-table layouts in §4.2a below | none | none |
+| App. D | Testbed tables (`paper/exp/`) | none (measurements) | none |
+| App. A | Human-readable proofs (price, decode, blind, finite) | | |
 | App. B | Simulation tables (`paper/simulation-appendix.tex`) | | |
 | App. C | Trace tables (TTFT by append; resume probability and gap) | | |
 | (removed) | PD disaggregation → `paper/pd-followup.tex`, see §4.2b | `prop:pd`, `eq:append` (Lean kept) | |
@@ -488,31 +408,30 @@ Conventions that follow from the user's review of v0.1:
 ## 3. Status of analytical results
 
 All propositions and cited numbers compile in Lean with no `sorry` and
-only standard axioms (`make lean` reports `OK: 57 theorems audited`).
+only standard axioms (`make lean` reports `OK: 120 theorems audited`).
 
 | Result | Status | Notes |
 |--------|--------|-------|
-| `prop:price` (prefill queue, FIFO) (i) bracket, (ii) term ratios, (iii) unbounded | proved | central result. M/G/1 with PK used as an approximation (session feedback, fluctuating budget) |
+| `prop:price` (prefill queue, FIFO): bracket | proved | central result; term ratios, divergence and load-dependent ordering are prose with inline proof references. PK is an approximation for the serving system |
 | `prop:decode` (PS) (i) monotone ⇒ ranking by work, (ii) closed-form exact change for constant capacity, (iii) unbounded | proved | (i) is proved in Lean for finite truncations; the untruncated case is the limit (App. A proof). Insensitivity itself is cited (BCMP/Kelly) |
-| `prop:memory` (i) θ-threshold optimal, (ii) blocks: density optimal up to one block | proved | both are the exchange lemma `threshold_prefix_le` read two ways |
+| Memory threshold (cited prose, whole-program relaxation) | proved under its assumptions | `threshold_prefix_le`; tail-block recomputation is concave, so the linear fractional result does not certify block eviction |
 | footprint examples (§2.2 prose; was `prop:footprint`) | proved | the review's two examples; `decide +kernel` on ℚ; demoted to one sentence in v0.7 |
-| `prop:guarded` (i) plain density unbounded, (ii) guarded 2-approx | proved | (ii) is proved as a certificate lemma (`guardedGreedy_two_approx`): hypotheses encode the greedy's sorted-prefix property; the algorithm itself is not formalised |
-| `prop:pk`, `prop:cache` | proved | trivial parts dropped from the statements; M/M/1 unboundedness now lives in the `prop:routing` proof |
-| `eq:cv2` numbers | proved | the core argument that variance comes from the miss penalty |
+| Guarded covering bound (cited prose) | proved | (ii) is proved as a certificate lemma (`guardedGreedy_two_approx`): hypotheses encode the greedy's sorted-prefix property; the algorithm itself is not formalised |
+| PK/cache inequalities (prose) | proved | these are no longer proposition boxes; their Lean theorems remain |
+| `eq:cv2` examples | proved | prefill-work variance splits into append and hit/miss-mixture contributions |
 | option value (prose in §3.3) | proved | trivial math, so demoted from a proposition to a prose sentence; its value is in reading ThunderAgent A.2 correctly |
 | `prop:blind` (i) any price-blind rule unbounded | proved | `price_blind_rule_unbounded`; the rule is an arbitrary function of any observation type except `p` |
 | `prop:blind` (ii) SF = `w=c²` price-per-byte order, feasible, 2-approx + tightness | proved | formerly `prop:evict` (ii); v0.1 wrongly said the ratio is unbounded |
 | SF not optimal on `{4,5,6}`, ΔC=6 | proved | prose sentence after `prop:blind` with inline `\provedby`; contradicts ThunderAgent App. F.3 |
-| `prop:pd` | proved | capacity model only, no batching |
-| `prop:routing` (i) inversion load closed form, (ii) monotone in move cost; `eq:lookahead`, `eq:append` | proved | v0.7: the existence statement became the closed form `λ*`; a shared KV store (Mooncake, LMCache) enters as a smaller `M_j` (priced fetch instead of `Φ_i`) |
+| PD capacity (follow-up only) | proved | capacity model only, no batching; outside the current paper |
+| Placement: inversion load and monotonicity (prose, `eq:rhostar`) | proved | a shared KV store enters through the move cost; append routing belongs to the PD follow-up |
+| `prop:finite` | proved | M/M/1//N MVA recursion, monotonicity, open-wait bound; finite-source price cap in prose |
 
 Candidate results, not yet in the paper. Each needs a Lean proof, or a
 citation to an established theorem, before it becomes a proposition:
-- ~~Finite-source price~~ done round 3 as `prop:finite` (Lean `FiniteSource.lean`:
-  MVA recursion, `mvaQ_mono`, `finite_source_wait_le_open`,
-  `closed_price_cap`). Still open: the M/G/1//N inequality for general
-  work laws (the replay supports it for a few misses and refutes it for
-  many: `tab:sim-trace-price`).
+- **General finite-source work laws.** The M/M/1//N result is proved and
+  in the paper. An M/G/1//N price inequality remains open; replay agreement
+  for selected miss fractions does not prove it (`tab:sim-trace-price`).
 - **Price with priorities.** Serving hits before misses (Cobham's
   formula) changes the externality in `Φ_i`; a priced rule for queue
   order would complete the scheduler.
@@ -534,47 +453,37 @@ has to measure.
 
 1. **Simulation (uncalibrated), done.** Check every proposition in its own
    model, then drop one assumption at a time and ask whether the decision
-   survives. Synthetic workloads, fixed seeds. Reported in paper §4.1.
-2. **Empirical (E1–E6), next.** Measure on the NPU testbed and on traces.
+   survives. Synthetic workloads, fixed seeds. Summarized in paper §4.2, detailed in App. B.
+2. **Empirical (E1–E6), partly done.** Measure on the NPU testbed and on traces.
    The hypotheses and the quantities each experiment must record are
    those that phase 1 showed to decide the outcome.
-3. **Calibrated simulation, after E1.** Plug the E1 fits into the
-   simulator (M5 in `research/simulation-design.md`) and score it with the
-   analytical model against the testbed (E6).
+3. **Calibrated simulation, implemented; scoring open.** The vLLM-rule replay
+   uses the cost fit. Score it and the analytical model against held-out
+   testbed runs (faithfulness scoring).
 
-Platform codes: T = NPU testbed, S = simulator (`libqueuingsim`,
+Platform codes: T = NPU testbed, S = simulator (`validation`,
 `research/simulation-design.md`), O = offline on traces.
 
 ### 4.1 Phase 1: simulation (uncalibrated)
 
-Status: 31 of 31 checks pass (`make sim`; report via `make report`). What
+Status: 35 named checks; report via `make report`. What
 each part established, and what it changes for phase 2:
 
-| Question | Result under the synthetic model | Consequence for phase 2 |
-|----------|----------------------------------|-------------------------|
-| Do the closed forms hold in their own model? (M/M/1, `prop:pk`, `prop:cache`, `eq:cv2`, `prop:pd`, `prop:blind`(ii)) | yes, within CI or 2 % | the simulator is usable for the questions below |
-| Does PK survive bursty arrivals? | no: it underestimates; Kingman's bound holds | E2 records interarrival CV² next to the PK ratio |
-| Does throughput fall with N only through the hit rate? | yes: with finite KV it falls; with ample KV it follows `min(N/(D+Z),1/D)` | E3 records hit rate and resident KV per concurrency level |
-| Is always-offload harmful? (option value, now one sentence in §3.3 scheduler paragraph; tab-offload generated but not shown) | only with blocking fetches; with async fetches the tier queue acts as admission control and always-offload is best | E3 records whether the stack fetches synchronously; the policy ranking depends on it |
-| Does the PK bracket of `prop:price`(i) hold in simulation? | yes: ΔL inside the bracket, near its upper end (δ=0.01, 0.05) | E2 forces misses on a controlled fraction and compares ΔL with the bracket |
-| Is the guard of `prop:guarded` needed, and does it help? | offline guarded ≤ 1.87×OPT everywhere and best mean in every row; plain density reaches 6.7× on random arbitrary-weight instances (unbounded only on the witness family) | E4 reports guarded next to plain density |
-| Does the offline density advantage carry over? (`prop:blind`(i)) | offline density ≫ SF when `p_i` vary; in the closed system the two are within seed noise, LRU is worse | E4 reports end-to-end TTFT and throughput next to cost/OPT, and measures the spread of `p_i` |
-| Does PS insensitivity hold, and does the product form survive session feedback? | yes: deterministic vs hit/miss work give the same L under PS (FIFO separates them as PK says); Poisson sessions + closed loop + H2 tools match the isolated PS formula at λ=Λ/(1−p) for constant and saturating φ | E2 tests insensitivity by comparing chunked vs blocking prefill at equal load |
-| Does the PS price bracket (`prop:price`(ii)) hold? | yes; the simulated ΔL sits at the upper end, which the proposition says is exact | E2 forced-miss test uses both brackets |
-| Is "φ flattened at B" a good model of a real batch cap (LPS)? | at half load yes (≤1 %); at u=0.8–0.9 the error follows the service CV²: −10/−22 % for deterministic work, +29/+51 % for CV²=4. A capped batch is not insensitive, and hit/miss work (CV²>1) makes the model underestimate congestion near saturation | E1/E2 must report the batch-cap regime; theory needs an LPS correction or an explicit statement of this error |
-| Do the footprint examples (§2.2) hold in Monte Carlo? | yes (2 / 1.75 / 1 / 1.4844) | E1 measures batch size under the measured footprint law |
-| Two-resource replica (v0.6): is the price paid in the prefill queue and is decode insensitive? | yes: forced misses raise L_P inside the `prop:price` bracket (availability 0.96) and leave L_D unchanged to 4 decimals; in the open scenario p99 TTFT is 10–17× its mean (HoL behind document misses) while R − TTFT is a constant decode time | E2 measures TTFT and decode occupancy separately |
-| Does the byte-second key (`prop:memory`, τ-aware) beat density/SF end-to-end? | best or tied in most cells (cap 24, Λ=0.28: TTFT 2.64±0.41 vs Density 3.58±0.65; X 2.67 vs 2.48) but never separated beyond seed noise; block-level ≈ τ-key; LRU worst by ≥2× throughput | E4 needs many seeds or a paired design; the effect is second-order next to admission |
-| Does the admission cap move the thrash window? | strongly: cap 16 → hit 0.99, TTFT < 0.4 s at both loads, no thrash; cap 24 → hit degrades to 0.77 at Λ=0.28; cap 32 → 15–20/20 seeds thrash, X −40 %, TTFT 15 s. Cost of a tight cap = entry-queue wait. At Λ=0.28 offered load exceeds capacity (~2.6 turns/s) under any cap | E4 sweeps the cap; admission is a first-class policy dimension |
-| Does eviction policy matter with open sessions on a batching replica? (v0.5 single-PS replica, superseded) | only in a narrow load window (Λ≈0.23–0.3 in the scenario). Below it no evictions; above it both PS and blocking replicas thrash whatever the policy. Inside it: LRU worst; SF, Density and Priced within seed noise; Priced ≡ Density under PS (as `prop:price`(i) requires) and indistinguishable under blocking. **Thrashing (bistable hit rate) dominates**: misses pin KV in the batch, which evicts more, which causes more misses. PS with φ≡1 thrashes earlier than blocking because turns stay in the batch longer | E4 must include admission/memory control as a policy dimension, report per-seed hit-rate trajectories, and define the load window; the price of a state may be dominated by the thrash it can trigger, a transient effect outside both price propositions |
-| Do the congestion terms of `Φ` change eviction end-to-end? | not in the closed two-class scenario: Priced = Density at N=24,32, within CI at 12,16. Consistent with `prop:price`(ii): waits of tens of s make the load term dominate, so `v_i` ∝ density key; throughput scoring also ignores delay | E4 must include a regime where the mean wait is comparable to a miss (open arrivals below saturation, p99 TTFT); this is where the price can differ from density. Open populations in the current simulator thrash (metastable) and need admission control first |
-| Does priced offloading beat selective? | no: ≤ selective in every cell (blocking fetches reduce both tests to transfer < ΔS) | E3 keeps selective as a baseline |
-| Does the PD win condition pick the winner? (`prop:pd`(iii)) | 32/32 decisive grid cells agree | E5 tests the condition from measured parameters as planned |
-| Does equal capacity mean equal latency? | no: PD latency is higher at the rate-matched split (pooling) | E5 reports latency as well as throughput |
-| Does strict affinity fail at high load? (`prop:routing`) | yes once the hot replica saturates; lookahead with cheap migration stays flat | E6 measures migration cost, which sets the inversion load |
+| Question | Current check / evidence | Consequence for empirical work |
+|----------|--------------------------|-------------------------------|
+| Closed forms under their assumptions | queue, PS, finite-source and PD checks in `validation/src/checks.py` | conditional validation; PD is for the follow-up |
+| Bursty arrivals | PK/arrival-variability checks | record interarrival variance alongside wait |
+| Finite KV and admission | agentic checks and vLLM-rule open/replay programs | record resident KV, reuse and live population |
+| Eviction | offline exact/guarded checks and vLLM-rule comparisons | compare end-to-end TTFT as well as offline cost |
+| Offloading | blocking versus asynchronous fetch scenarios | record whether fetch is on the critical path |
+| Placement | inversion-load and shared-link checks | measure the move cost and policy ranking |
+
+The old whole-session-replica rows and their manually copied numbers are
+superseded. Current outputs are generated by `make tables` into `paper/sim/`;
+`research/serq-replay42.md` identifies the historical comparison separately.
 
 Phase 1 numbers are properties of the simulated model. They appear in the
-paper only in §4.1, generated from the simulator, and never in a `\tbd`
+paper only in §4.2 / App. B, generated from the simulator, and never in a `\tbd`
 cell.
 
 ### 4.2 Phase 2: empirical validation
@@ -585,22 +494,22 @@ rule 5).
 
 | ID | Question | Tests | Where | Needs (incl. from phase 1) | Status |
 |----|----------|-------|-------|----------------------------|--------|
-| E1 | Fit `S_prefill(L,K,B)`, `S_decode(B,KV)`, `T_transfer(bytes)` | calibration | T | profiling harness | **prefill fit done 2026-09-24** (paper §4.3, `tab:e1`): MiniMax-M2.7 fp8, DP4+EP, block 4096, sub-block prefix cache on, no LMCache (`scripts/exp/serve_m27.sh`, `research/testbed.md`); 45 probes pinned to one DP rank, `P(n,K)=c0+an+bn(K+n/2)` with a=0.194 ms/token, b=6.51 ns/token², K_c≈30k tokens, MAPE 3.4 % (held-out cold→append 3.7 %); generated by `make exp`. Decode step time, transfer and φ(n) not yet measured |
-| E2 | How does per-turn Var[S] split between the append and the hit/miss mixture, and does the mixture's share grow under eviction from the trace baseline (Weka: 57 % at p = 0.96, linear cost; `research/trace-analysis.md`)? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces (Weka sequences), interarrival CV², miss injection | trace baseline done (2026-09-23); replayed in simulation 2026-09-24 (`tab:sim-trace`, `tab:sim-trace-price`); testbed run in progress 2026-09-24 (`scripts/exp/run_e2.sh`: open-loop replay of fsw-415 cc_traj_50k with a live-session cap; `analyze_e2.py`) |
+| E1 | Fit `S_prefill(L,K,B)`, `S_decode(B,KV)`, `T_transfer(bytes)` | calibration | T | profiling harness | **prefill fit done 2026-09-24** (paper §4.3, `tab:e1`): MiniMax-M2.7 fp8, DP4+EP, block 4096, sub-block prefix cache on, no LMCache (`scripts/exp/serve_m27.sh`, `research/testbed.md`); 45 probes pinned to one DP rank, `P(n,K)=c0+an+bn(K+n/2)` with a=0.194 ms/token, b=6.51 ns/token², K_c≈30k tokens, MAPE 3.4 % (held-out cold→append 3.7 %); generated by `make exp`. Decode probes subsequently recorded in §0; transfer and φ(n) validation remain open |
+| E2 | How does per-turn Var[S] split between the append and the hit/miss mixture, and does the mixture's share grow under eviction from the trace baseline (Weka: 57 % at p = 0.96, linear cost; `research/trace-analysis.md`)? Does `W_q` track `(1+CV²)/2`? Does forced-miss ΔL fall in the `prop:price` bracket? | `prop:pk`, `eq:cv2`, `prop:price` | T, S | E1, replayed traces (Weka sequences), interarrival CV², miss injection | trace baseline done (2026-09-23); replayed in simulation 2026-09-24 (`tab:sim-trace`, `tab:sim-trace-price`); testbed runs completed 2026-09-24/26 (see §0 and `research/testbed.md`); original launch 2026-09-24 (`scripts/exp/run_e2.sh`: open-loop replay of fsw-415 cc_traj_50k with a live-session cap; `analyze_e2.py`) |
 | E3 | Is priced offloading never below never-offload? When is always-offload below it? | option value (§3.3) | T, S | E1, tier bandwidth, fetch mode (sync/async) | not started |
-| E4 | SF vs price per byte vs guarded vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs price | `prop:guarded`, `prop:blind` | O, S | traces with resume events, spread of `p_i`, a regime with mean wait comparable to a miss | not started |
+| E4 | SF vs price per byte vs guarded vs exact optimum, offline and end-to-end; LRU vs hit-ratio vs price | guarded covering bound (prose), `prop:blind` | O, S | traces with resume events, spread of `p_i`, a regime with mean wait comparable to a miss | not started |
 | (PD) | Does the PD inequality predict the winner? What is the latency cost at equal capacity? (follow-up paper, see §4.2b) | `prop:pd` | T | E1, measured `I, g_P, g_D` | not started |
-| E5 | At what load does affinity lose? Is it `ρ*` of `prop:routing`(i)? Does a shared KV store (fetch instead of recompute) move it as (ii) says? | `prop:routing`, `eq:lookahead`, `eq:append` | T, S | E1, migration/fetch cost | simulated 2026-09-24 (`tab:sim-inversion`: monotone in move cost; `ρ*` matches for cheap moves, link saturation for expensive ones); testbed not started |
+| E5 | At what load does affinity lose? Does the inversion-load formula predict it? How does a shared KV store change the move cost? | placement result (prose), `eq:lookahead`, `eq:rhostar` | T, S | E1, migration/fetch cost | simulated 2026-09-24 (`tab:sim-inversion`: monotone in move cost; `ρ*` matches for cheap moves, link saturation for expensive ones); testbed not started |
 | E6 | Decision-faithfulness scorecard (Kendall τ, argmin agreement, MAPE) | whole model | T, S | E1 to E5, phase 3 | not started |
 
-Details per experiment are in paper §4.2. The table layouts there are the
+The experimental design is in paper App. E. The table layouts below are the
 contract: fill `\tbd` cells with measured values only, and do not change
 what a table measures without updating this file.
 
 ### 4.2a Result-table layouts (moved out of the paper on 2026-09-23)
 
 The paper keeps only the experiment-overview table and short hypotheses
-(§4.2). The layouts below are the contract for what each experiment
+(§4.3 / App. D). The layouts below are the contract for what each experiment
 reports; fill them with measured values only. E numbering in the paper
 is now E1–E6 (PD experiment removed with App. B; see §4.2b).
 
@@ -663,8 +572,8 @@ end-to-end p99 TTFT under both prefill schedulers; admission-cap sweep.
 | Shortest-first | TBD | TBD | TBD |
 | Price per byte v_i | TBD | TBD | TBD |
 | Price per byte-second u_i (θ rule) | TBD | TBD | TBD |
-| Guarded (program-level, prop:guarded) | TBD | TBD | TBD |
-| Block-level density (prop:memory) | TBD | TBD | TBD |
+| Guarded (program-level covering bound) | TBD | TBD | TBD |
+| Block-prefix policy (partial-recompute price) | TBD | TBD | TBD |
 | Exact optimum | 1.00 | TBD | TBD |
 | LRU | TBD | TBD | TBD |
 | Hit-ratio maximisation | TBD | TBD | TBD |
@@ -700,17 +609,17 @@ App. B (static PD splits `prop:pd`, per-turn routing `eq:append`, the
 planned PD experiment and the PD simulation paragraphs) was removed from
 `paper/main.tex` on 2026-09-23 and saved verbatim in
 `paper/pd-followup.tex` (not `\input`). `PDDisaggregation.lean`,
-`models/pd.rs` and the `tab-pd*` generators stay in the repository for
+`validation/src/sim/pd.py` and the `tab-pd*` generators stay in the repository for
 the follow-up paper. The PD experiment (formerly E5) is no longer in the
 paper's numbering: E5 = routing, E6 = scorecard.
 
 ### 4.3 Phase 3: calibrated simulation
 
-After E1: continuous batching, block-level KV, trace replay and the E1
-service fits (milestone M5). Ladder step 5 then compares the calibrated
-simulator with the testbed at the E6 held-out points. Its numbers may
-fill the "Simulator" columns of `tab:scorecard`; they replace nothing in
-§4.1, which stays the uncalibrated baseline.
+Continuous batching, block-level KV, trace replay and the cost fit are
+implemented (milestone M5). Ladder step 5 still needs to compare the calibrated
+simulator with the testbed at the E6 held-out points. Its numbers may fill future "Simulator" columns of a scorecard, clearly
+labelled as simulation. §4.1 contains workload measurements; current
+simulation evidence is in §4.2 / App. B.
 
 ### Data needed from traces
 - Per turn: arrival time, new tokens, cached tokens (hit length), output
@@ -725,14 +634,15 @@ fill the "Simulator" columns of `tab:scorecard`; they replace nothing in
   per-migration transfer time and bytes (E6).
 
 ### Decisions about the simulator
-The simulator checks live in `validation/` (Python on the serQ CLI); `research/simulation-design.md`
+The simulator checks live in `validation/` (Python using pyserq); `research/simulation-design.md`
 has its design, status and roadmap. It serves E2 (hit-rate sweeps), E3,
 E4 (end-to-end), E5 and E6. E1 and the PD experiment are testbed-only; E4's cost/OPT
 column is offline. Milestones M0 to M4 are built on synthetic workloads
 (offline oracle, fair-share links and dynamic PD still open).
-Uncalibrated numbers go in the paper only in §4.1, labelled as
-simulation of the model. Any simulator number in §4.2 or in
-`tab:scorecard` needs the calibrated simulator (M5), which needs E1.
+Synthetic checks are summarized in §4.2 and detailed in App. B. The trace
+replay in §4.2 already uses the measured cost fit. All simulator numbers
+enter through `make tables` into `paper/sim/`, never the measurement tables.
+Held-out faithfulness scoring is still open.
 
 ## 5. Claims we must not make (until data exists)
 

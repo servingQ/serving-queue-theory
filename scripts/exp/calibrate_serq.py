@@ -3,7 +3,7 @@
 (c_it: fixed seconds per iteration, c0: seconds per request outside the
 engine) on the light-load A100 runs and report every run.
 
-    python3 scripts/exp/calibrate_seq.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b \
+    python3 scripts/exp/calibrate_serq.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b \
         --fit s50_base s42_base --check s35_base s30_base s25_base s35_m10 s42_m10 s25_m10
 
 For each (c_it, c0) on the grid the program replays the fit runs; the pair

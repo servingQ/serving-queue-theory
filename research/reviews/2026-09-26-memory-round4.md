@@ -1,5 +1,9 @@
 # Review: the decode-stretch step (research/memory-model.md "Pre-registration" to end), round 4
 
+Historical review: paths to the former Rust validation crate below refer to
+the reviewed snapshot. Current validation is Python/pyserq in `validation/`;
+see `research/serq.md` and `research/simulation-design.md`.
+
 Reviewer role: queueing theory / systems, ICML/SIGMETRICS area chair.
 Date 2026-09-26 (read 22:40-23:30 KST; system clock 22:52 when I first
 listed the files). I read research/memory-model.md from "Pre-registration" to

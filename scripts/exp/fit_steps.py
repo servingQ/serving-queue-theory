@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fit the step-cost expression of .serq/src/examples/replay/vllm_replay.sq to the
-A100 step sweeps (data/exp/gpu_seq/steps.jsonl, scripts/exp/lambda/seq_cases.py).
+A100 step sweeps (data/exp/gpu_seq/steps.jsonl, scripts/exp/lambda/serq_cases.py).
 
 Two forms, both in serQ's step quantities (ntok, npre, ndec, kvb = KV held by
 the scheduled decoders, attn = sum over prefill chunks n (K + n/2)):

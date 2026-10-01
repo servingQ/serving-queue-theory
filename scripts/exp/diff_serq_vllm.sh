@@ -4,7 +4,7 @@
 # N sessions of a trace, with a constant step cost so that both timelines
 # are identical if and only if the scheduling and caching decisions are.
 #
-#   bash scripts/exp/diff_seq_vllm.sh N BLOCKS SPACING [OUTDIR] [EXTRA serQ --set ...]
+#   bash scripts/exp/diff_serq_vllm.sh N BLOCKS SPACING [OUTDIR] [EXTRA serQ --set ...]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 N=$1; BLOCKS=$2; SP=$3; D=${4:-data/exp/seq/diff}; shift 4 || shift $#
@@ -27,7 +27,7 @@ timeout 1200 ~/vllm-rbln-dynkv/.venv/bin/python .serq/src/tools/vllm_replay_orac
 P=(.serq/src/examples/replay/vllm_replay.sq --set N="$N" --set blocks="$BLOCKS" "${RARGS[@]}"
    --set spacing="$SP" "$@" --trace .serq/src/examples/replay/data/$TRACE.csv)
 .serq/bin/serq ir "${P[@]}" > "$D/program.ir.json"      # what ran, as IR
-.serq/bin/serq run "${P[@]}" --dump "$D/seq" > "$D/seq.txt"
+.serq/bin/serq run "${P[@]}" --dump "$D/serq" > "$D/serq.txt"
 python3 - "$D" <<'EOF'
 import sys
 D = sys.argv[1]
@@ -39,7 +39,7 @@ for l in open(D + '/oracle.csv').read().splitlines()[1:]:
     o[(int(s), int(k))] = (float(sent), float(first), int(cached), int(prompt))
 def rd(n):
     d = {}
-    for l in open(f'{D}/seq/{n}.csv').read().splitlines()[1:]:
+    for l in open(f'{D}/serq/{n}.csv').read().splitlines()[1:]:
         t, s, k, v = l.split(',')
         d[(int(s), int(k))] = float(v)
     return d
@@ -48,7 +48,7 @@ keys = sorted(o, key=lambda k: o[k][0])
 nd = 0
 for k in keys:
     if k not in sent:
-        print('missing in seq', k)
+        print('missing in serQ', k)
         nd += 1
         continue
     a = o[k]
@@ -56,6 +56,6 @@ for k in keys:
     if abs(a[0] - b[0]) > 1e-6 or abs(a[1] - b[1]) > 1e-6 or a[2] != b[2]:
         nd += 1
         if nd <= 6:
-            print('DIFF', k, 'vllm: sent %.3f first %.3f cached %d prompt %d' % a, '| seq: sent %.3f first %.3f cached %d' % b)
+            print('DIFF', k, 'vllm: sent %.3f first %.3f cached %d prompt %d' % a, '| serQ: sent %.3f first %.3f cached %d' % b)
 print(f'{len(keys)} requests, {nd} differ')
 EOF

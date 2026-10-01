@@ -1,6 +1,10 @@
 # Response to review round 1 with serQ (2026-09-27)
 
-Each item of `2026-09-27-seq-round1.md`, what changed, and the evidence.
+Historical review: paths to the former Rust validation crate below refer to
+the reviewed snapshot. Current validation is Python/pyserq in `validation/`;
+see `research/serq.md` and `research/simulation-design.md`.
+
+Each item of `2026-09-27-serq-round1.md`, what changed, and the evidence.
 
 ## A. Simulator semantics
 
@@ -16,7 +20,7 @@ A1. Fixed in the language, not in constants:
   two libqueuingsim-equivalent programs write `drop kv;` before `end;`.
 - Residents of a step stage are served in admission order; cache ties are
   broken by release order.
-Evidence: `scripts/exp/diff_seq_vllm.sh` — serQ and the real scheduler
+Evidence: `scripts/exp/diff_serq_vllm.sh` — serQ and the real scheduler
 agree on 3 321 of 3 321 requests (send, first token, cached tokens) on the
 base and forced-miss traces, for a constant step and for the A100 cost
 model; on 40-session runs with 1 000 / 1 500 / 3 000 blocks (deadlocking at

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Compare a serQ replay of the GPU testbed (`.serq/src/examples/replay/vllm_replay.sq`)
 with the measured vLLM runs (`data/exp/gpu/e2b/<run>/rounds.jsonl`,
-research/testbed-gpu.md), turn by turn.
+research/research-plan.md §0), turn by turn.
 
-    python3 scripts/exp/seq_vs_vllm.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b \
-        --seq .serq/src --out data/exp/seq/gpu.txt s50_base s42_base s35_base s30_base s25_base s35_m10
+    python3 scripts/exp/serq_vs_vllm.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b \
+        --serq .serq/src --out data/exp/seq/gpu.txt s50_base s42_base s35_base s30_base s25_base s35_m10
 
 For every run: the serQ program is run with the run's spacing and trace
 (`_m10` runs use the forced-miss trace), its observations are dumped, and
@@ -77,15 +77,15 @@ def load_gpu(path):
     return out, last
 
 
-def run_seq(seq_dir, trace, spacing, dump):
-    prog = os.path.join(seq_dir, "examples", "replay", "vllm_replay.sq")
+def run_serq(serq_dir, trace, spacing, dump):
+    prog = os.path.join(serq_dir, "examples", "replay", "vllm_replay.sq")
     os.makedirs(dump, exist_ok=True)
-    csv = os.path.abspath(os.path.join(seq_dir, "examples", "replay", "data", trace + ".csv"))
-    seq = os.path.join(ROOT_BIN, "serq")
+    csv = os.path.abspath(os.path.join(serq_dir, "examples", "replay", "data", trace + ".csv"))
+    serq = os.path.join(ROOT_BIN, "serq")
     args = [prog, "--trace", csv, "--set", f"spacing={spacing}"]
     # what ran, as IR (the program with its constants folded and the trace)
-    subprocess.run([seq, "ir", *args], check=True, stdout=open(os.path.join(dump, "program.ir.json"), "w"))
-    subprocess.run([seq, "run", *args, "--dump", dump], check=True,
+    subprocess.run([serq, "ir", *args], check=True, stdout=open(os.path.join(dump, "program.ir.json"), "w"))
+    subprocess.run([serq, "run", *args, "--dump", dump], check=True,
                    stdout=open(os.path.join(dump, "report.txt"), "w"))
 
     def read(name):
@@ -127,7 +127,7 @@ def report(name, gpu, model, last):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpu", required=True)
-    ap.add_argument("--seq", default=".serq/src")
+    ap.add_argument("--serq", default=".serq/src")
     ap.add_argument("--out")
     ap.add_argument("runs", nargs="+")
     args = ap.parse_args()
@@ -140,7 +140,7 @@ def main():
             trace += "_s1"
         gpu, last = load_gpu(os.path.join(args.gpu, run, "rounds.jsonl"))
         dump = os.path.join("data", "exp", "seq", run)
-        model = run_seq(args.seq, trace, spacing, dump)
+        model = run_serq(args.serq, trace, spacing, dump)
         texts.append(report(run, gpu, model, last))
         print(texts[-1], flush=True)
     if args.out:

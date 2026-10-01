@@ -1,5 +1,9 @@
 # Review: "Memory as a queue" (research/memory-model.md, scripts/exp/memory_model.py), round 2
 
+Historical review: paths to the former Rust validation crate below refer to
+the reviewed snapshot. Current validation is Python/pyserq in `validation/`;
+see `research/serq.md` and `research/simulation-design.md`.
+
 Reviewer role: queueing theory / systems, ICML/SIGMETRICS area chair.
 Date 2026-09-26. Read: my round-1 report, the authors' response
 (research/reviews/2026-09-26-memory-round1-response.md), the rewritten

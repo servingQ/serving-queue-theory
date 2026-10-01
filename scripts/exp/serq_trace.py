@@ -6,7 +6,7 @@ prompt length of the turn (the vLLM replay program uses it as the prompt),
 `out` the completion length, `think` the gap before the next turn and
 `forced` 1 for a turn that carries a nonce (reuses no prefix).
 
-    python3 scripts/exp/seq_trace.py data/exp/traces/short_base.jsonl .serq/src/examples/replay/data/short_base.csv
+    python3 scripts/exp/serq_trace.py data/exp/traces/short_base.jsonl .serq/src/examples/replay/data/short_base.csv
 """
 import json
 import sys

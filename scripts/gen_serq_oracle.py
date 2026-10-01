@@ -4,10 +4,10 @@ scheduler scenarios in the pinned serQ release (.serq/src/tools/oracle/,
 checked out by scripts/fetch_serq.sh; SERQ_SRC overrides the checkout):
 
 - <name>.ir.json for the six single-request scenarios:
-  programs/vllm_request.sq compiled with the scenario's engine, the
+  examples/oracle/vllm_request.sq compiled with the scenario's engine, the
   requests as explicit sessions; answers in <name>.out.json.
 - cache_trace.ir.json for the multi-turn prefix-cache scenario:
-  programs/vllm_replay.sq on a unit step clock with the trace inlined as
+  examples/replay/vllm_replay.sq on a unit step clock with the trace inlined as
   explicit sessions with turns; answers in cache_trace.out.csv.
 
 Every program, deployment and workload in the Lean file is translated from
@@ -283,13 +283,13 @@ Do not edit. The programs, the deployments and the workloads below are
 translations of that IR, the same IR the serQ tests run.
 
 Six scenarios run one request program, `vllmRequest` (serQ
-`programs/vllm_request.sq`): wait until the arrival, hold a slot and the
+`examples/oracle/vllm_request.sq`): wait until the arrival, hold a slot and the
 KV blocks of the chunk the engine's budget leaves (admission needs room for
 the whole prompt), prefill growing the hold, decode growing it. The
 theorems say that the executable semantics gives, for every request, the
 step of its first token and of its last token, and the number of
 preemptions, that the real scheduler gives. The seventh, `vllmTurn` (serQ
-`programs/vllm_replay.sq` on a unit step clock, the trace inlined as the
+`examples/replay/vllm_replay.sq` on a unit step clock, the trace inlined as the
 sessions' turns), is a multi-turn replay with a prefix cache: hits, a
 partial hit and misses caused by eviction; its theorem gives, for every
 turn, the send step, the time to first token, the latency and the cached
@@ -325,7 +325,7 @@ def gen():
     for n in names:
         if not os.path.exists(os.path.join(ODIR, n + ".ir.json")):
             raise Fragment(f"{n}: no IR file ({n}.ir.json)")
-    out = [HEAD.replace("{REQUEST}", program("vllmRequest", names, "The vLLM request program (serQ `programs/vllm_request.sq`)"))]
+    out = [HEAD.replace("{REQUEST}", program("vllmRequest", names, "The vLLM request program (serQ `examples/oracle/vllm_request.sq`)"))]
     for name in names:
         sc = json.load(open(os.path.join(ODIR, name + ".json")))
         ans = json.load(open(os.path.join(ODIR, name + ".out.json")))
@@ -371,7 +371,7 @@ def gen_cache():
         return "[" + ", ".join(f"({s}, {f(rows[(s, k)])})" for s, k in keys) + "]"
 
     return "\n/-! ### A multi-turn scenario with a prefix cache -/\n\n" + program(
-        "vllmTurn", ["cache_trace"], "The vLLM replay program (serQ `programs/vllm_replay.sq`) on a unit step clock"
+        "vllmTurn", ["cache_trace"], "The vLLM replay program (serQ `examples/replay/vllm_replay.sq`) on a unit step clock"
     ) + f'''
 /-- serQ `tools/oracle/cache_trace.ir.json`: {len(ir["arrival"]["Sessions"])} sessions of the inlined trace
 `cache_trace.csv`; the deployment and the workload are the IR's. Per turn:
