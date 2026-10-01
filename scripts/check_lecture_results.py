@@ -29,7 +29,7 @@ def close(value, expected, tolerance, label):
 
 
 
-def release_identity(binary):
+def release_identity(binary, pinned=True):
     """The release a serq binary was built from, verified where possible.
 
     fetch_serq.sh writes the checked-out ref to <root>/tag next to <root>/bin/serq;
@@ -45,7 +45,11 @@ def release_identity(binary):
     if (root / 'src/.git').exists():
         commit = subprocess.check_output(['git', '-C', str(root / 'src'), 'rev-parse', 'HEAD'],
                                          text=True).strip()
-    return dict(binary=str(binary), release=ref, pinned=pin.group(1) if pin else None,
+    path = Path(binary).resolve()
+    shown = str(path.relative_to(ROOT.resolve())) if path.is_relative_to(ROOT.resolve()) else path.name
+    if not pinned:
+        return dict(binary=shown, release=ref, commit=commit)
+    return dict(binary=shown, release=ref, pinned=pin.group(1) if pin else None,
                 release_verified=ref is not None and pin is not None and ref == pin.group(1),
                 commit=commit)
 
@@ -167,7 +171,7 @@ def main():
     assert current['release'] is None or current['release_verified'], \
         f"serq at {args.serq} is {current['release']}, pinned {current['pinned']}"
     result = dict(**current, ir_version=ir['version'], checks=checks,
-                  baseline=release_identity(args.baseline) if args.baseline else None,
+                  baseline=release_identity(args.baseline, pinned=False) if args.baseline else None,
                   baseline_comparison=comparisons, feedback_roots=roots)
     args.out.write_text(json.dumps(result, indent=2)+'\n')
     if args.tex:

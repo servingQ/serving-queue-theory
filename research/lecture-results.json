@@ -1,6 +1,9 @@
 {
-  "release": "serQ v0.1.0",
-  "commit": "f9fe9f2cad9e7d88e585860572c3757c295d58c6",
+  "binary": ".serq/bin/serq",
+  "release": "v0.1.0",
+  "pinned": "v0.1.0",
+  "release_verified": true,
+  "commit": null,
   "ir_version": 9,
   "checks": [
     {
@@ -96,6 +99,11 @@
       "decode_relative_change": 0.0005608037485365689
     }
   ],
+  "baseline": {
+    "binary": "seq-lang",
+    "release": "v0.1.0-rc0",
+    "commit": "d473b566b237f6260bec44d52e681841b81a5735"
+  },
   "baseline_comparison": [
     {
       "seed": 1,

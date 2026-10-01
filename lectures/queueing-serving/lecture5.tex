@@ -49,7 +49,8 @@ name the chapter that backs each modelling choice.
   whatever the law of $D$.
 \item \emph{Prefill is a FIFO queue} whose server is available the fraction
   of time the decode batch leaves. Chunked prefill interleaves chunks with
-  decode steps but serves pending prefills in arrival order. With Poisson arrivals and
+  decode steps but, without a per-prefill cap, serves pending prefills in arrival
+  order. With Poisson arrivals and
   a server of fixed speed, it is the M/G/1 queue of \cref{sec:L3}, with the PK wait
   $\E[W_q]=\lambda\E[S^2]/(2(1-\rho))$ (\cref{thm:pk}).
 \item \emph{Sessions form a closed loop} (prefill $\to$ decode $\to$ tool),

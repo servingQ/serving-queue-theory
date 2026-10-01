@@ -329,7 +329,9 @@ and the number $n$ of appended tokens fixed, $\Phi$ is nondecreasing in $K\ge0$.
 
 \serving{Chunked prefill interleaves chunks of a long prefill with decode steps, but
 pending prefills are still served in arrival order: a prefill behind a long miss waits
-for every chunk of it. So the head-of-line term (2) remains, whatever the chunk size.
+for every chunk of it, as long as the oldest prefill may take all the budget the
+decode batch leaves. Then the head-of-line term (2) remains, whatever the chunk size; a
+per-prefill cap lets later prefills bypass the miss (\cref{L5:ex:colocated}).
 \Cref{cor:price-mono} says a longer context has a larger price, but the scheduler
 compares $p_i\Phi_i/c_i$, and that order can flip with the load (\cref{L5:ex:flip}).}
 
