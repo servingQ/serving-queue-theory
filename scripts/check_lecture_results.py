@@ -110,7 +110,9 @@ def main():
         service = stages['decode']['mean_service']
         close(service, .04, .1, f'PD decode work seed {seed}')
         ttft = r['observes']['ttft']['mean']
-        expected = stages['prefill']['mean_wait'] + stages['prefill']['mean_service']
+        # TTFT starts before `hold memP`, so it includes the pool's admission wait.
+        pool_wait = next(p for p in r['pools'] if p['name'] == 'memP')['mean_wait']
+        expected = pool_wait + stages['prefill']['mean_wait'] + stages['prefill']['mean_service']
         close(ttft, expected, .01, f'PD TTFT seed {seed}')
         checks.append(dict(check=f'PD decode service seed {seed}', observed=service, expected=.04))
         checks.append(dict(check=f'PD TTFT seed {seed}', observed=ttft, expected=expected))

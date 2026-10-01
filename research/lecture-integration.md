@@ -97,7 +97,7 @@ context names use `present`, `tokens`, `attention`, `decoders`,
 
 ## Which results survive
 
-The verifier passes **18 executable checks**, plus recomputation of the
+The verifier passes **21 executable checks**, plus recomputation of the
 nonlinear feedback roots and three previous-runtime comparisons:
 
 - FIFO PK under deterministic, exponential, Erlang-4 and H2 work.
