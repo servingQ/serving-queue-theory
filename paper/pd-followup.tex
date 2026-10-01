@@ -1,6 +1,11 @@
 % Prefill/decode disaggregation material removed from the paper on 2026-09-23
-% for a follow-up paper. Not \input anywhere. Lean proofs (PDDisaggregation.lean)
-% and simulator checks (validation/src/sim/pd.py) remain in the repository.
+% for a follow-up paper. Not \input anywhere. Lean proofs (PDDisaggregation.lean,
+% capacity only; DecodeScaling.lean, the decode sojourn at equal throughput) and
+% simulator checks (validation/src/sim/pd.py, the FIFO tandem without batching;
+% validation/src/sim/pd_batching.py, the step engines of serQ #208) remain in the
+% repository. Issue #28 (2026-10-01): the throughput no-gain of prop:pd is not
+% a latency no-gain; see the "Win condition and latency" and "Limitations"
+% paragraphs below.
 
 \begin{proof}[Proof of Proposition~\ref{prop:pd}]
 (i) Let $m=\min(N_P/s_P,N_D/s_D)$. Then $ms_P\le N_P$ and $ms_D\le N_D$.
@@ -169,10 +174,43 @@ latency. Table~\ref{tab:sim-pd} shows that at the rate-matched split,
 where the capacities are equal, disaggregated serving has a higher mean
 latency, and the gap grows with load. A single pool of $N$ servers
 queues less than a tandem of two smaller pools, a classical pooling
-effect. A comparison of PD and aggregation at equal capacity therefore
-has to report latency as well as throughput.
+effect. This is a result about FIFO pools without batching: each request
+holds one device for its whole prefill or decode, so the tandem can only
+lose. It is the capacity and pooling baseline, not a statement about an
+engine. In a step engine the decodes of a colocated device advance only
+in its decode steps, while a dedicated decode device steps every
+iteration and carries more decodes per step; at the same output
+throughput the split shortens the time per output token and lengthens
+the time to first token (the simulated comparison of serQ \#208, with the
+conditional theory of the processor-sharing idealisation: scaling the
+arrival rate and the decode capacity by one factor keeps the number
+decoding and divides the sojourn). A comparison of PD and aggregation at
+equal capacity therefore has to report, separately, the pooling loss of
+the tandem, the gain in time per output token, and the cost in time to
+first token and transfer.
 
 \paragraph{Limitations.} The PD model treats capacity as a scalar
-bottleneck and ignores batching dynamics inside each pool. The simulator
-does not model memory caps on PD pools.
+bottleneck and ignores batching dynamics inside each pool; its no-gain
+statement is about requests per second, not about the time a request
+spends in the system at a given throughput. The simulator of this
+section does not model memory caps on PD pools.
+
+\paragraph{Metrics.} The follow-up reports the following, each defined
+once. \emph{TTFT} is measured to the token the client sees: after a
+hand-over, that is the decode instance's first token, so the transfer
+and the decode instance's admission are inside it; the prefill
+instance's completion time is reported separately where it differs
+(the lecture example records both). \emph{TPOT} of a request is the
+first-to-last span over its gaps, $(t_{\mathrm{last}}-t_{\mathrm{first}})/(o-1)$
+for $o\ge2$ output tokens; the \emph{request-weighted} mean averages
+this over requests and the \emph{token-weighted} mean divides all decode
+time by all gaps, and the two differ when short answers wait behind
+prefills. \emph{Response} is TTFT plus the decode sojourn. \emph{Request
+throughput} (requests/s) and \emph{output throughput} (tokens/s) are
+measured in a stable load region, where the run keeps up with its
+arrivals; the \emph{saturated capacity} is measured with a closed
+population and is the quantity of Proposition~\ref{prop:pd}; \emph{SLO
+goodput} counts the requests that meet a TTFT and TPOT target. No
+steady-state latency is claimed at the rate-matched capacity boundary
+itself.
 

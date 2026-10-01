@@ -153,7 +153,12 @@ From `make report` (synthetic workloads; not measurements):
   closed system the two are within seed noise and LRU is worse. E4 must
   report end-to-end metrics, not only cost/OPT.
 - PD at the rate-matched split has equal capacity but higher latency
-  than aggregation (pooling). The PD follow-up should report latency too.
+  than aggregation in the FIFO tandem without batching (`sim.pd`): a
+  pooling loss, the capacity baseline. It is not a latency no-gain: on the
+  step engines (`sim.pd_batching`, serQ #208) the split keeps the output
+  throughput, shortens the token-weighted TPOT and lengthens the TTFT. The
+  PD follow-up reports the pooling loss, the TPOT gain and the TTFT and
+  transfer cost separately (`paper/pd-followup.tex`, "Metrics").
 - Strict affinity collapses when the hot replica saturates; lookahead with
   cheap migration stays flat. The placement test must measure migration cost, which moves
   the inversion load.
