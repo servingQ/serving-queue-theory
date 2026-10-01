@@ -3,10 +3,11 @@ adapters against alternate serQ scenarios."""
 
 import pytest
 
-from sim import agentic, batch, pd, queue, routing, serq
+from sim import agentic, batch, pd, pd_batching, queue, routing, serq
 from sim.agentic import AgenticConfig, Closed
 from sim.batch import BatchConfig, Fifo, Ps
 from sim.pd import Aggregated, Disaggregated, PdConfig, Poisson, Saturated
+from sim.pd_batching import PsConfig, StepConfig
 from sim.queue import QueueConfig
 from sim.routing import RoutePolicy, RoutingConfig
 from sim.stats import Estimate
@@ -243,3 +244,32 @@ def test_agentic_programs_agree_statistically():
         assert abs(mean(ours, 0) - mean(theirs, 0)) / mean(theirs, 0) < 0.05
         assert abs(mean(ours, 1) - mean(theirs, 1)) < 0.05
         assert abs(mean(ours, 2) - mean(theirs, 2)) / mean(theirs, 2) < 0.10
+
+
+def test_pd_batching_modes_draw_the_same_requests():
+    # the two modes of pd_batching.sq share the request stream of a seed:
+    # the output tokens of the requests both ended agree, so the output
+    # throughputs do within the requests in flight at the end
+    c = pd_batching.simulate_step(StepConfig(False, 40.0, 7, horizon=60.0, warmup=6.0))
+    d = pd_batching.simulate_step(StepConfig(True, 40.0, 7, horizon=60.0, warmup=6.0))
+    assert c.stable and d.stable
+    assert abs(c.output_tokens_per_s - d.output_tokens_per_s) / c.output_tokens_per_s < 0.02
+    assert d.tpot_token < c.tpot_token and c.ttft < d.ttft
+    assert 0.0 < c.prefill_share < 1.0 and c.idle_share > 0.0
+    assert d.transfer < 1e-6 and d.admit_wait >= 0.0  # a hand-over over NICs of 1e15 tokens/s
+
+
+def test_pd_batching_edits_the_program_lines_it_cannot_set():
+    text = pd_batching._program_text(StepConfig(False, 40.0, 1, exclusive=False, prefill_engines=2))
+    assert pd_batching.EXCLUSIVE_LINE not in text and "let NP = 2;" in text
+    assert (
+        pd_batching._program_text(StepConfig(False, 40.0, 1))
+        == serq.program_path("pd_batching").read_text()
+    )
+
+
+def test_pd_ps_is_little_consistent():
+    r = pd_batching.simulate_ps(PsConfig(True, 10.0, 3, horizon=120.0, warmup=12.0))
+    # L = λ W at the pooled station, with the time in the station the decode time
+    assert abs(r.decoding_per_station - 10.0 * r.decode_time) / r.decoding_per_station < 0.05
+    assert r.tpot_token <= r.tpot_request * 1.05  # a short answer's TPOT weighs more per request
