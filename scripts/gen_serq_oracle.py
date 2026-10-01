@@ -33,8 +33,10 @@ OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SerqOracle.lean")
 # (serQ #234): a hold without it leaves the entry where it is, and the
 # fragment's `admit` (SerqExec.lean) does the same; same shape, and no
 # oracle program holds a pool with entries without `cache`.
-# FIFO programs in v7-v10 keep their meaning; the pinned corpus (v0.1.1,
-# IR 10) is FIFO and stays inside the fragment.
+# The translation is one, with 10's meaning: a 7-9 file reads the same
+# only where no hold without `cache` meets a pool with entries, which holds
+# for every file the generator has read. The pinned corpus (v0.1.1, IR 10)
+# is FIFO and stays inside the fragment.
 IR_VERSION = 10
 SUPPORTED_IR_VERSIONS = (7, 8, 9, IR_VERSION)
 

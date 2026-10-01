@@ -27,7 +27,7 @@ offloading, placement and admission.
 
 | Notes | About |
 |---|---|
-| **[Queueing Theory for LLM Serving](pdf/queueing-serving.pdf)** (PDF) | Unified lecture notes: arrivals, PASTA, renewal rewards, Little’s law, Markovian queues, memory slots, processor sharing, the price of a miss, closed systems, eviction, a colocated scheduler, and prefill–decode disaggregation with transfer prices and feedback. Executable examples use serQ v0.1.0. |
+| **[Queueing Theory for LLM Serving](pdf/queueing-serving.pdf)** (PDF) | Unified lecture notes: arrivals, PASTA, renewal rewards, Little’s law, Markovian queues, memory slots, processor sharing, the price of a miss, closed systems, eviction, a colocated scheduler, and prefill–decode disaggregation with transfer prices and feedback. Executable examples use serQ v0.1.1. |
 
 ## Sources
 
