@@ -29,10 +29,16 @@ OUT = os.path.join(ROOT, "lean", "ServingQueueTheory", "SerqOracle.lean")
 # 7 makes `choose` compare a tuple of keys. 8 lets a run hold several stages
 # at once (`Run.also`, under `Program.share`), outside the fragment.
 # 9 reevaluates non-FIFO queue keys and supplies Waited, outside this fragment.
-# FIFO programs in v7/v8/v9 keep their meaning; the pinned corpus (v0.1.0,
-# IR 9) is FIFO and stays inside the fragment.
-IR_VERSION = 9
-SUPPORTED_IR_VERSIONS = (7, 8, IR_VERSION)
+# 10 makes a hold's `cache` clause what consumes the session's own prefix
+# (serQ #234): a hold without it leaves the entry where it is, and the
+# fragment's `admit` (SerqExec.lean) does the same; same shape, and no
+# oracle program holds a pool with entries without `cache`.
+# The translation is one, with 10's meaning: a 7-9 file reads the same
+# only where no hold without `cache` meets a pool with entries, which holds
+# for every file the generator has read. The pinned corpus (v0.1.1, IR 10)
+# is FIFO and stays inside the fragment.
+IR_VERSION = 10
+SUPPORTED_IR_VERSIONS = (7, 8, 9, IR_VERSION)
 
 
 class Fragment(Exception):

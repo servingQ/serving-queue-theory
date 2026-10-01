@@ -76,15 +76,12 @@ class RoutingReport:
 
 def simulate(cfg: RoutingConfig) -> RoutingReport:
     assert cfg.replicas == 4, "routing.sq currently declares four replicas"
-    src = serq.program_path("routing").read_text()
-    for pattern, repl in [
-        ("~uniform(5000, 15000)", laws.expr(cfg.cls.initial_tokens)),
-        ("~exp(500)", laws.expr(cfg.cls.new_tokens)),
-        ("~exp(200)", laws.expr(cfg.cls.output_tokens)),
-        ("~exp(Z)", laws.expr(cfg.cls.tool_time)),
-    ]:
-        assert pattern in src, f"routing.sq lacks {pattern}"
-        src = src.replace(pattern, repl, 1)
+    defs = {
+        "initial_tokens": laws.expr(cfg.cls.initial_tokens),
+        "new_tokens": laws.expr(cfg.cls.new_tokens),
+        "output_tokens": laws.expr(cfg.cls.output_tokens),
+        "tool_time": laws.expr(cfg.cls.tool_time),
+    }
     c = cfg.cost
     sets = {
         "J": str(cfg.replicas),
@@ -99,7 +96,14 @@ def simulate(cfg: RoutingConfig) -> RoutingReport:
         "p": number(cfg.cls.resume_prob),
         "bw": number(cfg.migrate_bandwidth),
     }
-    r = serq.run(source=src, sets=sets, seed=cfg.seed, warmup=cfg.warmup, horizon=cfg.horizon)
+    r = serq.run(
+        serq.program_path("routing"),
+        sets=sets,
+        defs=defs,
+        seed=cfg.seed,
+        warmup=cfg.warmup,
+        horizon=cfg.horizon,
+    )
     response, hitrate = r.observe("response"), r.observe("hitrate")
     migration = r.observe("migration")
     hits = int(rround(hitrate.mean * hitrate.count))

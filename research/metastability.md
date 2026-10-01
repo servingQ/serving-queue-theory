@@ -95,7 +95,7 @@ Numerical (exact chain or serQ):
 
 1. The positive prediction: an engine that holds a prompt's blocks while the
    turn waits (PD decoder waiting for a KV transfer) should be metastable.
-   Needs serQ#230 fixed, or the PD program `llmd_nixl_pull.sq`.
+   serQ #230 is fixed in v0.1.1 (IR 10, serQ #234), now pinned; or the PD program `llmd_nixl_pull.sq`.
 2. Measure the loss onset, `C − N` and memory per waiting turn on the testbed
    with the burst protocol, predictions registered first.
 3. A concurrency cost of pinning (Exercise 7.3).

@@ -22,6 +22,16 @@ record the runs made at that time; they do not imply a server is still running.
 Keep this section current at the end of every work block.
 
 **Done.**
+- **serQ v0.1.1 pinned, IR 10 (2026-10-01).** The pin moved to the release
+  that fixes the overlapping-hold bug Lecture 7 ran into (serQ #230: a hold
+  without `cache` now leaves the session's prefix where it is; IR 10, same
+  shape). Companion here: `scripts/gen_serq_oracle.py` reads 10,
+  `SerqExec.lean`'s `admit` consumes the own prefix only with a `cache`
+  clause, `SerqOracle.lean` regenerates to the same file (no oracle
+  program holds a pool with entries without `cache`, so the theorems are
+  unchanged). Also from the release: `serq --version` and `serq_version` in
+  the report, a note on a test observe that never held, and the linker
+  rejecting a `set present` (serQ #231, the course's old `n` accident).
 - **Metastability, Lecture 7 (2026-10-01, serQ #120; lecture note only, not
   the paper).** Serving results proved in Lean (`CacheOrder.lean`,
   `Metastability.lean`): saturated rounds (LRU 0 hits, any rule ≤ `C`, pinning
@@ -78,13 +88,13 @@ Keep this section current at the end of every work block.
   regenerates `paper/sim/` (~7 min); `make sim` runs ruff, pytest and the
   report (~5 min).
 - **serQ integration (current).** The language is a separate project,
-  https://github.com/vrvrv/serQ. This repository runs its pinned v0.1.0
-  release (IR 9) through pyserq and `.serq/bin/serq`, not a Cargo git
+  https://github.com/vrvrv/serQ. This repository runs its pinned v0.1.1
+  release (IR 10) through pyserq and `.serq/bin/serq`, not a Cargo git
   dependency. `research/serq.md` documents the pin, upgrade procedure and CI
   access. The Lean modules are `Serq{,Exec,Oracle,Serve}.lean`;
   `scripts/gen_serq_oracle.py` generates the oracle statements from the
   release's IR, and `scripts/test_serq_oracle.py` checks the translator's
-  accepted fragment. This proves the named fragment, not every IR-v9 feature.
+  accepted fragment. This proves the named fragment, not every IR-v10 feature.
 - **vLLM-rule paper simulations (ported 2026-09-27).** The price,
   eviction/admission and WEKA replay experiments run
   `programs/{price,open,replay}_vllm.sq` through

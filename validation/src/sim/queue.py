@@ -64,14 +64,12 @@ def _by_arrival(o: serq.Observe) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _source(cfg: QueueConfig) -> str:
+    """`mg1.sq` with renewal arrivals of the configured law: the one splice
+    left, since it changes the kind of the arrival declaration (Poisson to
+    renewal), which neither `sets=` nor `defs=` can."""
     src = serq.program_path("mg1").read_text()
-    src = src.replace("stage svc : fifo;", f"stage svc : fifo({cfg.servers});")
     assert "arrive poisson(lam);" in src, "mg1.sq arrival declaration changed"
-    src = src.replace("arrive poisson(lam);", f"arrive renewal({laws.expr(cfg.interarrival)});")
-    start = src.find("    set s = law ==")
-    assert start >= 0, "mg1 service sampler"
-    end = src.index(";", start) + 1
-    return src[:start] + f"    set s = {laws.expr(cfg.service)};" + src[end:]
+    return src.replace("arrive poisson(lam);", f"arrive renewal({laws.expr(cfg.interarrival)});")
 
 
 def simulate(cfg: QueueConfig) -> QueueReport:
@@ -91,7 +89,13 @@ def simulate(cfg: QueueConfig) -> QueueReport:
     while True:
         try:
             report = serq.run(
-                source=source, seed=cfg.seed, warmup=0.0, horizon=horizon, arrivals=total
+                source=source,
+                sets={"servers": cfg.servers},
+                defs={"service": laws.expr(cfg.service)},
+                seed=cfg.seed,
+                warmup=0.0,
+                horizon=horizon,
+                arrivals=total,
             )
             break
         except serq.SerqError as e:

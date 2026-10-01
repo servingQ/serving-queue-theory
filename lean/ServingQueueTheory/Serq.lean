@@ -16,7 +16,11 @@ module formalises:
 * the semantics of one memory pool (`PoolState`, `Step`): the queue,
   admission with eviction of cached prefixes (the guard counts allocated
   units only, so a cached prefix never blocks), release with caching of
-  `ℓ ≤ c` units, dropping a prefix and leaving. The memory invariant
+  `ℓ ≤ c` units, dropping a prefix and leaving. `Step.admit` is the
+  admission of a hold with a `cache` clause, which consumes the session's
+  own prefix; a hold without the clause leaves it (serQ IR 10, modelled in
+  `SerqExec.lean`'s `admit`) and is, for this pool model, an admission that
+  finds no entry of its own. The memory invariant
   `allocated + cached ≤ capacity` is preserved by every step
   (`Step.invariant`), as is the non-negativity of every entry
   (`Step.nonneg`).

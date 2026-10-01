@@ -1,10 +1,10 @@
 {
   "binary": ".serq/bin/serq",
-  "release": "v0.1.0",
-  "pinned": "v0.1.0",
+  "release": "v0.1.1",
+  "pinned": "v0.1.1",
   "release_verified": true,
-  "commit": null,
-  "ir_version": 9,
+  "commit": "16fd7dde9414be497c85a3614e5feb7ab14cca48",
+  "ir_version": 10,
   "checks": [
     {
       "check": "PK law 0",

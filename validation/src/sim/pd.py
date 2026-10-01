@@ -88,16 +88,13 @@ class PdReport:
     latency_stats: Welford
 
 
-def _source(name: str, cfg: PdConfig) -> str:
-    src = serq.program_path(name).read_text()
-    for pattern, repl in [
-        ("~exp(sP)", laws.expr(cfg.prefill)),
-        ("~exp(sD)", laws.expr(cfg.decode)),
-        ("~exp(K)", laws.expr(cfg.kv_tokens)),
-    ]:
-        assert pattern in src, f"{name}.sq lacks {pattern}"
-        src = src.replace(pattern, repl, 1)
-    return src
+def _defs(cfg: PdConfig) -> dict[str, str]:
+    """The laws of `pd_tandem.sq` and `pd_open.sq`, by their defs."""
+    return {
+        "prefill_work": laws.expr(cfg.prefill),
+        "decode_work": laws.expr(cfg.decode),
+        "kv_tokens": laws.expr(cfg.kv_tokens),
+    }
 
 
 def _measured(r: serq.Report, cfg: PdConfig, horizon: float):
@@ -147,7 +144,12 @@ def _saturated(cfg: PdConfig, jobs: int) -> PdReport:
         "mode": 1.0 if split else 0.0,
     }
     r = serq.run(
-        source=_source("pd_tandem", cfg), sets=sets, seed=cfg.seed, warmup=0.0, horizon=horizon
+        serq.program_path("pd_tandem"),
+        sets=sets,
+        defs=_defs(cfg),
+        seed=cfg.seed,
+        warmup=0.0,
+        horizon=horizon,
     )
     lat, span = _measured(r, cfg, horizon)
     if split:
@@ -183,7 +185,12 @@ def _poisson(cfg: PdConfig) -> PdReport:
         "mode": 1.0 if split else 0.0,
     }
     r = serq.run(
-        source=_source("pd_open", cfg), sets=sets, seed=cfg.seed, warmup=0.0, horizon=horizon
+        serq.program_path("pd_open"),
+        sets=sets,
+        defs=_defs(cfg),
+        seed=cfg.seed,
+        warmup=0.0,
+        horizon=horizon,
     )
     lat, span = _measured(r, cfg, horizon)
 

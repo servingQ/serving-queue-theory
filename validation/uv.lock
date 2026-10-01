@@ -122,11 +122,11 @@ wheels = [
 
 [[package]]
 name = "pyserq"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/80/80/5cd374f59d5333423dc12d916a4b97326e3c6c647bffdb62185dd2847e3d/pyserq-0.1.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:c5290195780e488f79163cf02bace1a850622f654d782cf056d02a99ac332d49", size = 780896, upload-time = "2026-09-30T06:22:24.797Z" },
-    { url = "https://files.pythonhosted.org/packages/1d/85/5281358253c00f8831c5b58b16f0d8c55836db3c82c7debacad095f75c16/pyserq-0.1.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:92bed91798abea8ff79a4fc8aff2e6ba2a77094461c1d6cc6e00ddc30d9c307d", size = 868241, upload-time = "2026-09-30T06:22:26.442Z" },
+    { url = "https://files.pythonhosted.org/packages/65/49/8cc08ae611d649f090b846081fb0e17c4825e868aca919063c520d21181b/pyserq-0.1.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:bf68ceddb1e8c874ca6cb47cb30cfab72411cbd99dc0446d67305631bbba0319", size = 870604, upload-time = "2026-10-01T08:55:06.447Z" },
+    { url = "https://files.pythonhosted.org/packages/96/76/3faefc6b0f9bc5309939f9e513535de6a579c42c1fb62ad31dce808392ce/pyserq-0.1.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:81eaebefe6663879e1c3931fe90cc665ab173943c8b599f1a3725906c3d87b86", size = 969574, upload-time = "2026-10-01T08:55:08.002Z" },
 ]
 
 [[package]]
@@ -188,7 +188,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.2" },
-    { name = "pyserq", specifier = "==0.1.0" },
+    { name = "pyserq", specifier = "==0.1.1" },
 ]
 
 [package.metadata.requires-dev]

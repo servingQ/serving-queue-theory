@@ -15,8 +15,9 @@ order (as serQ reads explicit sessions of its IR, or an ordered trace).
   (per session, tail blocks evicted first, least recently released entry
   first, ties by release order), admit the head of their queue when every
   pool of its hold has room for its `fits` units (allocated units never
-  count the cache), consume at most `reuse` of the own prefix (the rest
-  stays cached, dead, with its age), and on a failed growth preempt the
+  count the cache), with a `cache` clause consume at most `reuse` of the
+  own prefix (the rest stays cached, dead, with its age; a hold without the
+  clause leaves the entry where it is, serQ IR 10), and on a failed growth preempt the
   most recently admitted holder, whose hold is released (its computed
   prefix cached) and re-queued at the head. A pool marked `viaEngine`
   (`admit via engine`) is admitted by the engine at the start of an
@@ -327,8 +328,10 @@ def admit (m : Machine) (i : ℕ) (left : ℕ) : Machine :=
       let (m, held, cons) := acc
       let pd := pdef D p
       let s := pst m p
-      let own := ownEntry s serial
-      let s := removeEntry s serial
+      -- a hold takes from the prefix cache only if it will give back to
+      -- it: without a `cache` clause the entry stays where it is (IR 10)
+      let own := if cache.isSome then ownEntry s serial else 0
+      let s := if cache.isSome then removeEntry s serial else s
       let keepR := match r? with
         | some r => roundDown pd.block (min r own)
         | none => own

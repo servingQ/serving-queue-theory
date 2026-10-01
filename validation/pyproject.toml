@@ -3,7 +3,7 @@ name = "validation"
 version = "0.1.0"
 description = "Paper validation and report generation using the serQ simulation engine"
 requires-python = ">=3.12"
-dependencies = ["numpy>=2.2", "pyserq==0.1.0"]
+dependencies = ["numpy>=2.2", "pyserq==0.1.1"]
 
 [dependency-groups]
 dev = ["pytest>=8.3", "ruff>=0.11"]
@@ -18,12 +18,12 @@ build-backend = "hatchling.build"
 only-include = ["src"]
 sources = ["src"]
 
-# The serQ release this repository runs: pyserq from PyPI (above) and the
-# checkout scripts/fetch_serq.sh makes of the same tag, for the example
-# programs, the oracle IR files and the CLI. `tests/test_units.py` holds the
-# two to one release.
+# The serQ this repository runs: pyserq from PyPI (above) and the checkout
+# scripts/fetch_serq.sh makes of `tag` (or of `rev`, which wins), for the
+# example programs, the oracle IR files and the CLI. `tests/test_units.py`
+# holds the two to one version (pyserq's and the checkout's Cargo.toml).
 [tool.serq]
-tag = "v0.1.0"
+tag = "v0.1.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

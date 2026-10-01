@@ -85,12 +85,12 @@ leaves every layer may use. `tests/test_layers.py` enforces the directions.
 | `sim.laws` | a law of `theory.dist` as an expression in serQ's sampler, the body of a program's `def` (`defs=`) | |
 | `sim.stats` | Welford moments, batch-means and replication intervals, paired differences | |
 | `sim.workload` | replayed real sessions (`TraceCorpus`, the bundled WEKA sessions, read by `pyserq.read_trace`) | §4.2 |
-| `sim.queue` | serQ's `mg1.sq` as a G/G/c FIFO queue | §2.1–2.2 |
+| `sim.queue` | serQ's `mg1.sq` as a G/G/c FIFO queue: `servers` by `sets=`, the service law by `defs=`; the renewal arrival is spliced (it changes the declaration's kind) | §2.1–2.2 |
 | `sim.batch` | `programs/batch_sampled.sq`: sampled-work FIFO, PS and exact LPS session checks; the work laws and the PS capacity are the program's defs | §2, Props. price, decode |
 | `sim.price_vllm`, `sim.open_vllm`, `sim.replay_vllm` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: `programs/{price,open,replay}_vllm.sq` (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
 | `sim.agentic` | `programs/agentic_model.sq`: programs cycling queue → service → tool on one replica with finite KV; eviction and offload policies, including the congestion-priced ones; the class laws and the policies are the program's defs, given by `defs=` | §2.2–2.3, §3.1–3.2 |
-| `sim.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem | App. B |
-| `sim.routing` | serQ's `routing.sq`: affinity, myopic, lookahead routing | §3.3 |
+| `sim.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem; the laws by `defs=` | App. B |
+| `sim.routing` | serQ's `routing.sq`: affinity, myopic, lookahead routing; the session laws by `defs=` | §3.3 |
 | `checks` | the named checks; each cites paper labels and Lean theorems | all |
 | `report.validation`, `report.paper_tables` | the Markdown report; `paper/sim/*.tex` and `paper/sim/data/*.csv` | all |
 | `report.inversion_explore` | affinity vs always-move by rate and link bandwidth (printed, not asserted) | §3.3 |

@@ -91,11 +91,11 @@ close to the prose to make it tractable.
 [Queueing Theory for LLM Serving](lectures/queueing-serving/notes.tex) combines
 the former primer and PD course. Chapters 1–4 develop the shared foundations;
 chapters 5–6 apply them to colocated and disaggregated serving. Executable
-examples use **serQ v0.1.0 (IR v9)**, using the repository’s existing release pin.
+examples use **serQ v0.1.1 (IR v10)**, using the repository’s existing release pin.
 
 ```bash
 make lectures         # compile the unified notes
-make lecture-results  # fetch/build serQ v0.1.0 and check the course's results
+make lecture-results  # fetch/build serQ v0.1.1 and check the course's results
 ```
 
 The [verification record](research/lecture-integration.md) explains the changed
