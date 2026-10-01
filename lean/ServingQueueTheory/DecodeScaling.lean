@@ -34,10 +34,12 @@ mean number off a finite truncation `{0, …, N}` (`psMeanNumber`).
   random output length the token-weighted TPOT `E[T] / E[o - 1]` does,
   while the request-weighted mean `E[T / (o - 1)]` is not a function of
   `E[T]` and `E[o - 1]`.
-* `psNum_anti_capacity`, `decode_share_loss` : at the same demand a
-  smaller capacity leaves more turns in the batch.  A miss adds no decode
-  demand (`BatchServer.lean`), but an engine that runs a prefill in a step
-  of its own takes that step from its decodes, so the share `f` is not a
+* `psMeanNumber_anti_share`, `psNum_anti_capacity`, `decode_share_loss` :
+  at the same demand a smaller share of the capacity leaves more turns in
+  the batch, for any capacity function (through `stationaryMean_mono`)
+  and in closed form for a constant one.  A miss adds no decode demand
+  (`BatchServer.lean`), but an engine that runs a prefill in a step of its
+  own takes that step from its decodes, so the share `f` is not a
   constant there and the identity above does not describe it.
 
 Conditions, stated once: the identity needs a PS station whose capacity
@@ -46,7 +48,8 @@ Poisson arrivals to the decode station (a Poisson stream split at random
 among `1/f` engines is Poisson; the departures of a prefill queue are
 not Poisson in general), and a work law that does not depend on the
 split.  Nothing here bounds a step engine's TPOT: the step-engine
-comparison is simulated, not proved (`validation/src/checks.py`).
+comparison is simulated, not proved (serQ #208, `tools/pd_batching/` of
+the pinned release).
 -/
 import Mathlib.Tactic
 import ServingQueueTheory.BatchServer
@@ -160,9 +163,16 @@ theorem dedicated_sojourn (φ : ℕ → ℝ) (lam ES : ℝ) {f : ℝ} (hf : f �
 
 /-! ### What the identity says about TPOT, and what it does not. -/
 
-/-- TPOT of a request that decodes `o ≥ 2` tokens in `T` seconds:
-`T / (o - 1)`, the first-to-last span over the gaps. -/
+/-- TPOT of a request that decodes `o` tokens in `T` seconds:
+`T / (o - 1)`, the first-to-last span over the gaps.  It is meaningful for
+`o ≥ 2` (`tpot_pos`); a one-token answer has no gap, and Lean's
+`T / 0 = 0` makes the statements below trivially true for it. -/
 noncomputable def tpot (T : ℝ) (o : ℕ) : ℝ := T / ((o : ℝ) - 1)
+
+theorem tpot_pos {T : ℝ} (hT : 0 < T) {o : ℕ} (ho : 2 ≤ o) : 0 < tpot T o := by
+  unfold tpot
+  have : (2 : ℝ) ≤ o := by exact_mod_cast ho
+  exact div_pos hT (by linarith)
 
 /-- With a fixed output length, the request-weighted TPOT scales with the
 sojourn. -/
@@ -179,17 +189,51 @@ theorem tpot_token_weighted_scale (ET Egaps c : ℝ) :
     tpotTokenWeighted (ET / c) Egaps = tpotTokenWeighted ET Egaps / c := by
   unfold tpotTokenWeighted; ring
 
+/-- A finite law of (sojourn, output length) pairs, each equally likely,
+and the mean of a statistic under it. -/
+def lawMean (law : List (ℚ × ℕ)) (g : ℚ × ℕ → ℚ) : ℚ := (law.map g).sum / law.length
+
+/-- One request of two tokens decoded in 1 s and one of four tokens in 3 s. -/
+def tpotLawA : List (ℚ × ℕ) := [(1, 2), (3, 4)]
+
+/-- The same output lengths with the sojourns exchanged. -/
+def tpotLawB : List (ℚ × ℕ) := [(3, 2), (1, 4)]
+
 /-- The request-weighted TPOT `E[T / (o - 1)]` is not a function of `E[T]`
-and `E[o - 1]`: two two-point laws, one request of `o = 2` and one of
-`o = 4`, with sojourns `(1, 3)` or `(3, 1)`, have the same `E[T] = 2` and
-`E[o - 1] = 2` and request-weighted TPOTs `1` and `5/3`.  So the
-scaling of `E[T]` alone says nothing about it. -/
+and `E[o - 1]`: the two laws have the same `E[T] = 2` and `E[o - 1] = 2`
+and request-weighted TPOTs `1` and `5/3`.  So the scaling of `E[T]`
+alone says nothing about it. -/
 theorem request_weighted_tpot_not_from_means :
-    ((1 : ℚ) + 3) / 2 = ((3 : ℚ) + 1) / 2 ∧
-    (1 / ((2 : ℚ) - 1) + 3 / ((4 : ℚ) - 1)) / 2 ≠ (3 / ((2 : ℚ) - 1) + 1 / ((4 : ℚ) - 1)) / 2 := by
-  norm_num
+    lawMean tpotLawA (fun x => x.1) = lawMean tpotLawB (fun x => x.1) ∧
+    lawMean tpotLawA (fun x => (x.2 : ℚ) - 1) = lawMean tpotLawB (fun x => (x.2 : ℚ) - 1) ∧
+    lawMean tpotLawA (fun x => x.1 / ((x.2 : ℚ) - 1))
+      ≠ lawMean tpotLawB (fun x => x.1 / ((x.2 : ℚ) - 1)) := by
+  norm_num [lawMean, tpotLawA, tpotLawB]
 
 /-! ### The limit of the identity: a capacity that the miss takes. -/
+
+/-- The colocated engine's truncated mean is `stationaryMean` at the load
+`lam ES / f`: a share `f` of the capacity is a load `1 / f` times as
+large. -/
+theorem psMeanNumber_share_eq_stationaryMean (φ : ℕ → ℝ) (lam ES : ℝ) {f : ℝ} (hf : f ≠ 0)
+    (N : ℕ) :
+    psMeanNumber (fun k => f * φ k) lam ES N
+      = stationaryMean (fun n => 1 / ∏ k ∈ range n, φ (k + 1)) N (lam * ES / f) := by
+  rw [← dedicated_mean_number_eq φ lam ES hf N, psMeanNumber_eq_stationaryMean, div_mul_eq_mul_div]
+
+/-- **A smaller share leaves more turns, for any capacity function.**  At
+the same demand `lam ES > 0`, a decode share `f' ≤ f` of a positive
+capacity `φ` has a mean number no smaller than the share `f` has. -/
+theorem psMeanNumber_anti_share (φ : ℕ → ℝ) (hφ : ∀ k, 0 < φ k) {lam ES f f' : ℝ}
+    (hload : 0 < lam * ES) (hf' : 0 < f') (hff : f' ≤ f) (N : ℕ) :
+    psMeanNumber (fun k => f * φ k) lam ES N ≤ psMeanNumber (fun k => f' * φ k) lam ES N := by
+  have hf : 0 < f := lt_of_lt_of_le hf' hff
+  rw [psMeanNumber_share_eq_stationaryMean φ lam ES hf.ne' N,
+    psMeanNumber_share_eq_stationaryMean φ lam ES hf'.ne' N]
+  refine stationaryMean_mono _ N (fun n => ?_) (by simp) (div_pos hload hf) ?_
+  · have : 0 < ∏ k ∈ range n, φ (k + 1) := Finset.prod_pos fun k _ => hφ (k + 1)
+    positivity
+  · exact div_le_div_of_nonneg_left hload.le hf' hff
 
 /-- At the same demand, a smaller constant capacity leaves more turns at
 the PS station: `ρ / (C - ρ) ≤ ρ / (C' - ρ)` for `ρ < C' ≤ C`. -/

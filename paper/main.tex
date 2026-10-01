@@ -303,14 +303,16 @@ $\varphi$ increase with $m$ and memory makes it saturate. The
 stationary law of the batch size is
 $\pi(m)\propto\rho_D^m/\prod_{k\le m}\varphi(k)$ with the decode load
 $\rho_D=\lambda\E[D]$, and it is \emph{insensitive}: it depends on the
-demand only through its mean \citep{bcmp1975,kelly1979}. The capacity
-$\varphi$ is the share of the device the decode batch keeps while
-prefills share its steps, a property of the engine's step rule, not of
-the demand. An engine that gives a prefill a step of its own stops its
-decodes for that step; there a miss, which adds no decode demand, still
-lowers the decode capacity, and a lower capacity at the same demand
-leaves more turns in the
-batch.\provedby{\leanref{psNum\_anti\_capacity}, \leanref{decode\_share\_loss}}
+demand only through its mean \citep{bcmp1975,kelly1979}. This takes
+$\varphi$ as fixed by the engine's step rule, which serves the batch at
+every step (next paragraph), so that the prefill load does not enter it.
+An engine that instead gives a prefill a step of its own stops its
+decodes for that step, and its decode capacity falls with the prefill
+load; in that model a miss adds no decode demand but shrinks the
+capacity, and a smaller share of the capacity at the same demand leaves
+more turns in the
+batch.\provedby{\leanref{psMeanNumber\_anti\_share}, \leanref{psNum\_anti\_capacity}, \leanref{decode\_share\_loss}}
+Proposition~\ref{prop:decode} is about the first kind of engine.
 
 \paragraph{Prefill stage.} With chunked prefill each step first serves
 the decode batch, then spends the tokens left in its budget on pending
