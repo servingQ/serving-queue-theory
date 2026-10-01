@@ -315,6 +315,7 @@ def test_pd_batching_modes_draw_the_same_requests():
     assert d.tpot_token < c.tpot_token and c.ttft < d.ttft
     assert 0.0 < c.prefill_share < 1.0 and c.idle_share > 0.0
     assert d.transfer < 1e-6 and d.admit_wait >= 0.0  # a hand-over over NICs of 1e15 tokens/s
+    assert 0.0 < c.prefill_busy < 1.0 and 0.0 < d.prefill_busy < 1.0
 
 
 def test_pd_batching_edits_the_program_lines_it_cannot_set():
