@@ -6,7 +6,7 @@ should happen: simulation first, then empirical measurement (§4). Update it whe
 changes. The paper (`paper/main.tex`) is the public statement. This file is
 the internal plan and may be blunter.
 
-Last updated: 2026-09-30.
+Last updated: 2026-10-01.
 
 ## 0. Where we are / next steps (read this first in a new session)
 
@@ -22,6 +22,14 @@ fresh session can continue without the chat history. Keep this section
 current at the end of every work block.
 
 **Done.**
+- **Metastability, Lecture 7 (2026-10-01, serQ #120; lecture note only, not
+  the paper).** Alvaro et al. (arXiv:2510.03551) recast for a prefill queue
+  that loses prefixes while congested: birth–death projection, passage times,
+  locality of recovery, open stability iff `λ S_miss < 1`, ranking flip
+  (`Metastability.lean`); exact CTMC numerics incl. a queue-and-cache chain
+  showing queue length is stationary-exact but dynamically optimistic
+  (`scripts/metastability_ctmc.py`). Record: `research/metastability.md`.
+  Lecture 6's Tarski proposition is now titled "Knaster–Tarski".
 - **Unified lecture course (2026-09-30).** The primer and PD notes are now
   `lectures/queueing-serving/notes.tex`: common theory once, colocated and PD
   applications in chapters 5–6. All obsolete Route/seQ language exposition

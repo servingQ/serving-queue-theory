@@ -19,6 +19,7 @@ import ServingQueueTheory.BatchServer
 import ServingQueueTheory.Footprint
 import ServingQueueTheory.FiniteSource
 import ServingQueueTheory.MissFeedback
+import ServingQueueTheory.Metastability
 import ServingQueueTheory.Serq
 import ServingQueueTheory.SerqExec
 import ServingQueueTheory.SerqOracle

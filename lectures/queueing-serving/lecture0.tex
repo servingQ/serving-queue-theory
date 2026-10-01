@@ -3,8 +3,9 @@
 These notes are a course on queueing theory for serving large language models.
 They assume undergraduate probability and real analysis (conditional expectation,
 the strong law of large numbers, power series), but no prior queueing theory.
-Definitions, proofs and exercises for the common tools appear once. The final two
-chapters apply them to a colocated replica and a prefill--decode deployment.
+Definitions, proofs and exercises for the common tools appear once. \Cref{sec:L5,sec:L6}
+apply them to a colocated replica and a prefill--decode deployment, and \cref{sec:L7}
+to metastable failures.
 
 \paragraph{The system.} Prefill reads a prompt and produces the first token.
 Decode produces the remaining tokens. Both need KV memory. A session returns
@@ -24,6 +25,8 @@ engine transfers KV between their separate memory pools.
 \item \Cref{sec:L5}: the colocated scheduler and its holding-time rule.
 \item \Cref{sec:L6}: the disaggregated replica, transfer prices, two memory pools and
   cache feedback.
+\item \Cref{sec:L7}: metastability of the cache feedback, recovery after a burst, and
+  how interventions rank.
 \item \Cref{app:serq}: how to run the executable examples, and what they check.
 \end{itemize}
 \Cref{sec:L1,sec:L2,sec:L3,sec:L4} are the common tools. A reader interested only in

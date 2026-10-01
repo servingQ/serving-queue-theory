@@ -1,0 +1,391 @@
+\chapter{Metastability: When a Burst Outlives Itself}\label{sec:L7}
+\input{metastability-tables}
+
+\Cref{L6:sec:feedback} found the hit rates a replica can sustain as fixed points of a
+feedback map, and \cref{L6:prop:collapse} showed that there can be two. A fixed point
+does not say which equilibrium the replica occupies, how long it stays there, or what it
+takes to leave. These are questions about dynamics. A \term{metastable failure} is
+their bad answer. A temporary stressor, such as a burst of arrivals, moves the system
+into a degraded state, and the system stays there after the stressor ends.
+Alvaro et al.~\cite{alvaro2025} analyse such failures for request--response servers with timeouts and
+retries. They build a continuous-time Markov chain from a program, draw its drift field,
+and measure metastability by escape probabilities and by the eigenvalues of the
+generator near zero. This lecture applies that programme to a prefill queue that loses
+prefixes while it is congested. The stressor is the same. The mechanism is different,
+and the difference changes the answers.
+
+The feedback loop of serQ issue~\#120 is
+\begin{align*}
+  &\text{longer queue}\ \to\ \text{prefixes lost while waiting}\ \to\ \text{more recompute}\\
+  &\quad\to\ \text{slower service}\ \to\ \text{longer queue}.
+\end{align*}
+We project it onto the queue length (\cref{L7:sec:model}), solve the resulting
+birth--death chain exactly (\cref{L7:sec:modes,L7:sec:passage}), and obtain three
+results. In the open queue, stability is decided by the miss work alone
+(\cref{L7:sec:open}). In a closed population, the time to recover grows exponentially
+with the population (\cref{L7:sec:closed}). And steady state and recovery rank
+interventions differently (\cref{L7:sec:interventions}). \Cref{L7:sec:enough} then asks
+whether the queue length is enough state, using a chain that also tracks the cache.
+
+\section{The model}\label{L7:sec:model}
+
+\begin{definition}[Queue with wait loss]\label{L7:def:model}
+Turns join one prefill queue. When $n$ turns are present, the mean service time is
+\[
+  s(n)=S^{\mathrm{hit}}+m(n)\,\Delta S,\qquad \Delta S=S^{\mathrm{miss}}-S^{\mathrm{hit}}\ge0,
+\]
+where $m(n)\in[0,1]$ is the probability that a turn served at queue length $n$ has lost
+its prefix. Service is exponential with rate $\mu_n=1/s(n)$. In the \term{open} queue,
+turns arrive at rate $\lambda_n=\lambda$. In the \term{closed} queue, $N$ sessions each
+think for an exponential time of mean $Z$ and then submit a turn, so
+$\lambda_n=(N-n)/Z$.
+\end{definition}
+
+The function $m$ carries the wait channel of \cref{L6:sec:feedback}. A turn that finds a
+long queue waits longer. While it waits, admissions ahead of it insert blocks, and an LRU
+engine evicts the waiting prefix first, because its last use is older than that of any
+session still thinking. So $m$ is nondecreasing. It is close to 0 while the queue fits
+in the cache and tends to 1 once the queued prefixes cannot all be held. The shape of
+$m$ is a property of the engine and the workload. It has to be measured. The theorems
+below need only the stated monotonicity or limit.
+
+\begin{remark}[The correspondence with retries]\label{L7:rem:alvaro}
+In \cite{alvaro2025} a state is a pair $(u,v)$: $u$ requests in the server and its
+queue, and $v$ requests in an \emph{orbit} waiting to be retried. The probability that a
+request times out rises with $u$, and a timed-out request returns as extra
+\emph{arrivals}. In our model a lost prefix returns as extra \emph{work}. The number of
+turns is conserved, and the feedback acts on the service rate $\mu_n$, not on the
+arrival rate. The role of the orbit is taken by the sessions and queued turns whose
+prefix is gone. \Cref{L7:sec:enough} restores this second coordinate. Three consequences
+follow from the change. The closed queue is a finite, irreducible chain, so it has a
+unique stationary law, and metastability there means slow mixing, never instability. The
+open queue's stability limit does not depend on where the losses start
+(\cref{L7:thm:open}). And the projection onto the queue length is a birth--death chain,
+whose passage times have closed forms.
+\end{remark}
+
+\section{Modes are stable fluid equilibria}\label{L7:sec:modes}
+
+By \cref{thm:birthdeath}, the stationary law of a finite birth--death chain on
+$\{0,\dots,M\}$ is $\pi(n)\propto w_n$, where $w_0=1$ and
+$w_{n+1}=w_n\lambda_n/\mu_{n+1}$. Its shape follows from one comparison.
+
+\begin{proposition}[Modes of the stationary law]\label{L7:prop:modes}
+Let all rates be positive.
+\begin{enumerate}[label=(\roman*)]
+\item $\pi(n+1)\ge\pi(n)$ if and only if $\lambda_n\ge\mu_{n+1}$.
+\item A level $n+1$ is a local mode, $\pi(n)\le\pi(n+1)\ge\pi(n+2)$, if and only if
+  $\lambda_n\ge\mu_{n+1}$ and $\lambda_{n+1}\le\mu_{n+2}$.
+\end{enumerate}
+\end{proposition}
+\begin{proof}
+(i) $\pi(n+1)/\pi(n)=\lambda_n/\mu_{n+1}$. (ii) Apply (i) at $n$ and at $n+1$.
+\end{proof}
+
+The \term{fluid drift} at $n$ is $\lambda_n-\mu_n$. \Cref{L7:prop:modes} says that the
+modes of $\pi$ are the levels where the drift changes from up to down, the stable
+equilibria of the fluid model, and the troughs are the levels where it changes from
+down to up, the saddles. In the closed queue the drift is
+$(N-n)/Z-1/s(n)$. Its arrival term falls linearly in $n$, and its service term falls in
+$n$ as well, steeply once $m$ rises. So the two can cross three times: a \emph{good} mode
+with few losses, a saddle, and a \emph{bad} mode with nearly every queued turn a miss.
+When they do, we call the law \term{bimodal}. The \term{barrier} from a mode $b$ down to
+a saddle $k<b$ is $\Delta V=\log(\pi(b)/\pi(k))$.
+
+\section{Passage times and recovery}\label{L7:sec:passage}
+
+Let $T_k$ be the mean time for the chain on $\{0,\dots,M\}$ to go from $k$ to $k-1$, and
+let the \term{recovery time} from $m$ to $n<m$ be $R(m,n)=\sum_{k=n+1}^{m}T_k$. By the
+strong Markov property, a birth--death chain must cross every level in between, so
+$R(m,n)$ is the mean hitting time of $n$ from $m$.
+
+\begin{proposition}[Passage times of a birth--death chain]\label{L7:prop:passage}
+Let all rates be positive. Then
+\[
+  T_k=\frac{1}{\mu_k}\sum_{j=k}^{M}\frac{\pi(j)}{\pi(k)}\qquad(1\le k\le M),
+\]
+and this is the unique solution of the first-step equations $\mu_MT_M=1$ and
+$\mu_kT_k=1+\lambda_kT_{k+1}$ for $k<M$.
+\end{proposition}
+\begin{proof}
+From $k<M$, the chain leaves after an exponential time of mean $1/(\lambda_k+\mu_k)$.
+With probability $\mu_k/(\lambda_k+\mu_k)$ it steps down. Otherwise it steps up and
+must first return to $k$, which takes $T_{k+1}$, and then start again. So
+$T_k=\frac{1+\lambda_k(T_{k+1}+T_k)}{\lambda_k+\mu_k}$, which rearranges to
+$\mu_kT_k=1+\lambda_kT_{k+1}$. At the top, $T_M=1/\mu_M$. These equations determine $T$ by
+backward induction from $M$, so the solution is unique. Write $P_k=\sum_{j\ge k}\pi(j)$.
+The formula gives $\mu_MT_M=1$. For $k<M$ it gives $\mu_kT_k=P_k/\pi(k)$, and by the cut
+equation $\pi(k)\lambda_k=\pi(k+1)\mu_{k+1}$,
+\[
+  1+\lambda_kT_{k+1}=1+\frac{\lambda_kP_{k+1}}{\pi(k+1)\mu_{k+1}}
+  =1+\frac{P_{k+1}}{\pi(k)}=\frac{P_k}{\pi(k)}. \qedhere
+\]
+\end{proof}
+
+The ratio $\pi(j)/\pi(k)=\prod_{i=k}^{j-1}\lambda_i/\mu_{i+1}$ involves only rates at
+levels $\ge k$. Three consequences follow at once.
+
+\begin{corollary}[Locality and monotonicity of recovery]\label{L7:cor:local}
+\begin{enumerate}[label=(\roman*)]
+\item $R(m,n)$ depends only on the rates at levels above $n$. Changing the service at
+  levels $\le n$ leaves every recovery to $n$ unchanged.
+\item If $\lambda'_i\ge\lambda_i$ and $\mu'_i\le\mu_i$ at every level $i>n$, then
+  $R'(m,n)\ge R(m,n)$. Faster service or fewer arrivals above $n$ never lengthen the
+  recovery.
+\end{enumerate}
+\end{corollary}
+\begin{proof}
+(i) is the remark above. (ii) Each factor $\lambda_i/\mu_{i+1}$ and the prefactor
+$1/\mu_k$ is nonnegative and grows when $\lambda_i$ grows or $\mu_i$ shrinks.
+\end{proof}
+
+\begin{proposition}[Arrhenius lower bound]\label{L7:prop:arrhenius}
+For every $j\ge k$, $T_k\ge\pi(j)/(\pi(k)\mu_k)$. In particular, if $k$ is a saddle and
+$b>k$ a mode with barrier $\Delta V$, then the recovery past the saddle from any level
+$\ge k$ takes at least $e^{\Delta V}/\mu_k$.
+\end{proposition}
+\begin{proof}
+Keep one term of the nonnegative sum in \cref{L7:prop:passage}.
+\end{proof}
+
+This is the lower half of the Arrhenius law. When the barrier is proportional to a
+system size, the time to escape a well is exponential in that size, and
+\cref{L7:sec:closed} shows this for the population $N$.
+
+\section{The open queue: stability is set by the miss work}\label{L7:sec:open}
+
+\begin{theorem}[Stability by d'Alembert's ratio test]\label{L7:thm:open}
+In the open queue let $\lambda>0$, $s(n)>0$, and $s(n)\to S^{\mathrm{miss}}$ as
+$n\to\infty$; for instance $m(n)\to1$.
+\begin{enumerate}[label=(\roman*)]
+\item If $\lambda S^{\mathrm{miss}}<1$ the queue has a stationary distribution. If
+  $\lambda S^{\mathrm{miss}}>1$ it has none.
+\item If $s'$ agrees with $s$ beyond some queue length $K$, then the queue with $s'$ has
+  a stationary distribution if and only if the queue with $s$ does.
+\end{enumerate}
+\end{theorem}
+\begin{proof}
+(i) By \cref{thm:birthdeath} a stationary distribution exists if and only if
+$\sum_nw_n<\infty$, where $w_n=\prod_{k=1}^n\lambda s(k)$. The ratio
+$w_{n+1}/w_n=\lambda s(n+1)$ tends to $\lambda S^{\mathrm{miss}}$. The ratio test gives
+convergence when the limit is below 1 and divergence when it is above 1.
+(ii) For $n\ge K$, $w'_n=(w'_K/w_K)\,w_n$, so the two tails differ by a positive
+constant factor.
+\end{proof}
+
+The hit work $S^{\mathrm{hit}}$ and the shape of $m$ do not enter. A larger cache, a
+faster hit path, or pinning that delays the onset of losses can only change $s$ on a
+finite set of queue lengths. By part~(ii), none of them moves the stability limit
+$\lambda<1/S^{\mathrm{miss}}$. What moves it is anything that lowers the tail work: a
+faster prefill, or a cheaper way to restore a lost prefix, such as reloading it from
+host memory instead of recomputing it. This is the dynamic counterpart of
+\cref{L6:prop:collapse}(i), where $\lambda\E[S^{\mathrm{miss}}]\ge1$ made all-miss an
+equilibrium.
+
+Mathematical stability is not the whole story. Between $1/S^{\mathrm{miss}}$ and
+$1/S^{\mathrm{hit}}$ lies a band of loads at which the queue has no stationary law, yet
+the empty queue is a stable fluid equilibrium. There the good state is metastable: it
+lasts for the time needed to climb past the fluid saddle, which is exponential in the
+barrier. \Cref{L7:tab:open} shows this for $S^{\mathrm{hit}}=0.5$\,s,
+$S^{\mathrm{miss}}=5$\,s and a logistic $m$ centred at 20 queued turns (width 4). Just
+above the limit the collapse takes $10^{16}$\,s. At ten times the limit it takes
+seconds. A load test of finite length sees a stable system in the first case and an
+unstable one in the second, although both are unstable. Capacity planning needs the
+barrier, not only the limit.
+
+\begin{table}[h]\centering\small
+\metaOpenTable
+\caption{Open queue with wait loss: the fluid saddle and the mean time to climb from
+the empty queue to ten levels past it (exact passage times, \cref{L7:prop:passage}).
+Below $\lambda S^{\mathrm{miss}}=1$ the drift is negative everywhere and the queue is
+stable.}\label{L7:tab:open}
+\end{table}
+
+\section{The closed population: hysteresis and exponential recovery}\label{L7:sec:closed}
+
+A closed population of $N$ sessions is a finite chain, so it is always stable. Its
+failure mode is that it stays in the bad mode for a long time. Take the same $s$ with
+$m$ logistic, centred at $N/4$ with width $N/20$, and $Z=1.5N$\,s, so that every
+per-session quantity is fixed while $N$ grows. \Cref{L7:tab:scaling} gives the exact
+recovery time from the bad mode to the good one and the inverse spectral gap of the
+generator. The barrier grows linearly in $N$, by about $0.21$ per session, and the
+recovery time grows like $e^{\Delta V}$, as \cref{L7:prop:arrhenius} predicts. The inverse
+gap grows exponentially too. A cluster of eigenvalues near zero, the signature
+of~\cite{alvaro2025}, appears here as one small gap, because the chain has two wells.
+
+\begin{table}[h]\centering\small
+\metaScalingTable
+\caption{Closed queue, $Z=1.5N$, logistic $m$ centred at $N/4$. Barrier from the bad
+mode down to the saddle, mean recovery time from the bad mode to the good mode
+(\cref{L7:prop:passage}), and the inverse spectral gap. At these parameters the bad mode
+carries most of the stationary mass.}\label{L7:tab:scaling}
+\end{table}
+
+\paragraph{Hysteresis.} Fix $N=40$ and vary the think time. Two modes exist for
+$25\le Z\le120$\,s. Starting from the
+good mode, the replica collapses in fluid terms only when the turn rate rises above about
+$N/25$ per second. Starting from the bad mode, it recovers only when the rate falls below
+about $N/120$. The load that causes the collapse and the load needed to recover differ by
+a factor of almost five. Between them, which mode the replica occupies depends on its
+history. This is the first question of the issue, answered for this model.
+
+\section{Steady state and recovery rank differently}\label{L7:sec:interventions}
+
+An intervention changes $s$, and \cref{L7:cor:local} says where a change matters for
+recovery: only above the target level. The stationary mean, by contrast, depends on
+every level. The two criteria can therefore disagree.
+
+\begin{proposition}[Steady state and recovery rank differently]\label{L7:prop:flip}
+On $\{0,1,2\}$ with $\lambda_0=\lambda_1=1$ and $\mu_1=\mu_2=1$, intervention A sets
+$\mu_1=4$ and intervention B sets $\mu_2=2$. Then A has the smaller stationary mean
+queue, $\tfrac12$ against $\tfrac45$, while B has the shorter recovery from 2 to 1,
+$\tfrac12$ against 1.
+\end{proposition}
+\begin{proof}
+Under A the weights are $(1,\tfrac14,\tfrac14)$, with mean
+$(\tfrac14+\tfrac12)/\tfrac32=\tfrac12$. Under B they are $(1,1,\tfrac12)$, with mean
+$(1+1)/\tfrac52=\tfrac45$. The recovery from 2 to 1 is $T_2=1/\mu_2$, which is 1 under A
+and $\tfrac12$ under B.
+\end{proof}
+
+The same thing happens at serving scale. In the closed chain of \cref{L7:sec:closed}
+with $N=40$ and $Z=60$\,s, the mean queue is \metaFlipBase{} turns. Halving the service
+time at queue lengths up to 6, a faster hit path that only the lightly loaded states
+use, lowers it to \metaFlipLow{}. Shortening it by 10\% above 6 lowers it only to
+\metaFlipHigh{}. But only the second shortens the recovery from 30 to 6 turns, from
+$\metaFlipRecBase$ to $\metaFlipRecHigh$\,s. The first leaves the recovery unchanged, by
+\cref{L7:cor:local}(i).
+
+\section{Is the queue length enough?}\label{L7:sec:enough}
+
+The birth--death chain is a projection. A real replica also has a cache state: which
+waiting turns still have their prefix, and which thinking sessions will return as
+misses. The next lemma says what the projection keeps.
+
+\begin{lemma}[Lumping preserves the stationary marginal]\label{L7:lem:lump}
+Let $X$ be a positive recurrent CTMC with stationary law $\pi$ and let $q(X)\in\N$ change
+by at most one per transition. Let $\bar\lambda_n$ and $\bar\mu_n$ be the rates of the
+moves $q\to q+1$ and $q\to q-1$, averaged over $\pi$ conditioned on $q=n$. Then the
+birth--death chain with rates $\bar\lambda_n,\bar\mu_n$ has the stationary law
+$p(n)=\pi(q=n)$.
+\end{lemma}
+\begin{proof}
+Sum the global balance equations over the set $A_n=\{x:q(x)\le n\}$. The flows inside
+$A_n$ cancel, so the flow out of $A_n$ equals the flow into it. Since $q$ moves by at most
+one, only moves between the levels $n$ and $n+1$ cross the boundary:
+$\sum_{q(x)=n}\pi(x)\lambda(x)=\sum_{q(x)=n+1}\pi(x)\mu(x)$, that is,
+$p(n)\bar\lambda_n=p(n+1)\bar\mu_{n+1}$. This is detailed balance for the lumped chain,
+so $p$ is its stationary law by \cref{L2:lem:detailed}.
+\end{proof}
+
+So the queue length is enough for every stationary quantity, if the averaged service
+rate is known. It is not enough for dynamics. To see how far it falls short, we use a
+chain that keeps the cache.
+
+\begin{definition}[Queue-and-cache chain]\label{L7:def:three}
+$N$ sessions. A state $(h,m,c)$ counts the queued turns whose prefix is resident ($h$),
+the queued turns whose prefix is lost ($m$), and the thinking sessions whose prefix is
+lost ($c$). The remaining $w=N-h-m-c$ sessions think with a resident prefix, and
+$q=h+m$. Warm sessions return at rate $w/Z$ as hits and cold ones at rate $c/Z$ as
+misses. The queue is served by processor sharing, so hits complete at rate $h/(qS^{\mathrm{hit}})$
+and misses at rate $m/(qS^{\mathrm{miss}})$. A completed turn leaves a warm thinker. The
+idle prefixes $w+h$ must fit in $C-aq$, since every queued turn takes $a$ units of
+memory. After each transition, while they do not fit, one is evicted: a queued hit with
+probability $1-\phi$ (LRU, since its last use is the oldest) and a warm thinker with
+probability $\phi$.
+\end{definition}
+
+The parameter $\phi$ is cache protection: $\phi=1$ pins waiting prefixes and evicts
+thinking ones instead. We take $N=40$, $Z=27$\,s, $C=48$, $a=1$ and the work of
+\cref{L7:sec:open}. The chain has \metaStates{} states and a bimodal queue-length law,
+with probability \metaPBad{} of at least 16 queued turns. Its lumped chain reproduces the
+marginal law to $\metaMarginalDiff$, as \cref{L7:lem:lump} requires. The dynamics differ:
+\begin{itemize}
+\item the slowest decay rate of the full chain is \metaSlowThree{}/s, against a gap of
+  \metaGapOne{}/s for the lumped chain;
+\item the mean recovery from the bad region to $q\le1$ is \metaRecThree\,s in the full
+  chain and \metaRecOne\,s in the lumped one, which underestimates it by a factor of
+  about three;
+\item two states with the same empty queue behave in opposite ways
+  (\cref{L7:tab:warmcold}). From a warm start, the bad region has probability 0.005 after
+  30\,s. From a cold start, where every session has lost its prefix, the probability is
+  0.96.
+\end{itemize}
+
+\begin{table}[h]\centering\small
+\metaWarmColdTable
+\caption{Queue-and-cache chain: same empty queue, warm cache ($c=0$) or cold cache
+($c=N$). Exact transient laws.}\label{L7:tab:warmcold}
+\end{table}
+
+The lost-prefix count is the hidden slow variable, as the orbit is in
+\cite{alvaro2025}. A model that predicts recovery has to carry it, or an equivalent
+summary. The averaged queue-length chain is right for steady state and wrong for
+recovery, and it errs in the optimistic direction in this model.
+
+\paragraph{Bursts.} Start warm and empty, shorten the think time to 12\,s for $B$
+seconds, and restore it (\cref{L7:tab:burst}). Without a burst, the bad region has
+probability 0.35 after 600\,s. A 30\,s burst raises this to 0.60, and longer bursts add
+little: the burst has filled the bad well, and the time to leave it is set by the
+barrier, not by the burst. The mean time back to an empty queue is about 1500\,s, fifty
+times the burst.
+
+\begin{table}[h]\centering\small
+\metaBurstTable
+\caption{Queue-and-cache chain, normal think time 27\,s, burst think time 12\,s.}\label{L7:tab:burst}
+\end{table}
+
+\paragraph{Interventions.} \Cref{L7:tab:interventions} ranks seven arms, each a single
+change to the base chain, by mean response time (Little's law,
+$\E q/\text{throughput}$) and by mean recovery time from the bad region. A faster
+prefill wins in steady state. A slightly larger cache wins in recovery. Speeding up
+only the miss path, the work that by \cref{L7:thm:open} sets the stability limit of an
+open queue, helps least here. In this closed population the onset of losses is set
+by the queue length at which $w+h$ overflows, and the hit work moves that onset.
+Protection helps and is monotone in $\phi$, because the chain charges nothing for
+pinned memory. Whether partial protection beats full protection, the second question of
+the issue, depends on a concurrency cost of pinning that this chain does not contain.
+
+\begin{table}[h]\centering\small
+\metaInterventionTable
+\caption{Queue-and-cache chain: single interventions at $N=40$, $Z=27$\,s. Exact
+stationary laws and mean hitting times.}\label{L7:tab:interventions}
+\end{table}
+
+\section{What is exact and what is approximate}\label{L7:sec:honest}
+
+\begin{itemize}
+\item \emph{Exact, given the model:} \cref{L7:prop:modes,L7:prop:passage,L7:cor:local,%
+L7:prop:arrhenius,L7:thm:open,L7:prop:flip,L7:lem:lump}, and every number in the tables,
+  which are computed from the generators rather than simulated. The statements of
+  \cref{L7:sec:modes,L7:sec:passage,L7:sec:open,L7:sec:interventions} are also checked in
+  Lean (module \texttt{Metastability}); \cref{L7:lem:lump} is not.
+\item \emph{Modelling choices:} exponential service with a state-dependent mean;
+  processor sharing in place of the FIFO prefill queue in the queue-and-cache chain; a
+  loss probability $m(n)$, or an overflow rule, in place of block-level LRU; memory
+  counted in prefixes of equal size; no cost of pinned memory.
+\item \emph{To be measured:} the shape of $m$, the slack $C-N$ and the per-turn memory
+  $a$ on a real engine. The burst protocol of the issue (normal load, a short burst,
+  normal load; warm and cold starts) is the test. A finite run cannot establish
+  instability, and the open-queue table shows why: a lifetime of $10^{16}$\,s and a
+  stable queue look the same.
+\end{itemize}
+
+\section{Exercises}
+
+\begin{exercise}\label{L7:ex:mm1}
+For the open queue with $s(n)\equiv S$, recover the M/M/1 stability condition from
+\cref{L7:thm:open}, and compute $T_k$ from \cref{L7:prop:passage} as $M\to\infty$.
+\end{exercise}
+
+\begin{exercise}\label{L7:ex:step}
+Let $m(n)=\1\{n>K\}$ in the open queue, with $1/S^{\mathrm{miss}}<\lambda<1/S^{\mathrm{hit}}$.
+Show that the fluid saddle is at $K$, and that the mean time to exceed $K$ from the
+empty queue is of order $(\lambda S^{\mathrm{hit}})^{-K}$.
+\end{exercise}
+
+\begin{exercise}\label{L7:ex:pin}
+Add a concurrency cost to \cref{L7:def:three}: pinned prefixes slow every turn by the
+factor $1+\gamma\,\phi h/N$. Find, numerically, a $\gamma$ at which an interior $\phi$
+minimises the recovery time.
+\end{exercise}

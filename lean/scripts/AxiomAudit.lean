@@ -117,6 +117,23 @@ open ServingQueueTheory
 #print axioms pkFeedback_collapse
 #print axioms feedback_map_monotone_two_channel
 #print axioms pkFeedback_absorbing
+-- metastability, lecture 7 (Metastability.lean; research/metastability.md)
+#print axioms bd_detailed_balance
+#print axioms bd_weight_le_iff
+#print axioms bd_local_mode_iff
+#print axioms passTime_top
+#print axioms passTime_first_step
+#print axioms passTime_unique
+#print axioms passTime_congr
+#print axioms recoveryTime_congr
+#print axioms passTime_mono
+#print axioms recoveryTime_mono
+#print axioms passTime_ge_barrier
+#print axioms recovery_ranking_flip
+#print axioms openWeight_eq_bdWeight
+#print axioms open_wait_loss_stable_iff_ratio_test
+#print axioms open_wait_loss_stable_iff
+#print axioms open_stability_tail_only
 -- serQ, the serving-deployment language (Serq*.lean; research/seq.md)
 -- syntax and pool semantics (Serq.lean)
 #print axioms SerqLang.Step.invariant
