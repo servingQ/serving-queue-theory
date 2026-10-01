@@ -12,8 +12,7 @@ that carries it.
 
 \section{The model on one page}\label{L5:sec:model}
 
-\begin{definition}[Replica and its three demands]\label{L5:def:replica}
-The system has $J$ \term{replicas}; each has a memory pool of $M$ bytes.
+\paragraph{Replica and its three demands.}\label{L5:def:replica} The system has $J$ \term{replicas}; each has a memory pool of $M$ bytes.
 A turn $i$ has context $K_i$ tokens (already in the session), appends $n_i$
 new tokens and decodes $o_i$ output tokens. It makes three demands on the
 replica that serves it.
@@ -32,7 +31,6 @@ replica that serves it.
 \item \emph{Memory.} $c_i=\kappa K_i$ bytes while the state is resident,
   with $\kappa$ the KV bytes per token.
 \end{enumerate}
-\end{definition}
 
 The hit/miss distinction lives entirely in demand (a): $D_i$ and $c_i$ are
 the same for a hit and a miss. By \cref{cor:price-mono} the extra work of a
@@ -55,7 +53,7 @@ name the chapter that backs each modelling choice.
   $\E[W_q]=\lambda\E[S^2]/(2(1-\rho))$ (\cref{thm:pk}).
 \item \emph{Sessions form a closed loop} (prefill $\to$ decode $\to$ tool),
   and new sessions arrive as a Poisson process of rate $\Lambda$. The tool
-  call is a delay station (\cref{L4:def:delay}).
+  call is a delay station (\cref{L1:sec:systems}).
 \item \emph{The pool} of $M$ bytes holds both the running batch and the
   paused sessions' KV. Once it is full, the KV policy decides what to
   drop, and so which future turns hit.
@@ -81,7 +79,7 @@ workloads are intrinsically ``high variance''; it asks where the variance
 comes from. The tool is the law of total variance.
 
 \begin{lemma}[Variance split of the hit/miss mixture]\label{L5:lem:split}
-Let $S_h$ be the mixture of \cref{L3:def:mixture}: $S^{\mathrm{hit}}$ with
+Let $S_h$ be the mixture~\eqref{L3:eq:mixture}: $S^{\mathrm{hit}}$ with
 probability $h$ and $S^{\mathrm{miss}}$ with probability $1-h$, with means
 $\mu_{\mathrm{hit}},\mu_{\mathrm{miss}}$ and variances
 $\sigma^2_{\mathrm{hit}},\sigma^2_{\mathrm{miss}}$. Then

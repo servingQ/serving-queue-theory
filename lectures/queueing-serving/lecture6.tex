@@ -75,8 +75,7 @@ recomputed).}
 \label{fig:deployment}
 \end{figure}
 
-\begin{definition}[Workload and costs]\label{L6:def:workload}
-Sessions arrive as a Poisson process of rate $\Lambda$ (\cref{def:poisson}). Turn $j$
+\paragraph{Workload and costs.}\label{L6:def:workload} Sessions arrive as a Poisson process of rate $\Lambda$ (\cref{def:poisson}). Turn $j$
 of session $i$ has a cached prefix of $K_{ij}$ tokens, $n_{ij}$ new tokens and
 $o_{ij}$ output tokens, with context $\ell_{ij}=K_{ij}+n_{ij}$ and
 \begin{equation}\label{L6:eq:context}
@@ -96,10 +95,8 @@ the prefill work in seconds ($P$ and $\Delta S(K)=aK+bK^2/2$ as in
 \cref{L5:def:replica,cor:price-mono}), the link work in seconds, the decode work in
 tokens, and the footprint in bytes on either instance. A batch of $m$ decodes takes
 $t(m)$ seconds per step, so $\varphi(m)=m/t(m)$ tokens per second.
-\end{definition}
 
-\begin{definition}[Path of a turn]\label{L6:def:path}
-\begin{enumerate}[label=(\roman*)]
+\paragraph{Path of a turn.}\label{L6:def:path} \begin{enumerate}[label=(\roman*)]
 \item A turn waits in arrival order at the prefill pool until $c=\kappa\ell$ bytes of
   running turns' allocations are free. Cached bytes are evicted as needed and never
   block admission. At admission the turn uses its own cached prefix if it survived;
@@ -115,7 +112,6 @@ $t(m)$ seconds per step, so $\varphi(m)=m/t(m)$ tokens per second.
 A FIFO stage serves only its first turn, at rate one; a PS stage with $m$ turns serves
 each at rate $\varphi(m)/m$; the tool serves at rate one without waiting. Allocated plus
 cached bytes never exceed a pool.
-\end{definition}
 
 The executable transfer of \cref{app:serq} reserves the decode pool before the
 transfer, which changes how long each pool is held.
