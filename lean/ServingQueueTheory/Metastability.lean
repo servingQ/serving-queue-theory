@@ -36,9 +36,9 @@ Key theorems:
   prefixes (`CacheOrder.lean`), the open queue is stable exactly when
   `λ S_miss < 1`, for every `C`.
 * `closed_fcfs_lru_rises_iff`, `closed_fcfs_lru_no_congested_mode` — the
-  closed FCFS–LRU replica: above the cache the queue law peaks at
-  `N - Z / S_miss`, and admitting at most `C + Z / S_miss` sessions leaves no
-  congested mode.
+  closed FCFS–LRU replica: above the cache the queue law is largest at about
+  `N - Z / S_miss`, and admitting at most `C + Z / S_miss` sessions leaves it
+  falling above `C`.
 * `admission_hold_service_le`, `admission_hold_recovery_le`,
   `admission_hold_no_trough` — admit, then hold: taking a turn's memory at
   admission (batch cap `B`) rather than on arrival never slows service or
@@ -428,11 +428,12 @@ theorem bdWeight_pos_of (up down : ℕ → ℝ) (n : ℕ) (hu : ∀ i, i < n →
     exact mul_pos (ih fun i hi => hu i (by omega)) (div_pos (hu k (by omega)) (hd _))
 
 /-- A closed population of `N` sessions with think time `Z` behind an FCFS–LRU
-cache of `C` prefixes: from queue length `C` on every served turn misses, so
-the completion rate is `1 / sMiss`. Above `C` the stationary law rises from
-`n` to `n + 1` exactly when `n ≤ N - Z / sMiss`: the congested queue length is
-`N - Z / sMiss`, the sessions that the think time cannot hide at the
-saturated throughput `1 / sMiss`. -/
+cache of `C` prefixes. Assumed (the queue-length analogue of a turn behind `C`
+waiting turns missing): above queue length `C` the completion rate is
+`1 / sMiss`. Then, from `C` on, the stationary law rises from `n` to `n + 1`
+exactly when `n ≤ N - Z / sMiss`, so on `{C, …, N}` it is largest at
+`⌊N - Z / sMiss⌋ + 1` when that exceeds `C`: the sessions that the think time
+cannot hide at the saturated throughput `1 / sMiss`. -/
 theorem closed_fcfs_lru_rises_iff (N : ℕ) (Z sMiss : ℝ) (down : ℕ → ℝ) (C n : ℕ)
     (hZ : 0 < Z) (hS : 0 < sMiss) (hn : C ≤ n) (hnN : n < N)
     (hdown : ∀ i, C < i → down i = 1 / sMiss) (hpos : ∀ i, 0 < down i) :

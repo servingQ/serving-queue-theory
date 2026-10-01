@@ -44,9 +44,11 @@ Proved (Lean names):
    `closed_fcfs_lru_no_congested_mode`): with completion rate `1/S_miss` above
    `C` (queue-length analogue, assumed), the queue law peaks at `N − Z/S_miss`
    above the cache, and `N ≤ C + Z/S_miss` admitted sessions leave no congested
-   mode: an admission rule. For serQ's replica it puts the cliff at
-   `Z* = (N − C) S_miss ≈ 2.5 s`; serQ's full-reuse hit rate is 0.67, 0.31, 0.03
-   at Z = 3, 2.5, 2 s. Open limit (remark only): stable iff `λ S_miss < 1` for
+   mode: an admission rule. For serQ's replica it binds at
+   `Z* = (N − C) S_miss ≈ 2.5 s` with C the whole pool (32.6 contexts), inside
+   the simulated cliff (full-reuse hit rate 0.67, 0.31, 0.03 at Z = 3, 2.5, 2 s):
+   it marks the collapse, not the onset, and the fitted C = 38 would put it
+   below 1 s. An order-of-magnitude check, not a fit. Open limit (remark only): stable iff `λ S_miss < 1` for
    every `C` (`fcfs_lru_open_stable_iff`).
 4. **Admit, then hold** (`admission_hold_service_le`,
    `admission_hold_recovery_le`, `admission_hold_no_trough`): memory taken at
@@ -69,9 +71,8 @@ Numerical (exact chain or serQ):
   12 341 states (h ≤ 8, c ≡ 0; reviewer finding); lumped chain exact for the
   marginal, optimistic ×3 for recovery; warm vs flushed start 0.005 vs 0.96.
 - Region: bimodal only for a ≥ 1 (memory per waiting turn ≈ one context).
-- serQ (vLLM rules, admission-time allocation): cliff (hit 0.80 → 0.01, TTFT
-  0.29 → 7 s) without hysteresis (cold/warm within 0.006); recovery 40–50 s
-  after bursts.
+- serQ (vLLM rules, admission-time allocation): cliff without hysteresis;
+  recovery 40–50 s after bursts.
 - serQ hits are now full-reuse hits (`full_hit`; the library's `hit` counts any
   reuse): 0.77 at Z=4 s, 0.00 at Z=1.5 s.
 - Calibration (round-2 fixes: same 25 s windows for both, two-parameter grids
