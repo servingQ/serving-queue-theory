@@ -190,7 +190,7 @@ def main():
         rows = [r'\begin{center}\small', r'\begin{tabular}{@{}lrr@{}}',
                 r'\toprule', rf'Metric (seconds) & Previous runtime & serQ {current["release"]} \\', r'\midrule']
         if comparisons:
-            for key, label in [('ttft','TTFT'), ('response','Turn response')]:
+            for key, label in [('ttft','TTFT (prefill instance)'), ('response','Turn response')]:
                 before = sum(c['baseline'][key] for c in comparisons)/len(comparisons)
                 after = sum(c['current'][key] for c in comparisons)/len(comparisons)
                 rows.append(f'{label} & {before:.5f} & {after:.5f} '+r'\\')

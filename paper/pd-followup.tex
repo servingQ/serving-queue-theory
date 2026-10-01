@@ -177,14 +177,17 @@ queues less than a tandem of two smaller pools, a classical pooling
 effect. This is a result about FIFO pools without batching: each request
 holds one device for its whole prefill or decode, so the tandem can only
 lose. It is the capacity and pooling baseline, not a statement about an
-engine. In a step engine the decodes of a colocated device advance only
-in its decode steps, while a dedicated decode device steps every
-iteration and carries more decodes per step; at the same output
-throughput the split shortens the time per output token and lengthens
-the time to first token (the simulated comparison of serQ \#208, with the
-conditional theory of the processor-sharing idealisation: scaling the
-arrival rate and the decode capacity by one factor keeps the number
-decoding and divides the sojourn). A comparison of PD and aggregation at
+engine. In the simulated step engines of serQ \#208 (vLLM's rules,
+exclusive prefill steps, a free transfer, memory that never binds) the
+decodes of a colocated device advance only in its decode steps, while a
+dedicated decode device steps every iteration and carries more decodes
+per step; at the same output throughput the split shortens the time per
+output token and lengthens the time to first token. This is a property
+of the simulated programs, not a measurement. The processor-sharing
+idealisation behind it is exact: scaling the arrival rate and the decode
+capacity by one factor keeps the number decoding and divides the sojourn
+by that factor.\provedby{\leanref{psMeanNumber\_scale}, \leanref{decode\_sojourn\_scale}, \leanref{dedicated\_sojourn}}
+A comparison of PD and aggregation at
 equal capacity therefore has to report, separately, the pooling loss of
 the tandem, the gain in time per output token, and the cost in time to
 first token and transfer.
@@ -196,16 +199,21 @@ spends in the system at a given throughput. The simulator of this
 section does not model memory caps on PD pools.
 
 \paragraph{Metrics.} The follow-up reports the following, each defined
-once. \emph{TTFT} is measured to the token the client sees: after a
-hand-over, that is the decode instance's first token, so the transfer
-and the decode instance's admission are inside it; the prefill
-instance's completion time is reported separately where it differs
-(the lecture example records both). \emph{TPOT} of a request is the
-first-to-last span over its gaps, $(t_{\mathrm{last}}-t_{\mathrm{first}})/(o-1)$
-for $o\ge2$ output tokens; the \emph{request-weighted} mean averages
-this over requests and the \emph{token-weighted} mean divides all decode
-time by all gaps, and the two differ when short answers wait behind
-prefills. \emph{Response} is TTFT plus the decode sojourn. \emph{Request
+once. \emph{TTFT} is measured to the token the client sees. In the model
+of \S\ref{sec:pd-append} the prefill produces the first token and the
+client receives it after the hand-over, so the transfer and the decode
+instance's admission are inside the TTFT (the lecture example records
+this as \texttt{ttft\_client}, next to the prefill instance's own
+\texttt{ttft}); in an engine that drops the prefill instance's token and
+recomputes it, as llm-d does, the first token is the decode instance's
+and its first step is inside the TTFT as well. \emph{TPOT} of a request
+is the first-to-last span over its gaps,
+$(t_{\mathrm{last}}-t_{\mathrm{first}})/(o-1)$ for $o\ge2$ output
+tokens; the \emph{request-weighted} mean averages this over requests and
+the \emph{token-weighted} mean divides all decode time by all gaps, and
+the two differ when short answers wait behind prefills. \emph{Response}
+is the time to the last token, TTFT plus the first-to-last span, so no
+step is counted twice. \emph{Request
 throughput} (requests/s) and \emph{output throughput} (tokens/s) are
 measured in a stable load region, where the run keeps up with its
 arrivals; the \emph{saturated capacity} is measured with a closed
