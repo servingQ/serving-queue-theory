@@ -60,8 +60,24 @@ Keep this section current at the end of every work block.
   paragraph says which step rule `prop:decode` assumes and what the other
   does. Conditions (constant share, Poisson arrivals
   at the decode station, split-independent work law) are in the module's
-  doc comment; the step-engine comparison is simulation (serQ #208,
-  `tools/pd_batching/`), to be wired into the validation checks next.
+  doc comment.
+- **Colocated vs split in the validation checks, issue #28 execution
+  (2026-10-01).** `validation/src/sim/pd_batching.py` runs the pinned
+  release's `pd_ps.sq` and `pd_batching.sq` (serQ #208) through pyserq;
+  four checks and one observation in `checks.py`: the PS identity in model
+  (occupancy ρ/(1−ρ) kept, decode time and token-weighted TPOT ÷ 4 at
+  N = 4, f = 1/4); the step engines beyond it (same requests, same output
+  throughput, split TPOT below and TTFT above colocated at λ = 20–70, the
+  gap growing with load); the 10 ms-step regime where the ratio is
+  1/(1−p) within 5 %; exclusive vs mixed vs chunked steps at the same
+  prefill share (TPOT 25.7 → 19.7 → 13.0 ms against the split's 10.6 at
+  10 ms); and, not asserted, the transfer in the TTFT, a decode engine or
+  colocated engines short of KV, and prompts of CV² 9 (300 s runs near
+  saturation are not steady-state means). Runs are stable only if they
+  kept up with their arrivals; 3–5 seeds with Student-t intervals;
+  the multi-turn and closed-session comparison stays in serQ's
+  `tools/pd_batching/sessions.md` and is not rerun here. Simulation, not
+  measurement.
 - **serQ v0.1.1 pinned, IR 10 (2026-10-01).** The pin moved to the release
   that fixes the overlapping-hold bug Lecture 7 ran into (serQ #230: a hold
   without `cache` now leaves the session's prefix where it is; IR 10, same

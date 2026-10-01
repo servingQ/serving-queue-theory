@@ -81,7 +81,7 @@ leaves every layer may use. `tests/test_layers.py` enforces the directions.
 | `theory.dist` | the scenarios' laws: exact moments and seeded sampling | |
 | `theory.queue` | Lindley's recursion on the streams of `mg1.sq`, an independent reproduction of a serQ run | §2.1 |
 | `theory.batch` | the PS capacity `φ(n)`, the mean number at a PS queue, and `fifo_admitted` for footprint | §2, Props. price, decode, footprint |
-| `theory.pd` | the capacity of an integer prefill/decode split | App. B |
+| `theory.pd` | the capacity of an integer prefill/decode split; the load of the PS decode station the colocated-vs-split comparison is measured against | App. B; issue #28 |
 | `theory.eviction` | offline eviction instances with an exact DP optimum; SF, density and guarded density greedy, on `p c²` or arbitrary weights | §3.1 |
 | `sim.serq` | runs a serQ program in process with pyserq (`compile`, `run`); pyserq's report, with an observation's samples as numpy arrays | all |
 | `sim.laws` | a law of `theory.dist` as an expression in serQ's sampler, the body of a program's `def` (`defs=`) | |
@@ -92,6 +92,7 @@ leaves every layer may use. `tests/test_layers.py` enforces the directions.
 | `sim.price_vllm`, `sim.open_vllm`, `sim.replay_vllm` | the paper's evidence on a replica with vLLM v1's engine rules and the testbed's cost model: `programs/{price,open,replay}_vllm.sq` (where a miss is paid; the eviction/admission experiment; §4.2's trace replay) | Props. price, decode; §3.1, §3.3, §4.2 |
 | `sim.agentic` | `programs/agentic_model.sq`: programs cycling queue → service → tool on one replica with finite KV; eviction and offload policies, including the congestion-priced ones; the class laws and the policies are the program's defs, given by `defs=` | §2.2–2.3, §3.1–3.2 |
 | `sim.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem; the laws by `defs=` | App. B |
+| `sim.pd_batching` | serQ's `pd_ps.sq` (the PS idealisation: N colocated engines at a decode share f, or the pooled station) and `pd_batching.sq` (4 colocated vs 3P/1D step engines on the same requests, vLLM's rules without a prefix cache); variations by `sets=`, two program lines edited in the compiled text (`serve exclusive prefill;`, `let NP`) | issue #28 (PD follow-up) |
 | `sim.routing` | serQ's `routing.sq`: affinity, myopic, lookahead routing; the session laws by `defs=` | §3.3 |
 | `checks` | the named checks; each cites paper labels and Lean theorems | all |
 | `report.validation`, `report.paper_tables` | the Markdown report; `paper/sim/*.tex` and `paper/sim/data/*.csv` | all |
