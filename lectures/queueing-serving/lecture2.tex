@@ -414,7 +414,8 @@ By \cref{thm:insens} the distribution depends only on $\rho_D=\lambda\E[D]$.
 \serving{KV-cache hits and misses change only the prefill work; they do not change the
 decode demand $D_i=o_i(\beta K_i+\omega/m)$ of \cref{L5:def:replica}. So by \cref{L2:cor:decode-hit} a miss costs
 nothing at the decode stage to first order, and its whole price is paid at the FIFO
-prefill queue (\cref{sec:L3}). Only decisions that add decode demand, such as admitting
+prefill queue (\cref{sec:L3}), on an engine whose decode capacity does not depend on
+the prefill load (\cref{L5:sec:honest} says what an exclusive prefill step changes). Only decisions that add decode demand, such as admitting
 a session, pay the load factor of \cref{prop:decode-price}.
 \Cref{prop:decode-price,L2:cor:decode-hit} are the content of the paper's proposition
 ``The decode stage prices only work''.}

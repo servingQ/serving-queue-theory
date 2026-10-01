@@ -56,6 +56,16 @@ Keep this section current at the end of every work block.
   the multi-turn and closed-session comparison stays in serQ's
   `tools/pd_batching/sessions.md` and is not rerun here. Simulation, not
   measurement.
+- **PD docs and metrics, issue #28 (2026-10-01).** `paper/pd-followup.tex`
+  limits the equal-capacity latency result to the FIFO tandem without
+  batching (the pooling baseline) and defines the follow-up's metrics;
+  `research/simulation-design.md` says the same; the lecture's
+  `lecture_pd.sq` records the client-visible TTFT (`ttft_client`) and the
+  transfer apart from the prefill-instance TTFT (`ttft`, unchanged, the
+  checker's), with the course text (ch. 6 TTFT paragraph, ch. 5's
+  exact/approximate list, ch. 2's serving note) saying which step rule the
+  decode claims assume; §4.2b and §5 of this plan record what not to
+  generalise.
 - **serQ v0.1.1 pinned, IR 10 (2026-10-01).** The pin moved to the release
   that fixes the overlapping-hold bug Lecture 7 ran into (serQ #230: a hold
   without `cache` now leaves the session's prefix where it is; IR 10, same
@@ -658,6 +668,27 @@ planned PD experiment and the PD simulation paragraphs) was removed from
 the follow-up paper. The PD experiment (formerly E5) is no longer in the
 paper's numbering: E5 = routing, E6 = scorecard.
 
+Issue #28 (2026-10-01) separates two questions the follow-up must keep
+apart. `prop:pd` is about capacity (requests per second at fixed
+device-seconds per request); the FIFO tandem's higher latency at equal
+capacity (`tab:sim-pd`) is a pooling loss of a model without batching.
+Neither says that a split cannot shorten the decode sojourn at equal
+throughput: `DecodeScaling.lean` proves the PS identity (arrival rate and
+capacity scaled together keep the occupancy and divide the sojourn), and
+`validation/src/sim/pd_batching.py` runs serQ #208's step engines, where
+the split keeps the output throughput, shortens the token-weighted TPOT
+and lengthens the TTFT, with the ratio equal to the PS identity's
+1/(1−p) only when the colocated decodes never drain (10 ms steps) and
+different interruption patterns at the same prefill share giving
+different TPOTs. The follow-up reports the pooling loss, the TPOT gain
+and the TTFT/transfer cost separately, with the metrics defined in
+`paper/pd-followup.tex` ("Metrics": client-visible TTFT, TPOT as
+first-to-last over gaps, request- vs token-weighted, response = TTFT +
+decode sojourn, request vs output throughput vs saturated capacity vs
+SLO goodput). The multi-turn and closed-session comparison is in serQ's
+`tools/pd_batching/sessions.md` (a faster answer brings the next turn
+sooner; Little's law gives the throughput change) and is not rerun here.
+
 ### 4.3 Phase 3: calibrated simulation
 
 Continuous batching, block-level KV, trace replay and the cost fit are
@@ -696,6 +727,16 @@ Held-out faithfulness scoring is still open.
   measures it.
 - That PD does or does not help agentic serving in general. Say which
   regime of `prop:pd`(iii) applies.
+- That the PD throughput no-gain (`prop:pd`) is a latency no-gain, or that
+  the FIFO tandem's higher latency at equal capacity is a property of step
+  engines. The capacity theorem says nothing about the decode sojourn at
+  a given throughput; the step-engine comparison (serQ #208,
+  `pd_step_*` checks) shows a TPOT gain and a TTFT cost that must be
+  reported together (§4.2b).
+- That the mean prefill fraction of a colocated engine predicts the
+  split's TPOT gain. It does only when the decodes never drain
+  (`pd_step_long_step_matches_ps_share`); exclusive, mixed and chunked
+  steps at the same share differ (`pd_step_interruption_pattern`).
 - That footprint variance helps or hurts batch size in general
   (the §2.2 footprint examples show both signs).
 - That hit/miss variance raises mean delay regardless of the prefill

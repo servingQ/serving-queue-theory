@@ -33,7 +33,10 @@ remove its cached blocks.
 
 \section{What to run and what it checks}
 
-\texttt{programs/lecture\_pd.sq} implements \cref{L6:def:path};
+\texttt{programs/lecture\_pd.sq} implements \cref{L6:def:path}; it records the TTFT
+at the prefill instance (\texttt{ttft}, \cref{L6:eq:ttft}), the TTFT a client sees
+after the hand-over (\texttt{ttft\_client}: the transfer and the wait for decode memory
+lie between the two) and the transfer itself;
 \texttt{programs/vllm.sq} implements a step engine with vLLM's rules. From the
 repository root, \texttt{make lecture-results} runs the course checks, which compare
 simulations with Pollaczek--Khinchine, PS insensitivity, mean value analysis, the
