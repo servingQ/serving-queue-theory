@@ -113,6 +113,7 @@ def main():
         expected = stages['prefill']['mean_wait'] + stages['prefill']['mean_service']
         close(ttft, expected, .01, f'PD TTFT seed {seed}')
         checks.append(dict(check=f'PD decode service seed {seed}', observed=service, expected=.04))
+        checks.append(dict(check=f'PD TTFT seed {seed}', observed=ttft, expected=expected))
         if args.baseline:
             old = run(args.baseline, args.baseline_source / 'lecture_pd.seq', seed)
             comparisons.append(dict(seed=seed,

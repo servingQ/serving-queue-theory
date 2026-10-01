@@ -136,7 +136,7 @@ On the PR branch rebased onto the current `main`, `make check` passed:
 `checked 59 \leanref citations`;
 `49 passed, 35 deselected`;
 `OK: validation, 35 checks, 0 failed`;
-`OK: 18 lecture checks; feedback roots verified; 0 baseline comparisons`.
+`OK: 21 lecture checks; feedback roots verified; 0 baseline comparisons`.
 The separate preceding-runtime comparison completed three seeds and generated
 `results.tex`. The unified PDF builds to 60 pages, has no unresolved references or
 old-language terms in extracted text, and its figures were visually inspected.

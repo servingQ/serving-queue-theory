@@ -1,4 +1,4 @@
-// The disaggregated replica of the lecture notes (Example L1:ex:program):
+// serQ v0.1.0: the analytical tandem of the unified lecture notes:
 // a turn waits for KV memory at the prefill instance, is prefilled one at a
 // time in arrival order, ships its KV over a link whose bandwidth concurrent
 // transfers share, waits for memory at the decode instance, decodes in a
@@ -12,7 +12,7 @@ let MD = 4e5;         // decode-instance pool
 let a = 2e-5;         // prefill (s/token)
 let b = 2e-9;         // prefill (s/token^2)
 let x0 = 0.002;       // link overhead (s)
-let Bw = 2e6;         // link bandwidth (tokens/s)
+let Bw = 2e6;         // link bandwidth (memory units/s)
 let w = 2e-4;         // decode: seconds per token of the batch
 let phi_cap = 16;     // decode batch capacity phi(m) = min(m, phi_cap)
 
@@ -21,7 +21,7 @@ pool memD { cap MD; }
 
 stage prefill : fifo;
 stage link : ps(1);
-stage decode : ps(min(n, phi_cap));
+stage decode : ps(min(present, phi_cap));
 stage tool : delay;
 
 workload {
@@ -41,8 +41,8 @@ session {
   loop {
     set t0 = now;
     hold memP (kappa * T) {
-      // the hit indicator is decided at admission: H = (cached >= K)
-      set H = cached >= K;
+      // the hit indicator is decided at admission: the cached memory covers the prefix
+      set H = cached >= kappa * K;
       set S = H ? a * n + b * n * (K + n / 2) : a * T + b * T * T / 2;
       observe miss = 1 - H;
       prefill S;
