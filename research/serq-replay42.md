@@ -1,23 +1,20 @@
 # §4.2's trace replay in serQ, with libqueuingsim's rules and with vLLM's
 
-Date: 2026-09-27. Question (research plan, "Next for serQ" (1)): port the
-paper's §4.2 replay (libqueuingsim `TwoStage`, calibrated on RBLN) to a serQ
-program with the engine rules that the request-for-request comparison with
-vLLM established, and check whether §4.2's conclusions move.
+Current status (2026-10-01): paper §4.2 runs `programs/replay_vllm.sq`
+in process through `validation/src/sim/replay_vllm.py`; `make tables`
+generates its tables and macros. `scripts/exp/serq_replay42.py` runs the
+LRU (`lru=1`) and finished-session (`keep=0`) ablations, recorded in
+`research/serq-replay42-tables.md`. All of these are simulator output on
+replayed WEKA sessions, not serving measurements (AGENTS.md rule 7).
 
-Everything here is simulator output on the replayed WEKA workload, not a
-measurement of a serving system (AGENTS.md rule 7).
+The rest of this note records the engine-rule comparison made on 2026-09-27.
+The user selected the vLLM-rule replay that day; that port is complete.
+The old `TwoStage` server and its replay program were removed. The baseline
+comparison is available at commit `1fc3d27` in git history; its old program
+paths and numeric conclusions below refer to that snapshot, not the current
+serQ release. Current programs use `.sq` and the Python validation package.
 
-**Decision (2026-09-27, the user: option (b)).** §4.2 now runs the
-vLLM-rule program: `serq_replay` runs `programs/replay_vllm.sq`
-in process with pyserq and `paper_tables` generates
-§4.2's tables and macros from it (`tab:sim-trace` with a Reuse column,
-`tab:sim-trace-price`, `tab:sim-trace-split`; 20 seeds). The prose of
-`paper/simulation.tex` describes the engine rules and the partial misses.
-`replay_twostage.sq` is gone. The comparison below, with libqueuingsim's
-rules, was generated at commit 1fc3d27 (`research/seq-replay42-tables.md`
-there); the current `research/seq-replay42-tables.md` holds the ablations
-(`lru=1`, `keep=0`) next to the paper's configuration.
+## Historical comparison (2026-09-27)
 
 ## Programs
 
@@ -84,20 +81,11 @@ libqueuingsim's sees the prefill queue only.
    loose cap preempts about 13 times per run. libqueuingsim cannot preempt,
    since it reserves the whole turn up front.
 
-## For the paper (not done; the user decides)
+## Paper decision (completed)
 
-§4.2's qualitative conclusions survive the engine rules. Its quantitative
-sentences are properties of whole-session eviction and upfront
-reservation. The options are:
-
-- **(a) Scope the sentences.** Keep §4.2 as is and add that it models
-  whole-session eviction.
-- **(b) Replace the replay.** Move §4.2's replay to the vLLM-rule program,
-  with its tables generated through `make` like `paper/sim/`. This would
-  need a serQ path in `paper_tables.rs` or a generator of its own. It is
-  the faithful choice for a paper that argues from vLLM's behaviour.
-- **(c) Report both.** Keep libqueuingsim's replay and add the vLLM-rule
-  replay as a robustness row.
-
-Items 2 and 3 above are also findings for §3: report the reused share next
-to the hit rate, and give the eviction key the program's end.
+The vLLM-rule replay replaced whole-session eviction on 2026-09-27. Its
+current Python adapter is `validation/src/sim/replay_vllm.py`, and its
+numbers enter through `make tables`. The paper reports reused-prefix share
+alongside hit rate. End-of-program information remains an input to the
+priced eviction policy; the `keep=0` ablation isolates its effect. The old
+options to retain or report both replicas are superseded.

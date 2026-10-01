@@ -4,7 +4,7 @@
 serQ is the language in which a serving deployment is a program: a
 *deployment* of memory pools and stages, a *workload*, and a *route* that
 every session follows (serQ `docs/language.md`; the Rust interpreter, crate `serq`, is the
-reference implementation, this module is the formal one; see `research/seq.md`). This
+reference implementation, this module is the formal one; see `research/serq.md`). This
 module formalises:
 
 * the syntax of routes (`Route Env V`) and the well-formedness condition

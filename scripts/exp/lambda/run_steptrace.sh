@@ -9,11 +9,7 @@ PORT=8020; BASE=http://127.0.0.1:$PORT; MODEL=Qwen/Qwen3-8B
 export BASE MODEL DP_SIZE=0 REPLAYER=replayer/replay_text_trace.py
 T=data/exp/traces; S=data/exp/gpu/seq_trace; mkdir -p $S
 log() { echo "[steptrace] $(date '+%F %T') $*"; }
-# let the running s30_base finish, then stop run_seq.sh (s35_m10 exists from 2026-09-26)
-while pgrep -f "[r]un_route.sh" >/dev/null; do
-  if grep -q "done s30_base" data/exp/gpu/seq/run_seq.log; then pkill -f "[r]un_route.sh"; pkill -f "[r]eplay_text_trace.py"; pkill -f "[r]un_e2.sh"; fi
-  sleep 20
-done
+# Start after other testbed replays have drained; do not overlap runs.
 for r in "s30_base 3.0 0" "s30_pin 3.0 1" "s25_pin 2.5 1"; do
   set -- $r
   pkill -f "[v]llm.entrypoints"; while nvidia-smi --query-compute-apps=pid --format=csv,noheader | grep -q .; do sleep 5; done

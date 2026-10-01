@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Three-way comparison of a GPU replay: the measured run, the real vLLM
 scheduler under serQ's time model (`.serq/src/tools/vllm_replay_oracle.py`),
-and the serQ program (`data/exp/seq/<run>/*.csv` from seq_vs_vllm.py).
+and the serQ program (`data/exp/seq/<run>/*.csv` from serq_vs_vllm.py).
 
     python3 scripts/exp/three_way.py --gpu ~/serving-queue-theory-gpu/data/exp/gpu/e2b s35_base ...
 
@@ -69,7 +69,7 @@ def load_oracle(path):
     return rows
 
 
-def load_seq(d):
+def load_serq(d):
     def read(name):
         out = {}
         for line in open(os.path.join(d, f"{name}.csv")).read().splitlines()[1:]:
@@ -92,7 +92,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpu", required=True)
     ap.add_argument("--oracle", default="data/exp/seq/oracle")
-    ap.add_argument("--seq", default="data/exp/seq")
+    ap.add_argument("--serq", default="data/exp/seq")
     ap.add_argument("--out")
     ap.add_argument("runs", nargs="+")
     a = ap.parse_args()
@@ -102,7 +102,7 @@ def main():
         hi = max(r["sent"] for r in g.values())
         for name, rows in [("measured", g),
                            ("vllm-sim", load_oracle(os.path.join(a.oracle, run + ".csv"))),
-                           ("seq", load_seq(os.path.join(a.seq, run)))]:
+                           ("serq", load_serq(os.path.join(a.serq, run)))]:
             m = summarise(rows, 90.0, hi)
             lines.append(f"{run:9s} {name:8s} {m['n']:10d} {m['hit']:9.3f} {m['lost']:12d} {m['cached']:12.0f} {m['ttft']:10.3f}")
     txt = "\n".join(lines)

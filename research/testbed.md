@@ -1,9 +1,10 @@
 # NPU testbed (MiniMax-M2.7, DP4 + EP): cost fit, long- and short-context replays
 
-Status as of 2026-09-26. Experiment names: cost fit (was E1), long-context
+Measurement record as of 2026-09-26; integration note updated 2026-10-01. Experiment names: cost fit (was E1), long-context
 replay (E2), short-context replay and price test (E2b); the codes survive
-in directory and macro names only. A GPU (A100) testbed is next; see
-`research/research-plan.md` §0 and `scripts/exp/serve_gpu.sh`. This file records how the measurement server is
+in directory and macro names only. A100 runs were subsequently recorded in the research plan and serQ
+comparison notes; the Lambda instance was terminated after those runs.
+See `research/research-plan.md` §0 and `scripts/exp/serve_gpu.sh` for follow-up work. This file records how the measurement server is
 launched and every configuration that did not work, so nobody re-runs the
 bisection.
 

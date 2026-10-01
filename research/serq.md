@@ -4,10 +4,12 @@ serQ is the language in which a serving deployment is a program: memory
 pools and stages, a workload, and the program every session runs. Since
 2026-09-27 it is its own project, https://github.com/vrvrv/serQ (private).
 serQ holds the Rust interpreter and CLI (crate `serq`, library `serq`,
-binary `serq`), the example programs (`programs/*.sq`, incl. the vLLM
+binary `serq`), the example programs (`examples/*/*.sq`, incl. the vLLM
 v1 engine and its A100 replay), the vLLM scheduler oracle with its test
 vectors (`tools/oracle/`, the A100 engine's answers), the language spec
 (`docs/language.md`) and the review and tooling survey (`docs/review.md`).
+The Lean `Route` type and `[route| … ]` quotation are names in our formal
+fragment, not the current serQ surface syntax.
 
 A serQ program is defined by its IR (serQ `docs/ir.md`): a versioned JSON
 data structure that the interpreter runs and tools build or edit. The text
@@ -23,8 +25,8 @@ pinned serQ release:
 | `lean/ServingQueueTheory/SerqServe.lean` | serving order of a step engine, cited in §2.2 | |
 | `lean/ServingQueueTheory/Deployments.lean` | the paper's two replicas as serQ programs | |
 | `validation/` | the validation package: every simulation of the paper as a serQ program (`src/sim/`), checked against closed forms that never import serQ (`src/theory/`); `tests/test_serq_models.py` checks serQ programs against closed forms | pyserq (PyPI, the pinned release), `.serq/src/examples` |
-| `programs/replay_{twostage,vllm}.sq`, `scripts/exp/seq_replay42.py` | §4.2's replay with the old validation model's and vLLM's engine rules (`research/seq-replay42.md`) | `.serq/bin/serq` |
-| `scripts/exp/*seq*`, `diff_seq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.serq/bin/serq`, `.serq/src/examples`, `.serq/src/tools` |
+| `programs/replay_vllm.sq`, `validation/src/sim/replay_vllm.py` | §4.2's vLLM-rule replay; `scripts/exp/serq_replay42.py` runs LRU and finished-session ablations (`research/serq-replay42.md`) | pyserq; `.serq/bin/serq` for the ablations |
+| `scripts/exp/*serq*`, `diff_serq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.serq/bin/serq`, `.serq/src/examples`, `.serq/src/tools` |
 
 The pin is `v0.1.0` under `[tool.serq]` in `validation/pyproject.toml`, IR 9, and its
 pyserq, `pyserq==0.1.0` from PyPI (a test holds the two to one release), is
@@ -43,7 +45,7 @@ arrivals and requires finite runs to finish within their horizon; the queue
 adapter retries deadline errors with the same seed and a larger horizon
 (up to eight attempts). The oracle generator rejects finite arrival limits
 and renewal workloads outside its explicit-session fragment. `scripts/fetch_serq.sh`
-(`make serq`, first step of `make check`) checks that revision out into
+(`make serq`, first step of `make check`) checks that tag out into
 `.serq/src` and installs its CLI into `.serq/bin/serq` (gitignored); `uv sync` in
 `validation/` installs pyserq from PyPI, so the validation package needs no
 Rust (the CLI, for `scripts/exp`, still does).
@@ -64,7 +66,7 @@ Rust (the CLI, for `scripts/exp`, still does).
    checkout while developing).
 
 The multi-turn prefix-cache theorem is generated the same way: its IR
-(`tools/oracle/cache_trace.ir.json`) is `programs/vllm_replay.sq` on a
+(`tools/oracle/cache_trace.ir.json`) is `examples/replay/vllm_replay.sq` on a
 unit step clock with the trace inlined as the sessions' turns, and the
 Lean executable semantics reads those turns at every `turn` statement
 (`Exec.Workload`) with serQ's rule.
@@ -73,12 +75,26 @@ Lean executable semantics reads those turns at every `turn` statement
 
 serQ is private. Locally, git authenticates through the `gh` credential
 helper of an account that can read serQ. CI uses a read-only deploy key: the public
-half on vrvrv/serQ, the private half in the secret `SEQ_DEPLOY_KEY` of this
-repository (`.github/actions/serq-access`). To create it:
+half on vrvrv/serQ, the private half in `SERQ_DEPLOY_KEY` of this
+repository (`.github/actions/serq-access`). The workflow falls back to the
+existing `SEQ_DEPLOY_KEY` secret until the new secret is provisioned; GitHub
+does not expose a secret's value for renaming. New installations use only
+`SERQ_DEPLOY_KEY`. To create it:
 
 ```bash
-ssh-keygen -t ed25519 -N "" -C "serving-queue-theory CI (read serQ)" -f /tmp/seq_deploy
-gh repo deploy-key add /tmp/seq_deploy.pub -R vrvrv/serQ -t "serving-queue-theory CI"
-gh secret set SEQ_DEPLOY_KEY -R vrvrv/serving-queue-theory < /tmp/seq_deploy
-rm /tmp/seq_deploy /tmp/seq_deploy.pub
+ssh-keygen -t ed25519 -N "" -C "serving-queue-theory CI (read serQ)" -f /tmp/serq_deploy
+gh repo deploy-key add /tmp/serq_deploy.pub -R vrvrv/serQ -t "serving-queue-theory CI"
+gh secret set SERQ_DEPLOY_KEY -R vrvrv/serving-queue-theory < /tmp/serq_deploy
+rm /tmp/serq_deploy /tmp/serq_deploy.pub
 ```
+
+## Historical evidence
+
+The experiment directories `data/exp/seq/`, `data/exp/gpu_seq/` and
+`data/exp/gpu/seq*` keep their acquisition names. They are external measurement
+and comparison artifacts, not runtime names. Analysis scripts still read them;
+renaming the source data in prose would break reproducibility.
+`research/lecture-results.json` likewise records the previous CLI's actual
+binary name and commit. The optional baseline verifier reads that release's
+`.seq` source files. Current programs, commands and documentation use serQ and
+`.sq`; the baseline metadata is not a claim about today's runtime.

@@ -151,7 +151,7 @@ open ServingQueueTheory
 #print axioms lruRun_eq_take
 #print axioms recency_split
 #print axioms mattson_lru_hit_iff
--- serQ, the serving-deployment language (Serq*.lean; research/seq.md)
+-- serQ, the serving-deployment language (Serq*.lean; research/serq.md)
 -- syntax and pool semantics (Serq.lean)
 #print axioms SerqLang.Step.invariant
 #print axioms SerqLang.Step.nonneg
