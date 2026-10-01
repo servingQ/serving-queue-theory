@@ -13,14 +13,17 @@ come out of it.
 A \term{generator} ($Q$-matrix) on a countable set $\mathcal{X}$ is a matrix
 $Q=(q(x,y))_{x,y\in\mathcal{X}}$ with $q(x,y)\ge 0$ for $x\ne y$,
 $q(x):=\sum_{y\ne x}q(x,y)<\infty$, and $q(x,x)=-q(x)$.
-A right-continuous process $(X_t)_{t\ge0}$ with values in $\mathcal{X}$ is a
-\term{continuous-time Markov chain} (CTMC) with generator $Q$ if, on entering state
-$x$, it stays there for an exponential time with mean $1/q(x)$ (independent of the
-past) and then jumps to $y$ with probability $q(x,y)/q(x)$. $q(x,y)$ is the
-\term{transition rate} from $x$ to $y$.
-The chain is \term{non-explosive} if infinitely many jumps in finite time have
-probability zero, and \term{irreducible} if every $y$ can be reached from every $x$
-with positive probability.
+$q(x,y)$ is the \term{transition rate} from $x$ to $y$.
+Let $(Y_n)_{n\ge0}$, the \term{jump chain}, be a discrete-time Markov chain on
+$\mathcal{X}$ with $\Prob(Y_{n+1}=y\mid Y_n=x)=q(x,y)/q(x)$ for $y\ne x$ when $q(x)>0$,
+and $Y_{n+1}=x$ when $q(x)=0$. Conditional on $(Y_n)_{n\ge0}$, let the \term{holding
+times} $E_0,E_1,\dots$ be independent with $E_n\sim\mathrm{Exp}(q(Y_n))$ ($E_n=\infty$
+if $q(Y_n)=0$), and let $J_0=0$, $J_{n+1}=J_n+E_n$. A process $(X_t)_{t\ge0}$ with values
+in $\mathcal{X}$ is a \term{continuous-time Markov chain} (CTMC) with generator $Q$ if it
+has the law of $X_t=Y_n$ for $J_n\le t<J_{n+1}$.
+The chain is \term{non-explosive} if $\sup_nJ_n=\infty$ almost surely, so that $X_t$ is
+defined for every $t$, and \term{irreducible} if for all $x,y$ there are states
+$x=x_0,x_1,\dots,x_k=y$ with $q(x_{i-1},x_i)>0$ for $i=1,\dots,k$.
 \end{definition}
 
 The memorylessness of the exponential distribution (\cref{prop:memoryless}) is what
@@ -103,12 +106,9 @@ stationary by \cref{L2:lem:detailed}.
 \Cref{L2:eq:cut} is called the \term{cut equation}: the flow across the boundary
 between $\{0,\dots,n\}$ and $\{n+1,\dots\}$ is the same in both directions.
 
-\begin{definition}[M/M/1 queue]\label{L2:def:mm1}
-In Kendall notation, \term{M/M/1} is the queue with Poisson arrivals of rate $\lambda$
-(\cref{def:poisson}), service times exponential with mean $1/\mu$ (independent of each
-other and of the arrivals), one server, and unlimited waiting room. Its load is
-$\rho=\lambda/\mu$ (\cref{def:load}).
-\end{definition}
+The M/M/1 queue (\cref{L1:def:queues}(a)) has Poisson arrivals of rate $\lambda$,
+service times $\mathrm{Exp}(\mu)$ and one server, so its load is $\rho=\lambda/\mu$
+(\cref{def:load}).
 
 \begin{proposition}[M/M/1 \cite{kleinrock1975}]\label{prop:mm1}
 In M/M/1, the number of jobs $N_t$ (including the one in service) is a birth--death
@@ -141,13 +141,9 @@ An instance admits a turn only when its context fits in the instance's memory. I
 turn needs about the same memory, the pool is a set of identical \emph{slots}, and the
 memory in front of an instance is a queue with several servers.
 
-\begin{definition}[M/M/$m$ queue]\label{L2:def:mmm}
-The \term{M/M/$m$} queue has Poisson arrivals of rate $\lambda$, $m$ identical servers,
-service times that are independent $\mathrm{Exp}(\mu)$ and independent of the arrivals,
-and an infinite waiting room served in arrival order; a customer waits only when all
-$m$ servers are busy. Its \term{offered load} is $a=\lambda/\mu$, the mean number of
-busy servers; the load per server is $a/m$.
-\end{definition}
+The model is the M/M/$m$ queue (\cref{L1:def:queues}(b)): $m$ identical servers,
+service times $\mathrm{Exp}(\mu)$, and offered load $a=\lambda/\mu$, the mean number of
+busy servers.
 
 \begin{proposition}[M/M/$m$ and the Erlang C formula \cite{kleinrock1975}]\label{prop:mmm}
 The number in system of M/M/$m$ is a birth--death process with $\lambda_n=\lambda$ and

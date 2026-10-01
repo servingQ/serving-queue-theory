@@ -4,46 +4,28 @@ This chapter defines the vocabulary of queueing theory and proves three tools th
 every later chapter relies on: the memorylessness of the exponential distribution,
 the Poisson process together with PASTA, and Little's law.
 
-\section{Queueing systems and performance measures}
+\section{Queueing systems and performance measures}\label{L1:sec:systems}
 
-\begin{definition}[Queueing system]\label{L1:def:system}
-A \term{queueing system} consists of four elements.
-\begin{enumerate}
-\item \term{Customers} (or jobs): entities that arrive at the system, require some
-  amount of processing, and leave. The arrival time of the $k$-th customer is $a_k$,
-  numbered so that $0\le a_1\le a_2\le\cdots$.
-\item The \term{arrival process}: the sequence of arrival times $(a_k)_{k\ge1}$, or
-  equivalently the counting process $A(t)=\#\{k: a_k\le t\}$.
-\item A \term{server} and \term{service times}: the server is the resource that
-  processes customers. Customer $k$ needs time $S_k$ when it has the server to
-  itself. $S_k$ is also called the \term{work} or service requirement of customer $k$.
-\item A \term{waiting room} and a \term{service discipline}: the space where customers
-  arriving at a busy server wait, and the rule that decides whom to serve, when, and
-  how much.
-\end{enumerate}
-\end{definition}
+A \term{queueing system} has four elements. \term{Customers} (or jobs) arrive, require
+some amount of processing, and leave; the arrival time of the $k$-th customer is $a_k$,
+numbered so that $0\le a_1\le a_2\le\cdots$. The \term{arrival process} is the sequence
+of arrival times $(a_k)_{k\ge1}$, or equivalently the counting process
+$A(t)=\#\{k: a_k\le t\}$. A \term{server} is the resource that processes customers:
+customer $k$ needs time $S_k$ when it has the server to itself, its \term{service time},
+also called its \term{work} or service requirement. Customers who arrive at a busy
+server wait in a \term{waiting room}, and a \term{service discipline} decides whom to
+serve, when, and how much.
 
-\begin{definition}[Service disciplines]\label{L1:def:discipline}
-\term{FIFO} (first in, first out) serves one customer at a time, to completion, in
-order of arrival. \term{Processor sharing} (PS) serves all customers in the system
-simultaneously at equal rates; it is defined formally in \cref{sec:L2}.
-A discipline under which the server never idles while work is present is called
-\term{work-conserving}. Both FIFO and PS are work-conserving.
-\end{definition}
-
-\begin{definition}[Kendall notation]\label{L1:def:kendall}
-A queueing system is written $A/S/c/K/N$. Here $A$ is the distribution of the
-interarrival times, $S$ the distribution of the service times, $c$ the number of
-servers, $K$ the system capacity ($\infty$ if omitted), and $N$ the size of the
-customer population ($\infty$ if omitted). The distribution symbols are $M$ (Markov:
-exponential and independent), $D$ (deterministic: constant), and $G$ (general:
-an arbitrary distribution, i.i.d.).
-\end{definition}
-
-For example, M/M/1 has Poisson arrivals, exponential service and one server
-(\cref{sec:L2}); M/G/1 allows a general service distribution (\cref{sec:L3});
-M/M/1//N is a closed system with only $N$ customers (\cref{sec:L4}); and
-M/G/$\infty$ is an infinite-server system with no waiting (\cref{sec:L4}).
+Two disciplines recur in these notes. \term{FIFO} (first in, first out) serves one
+customer at a time, to completion, in order of arrival. \term{Processor sharing} (PS)
+serves all customers present at once at equal rates (\cref{def:ps}). A discipline under
+which the server never idles while work is present is \term{work-conserving}; both FIFO
+and PS are. A \term{delay station} (infinite-server station) has as many servers as
+customers: an arriving customer starts service at once, so its sojourn time is its own
+service time, whatever the other customers do. A \term{closed system} is one in which a
+fixed number $N$ of customers circulate among stations forever, with no entry from or
+exit to the outside; the time a customer of a closed system spends at a delay station
+is its \term{think time}, with mean $Z$.
 
 \begin{definition}[Performance measures]\label{L1:def:measures}
 Let $d_k$ be the time at which customer $k$ leaves the system.
@@ -63,10 +45,12 @@ distinction will be essential several times.
 The \term{time average} of the process $N(t)$ is
 $L=\lim_{t\to\infty}\frac1t\int_0^t N(s)\dd s$, and the \term{customer average} of the
 sequence $(W_k)$ is $W=\lim_{n\to\infty}\frac1n\sum_{k=1}^n W_k$ (when the limits
-exist). $L_q$ and $W_q$ are defined in the same way. If the limits are constants with
-probability one, then in the stationary regime they equal $\E[N]$ and $\E[W]$
-respectively.
+exist). $L_q$ and $W_q$ are defined in the same way.
 \end{definition}
+
+When the system is stationary and ergodic, the limits are almost surely constant and
+equal $\E[N]$ and $\E[W]$ under the stationary law; this is how a time average computed
+from a model is compared with a mean measured over a long run.
 
 \begin{definition}[Arrival rate, load, stability]\label{def:load}
 The \term{arrival rate} is $\lambda=\lim_{t\to\infty}A(t)/t$.
@@ -76,8 +60,8 @@ $\E[S]$ is
   \rho=\lambda\,\E[S].
 \]
 $\rho$ is the amount of work arriving per unit time and is dimensionless.
-The system is \term{stable} if $N(t)$ has a proper limiting distribution (or at least
-$L<\infty$) and every customer leaves in finite time.
+The system is \term{stable} if $N(t)$ converges in distribution, as $t\to\infty$, to an
+almost surely finite random variable.
 \end{definition}
 
 A single server processes at most one unit of work per unit time, so if $\rho>1$ the
@@ -87,11 +71,46 @@ essentially necessary and sufficient for stability \cite{loynes1962}. For the mo
 in these notes we assume $\rho<1$ as the stability condition and verify it model by
 model.
 
+\paragraph{Kendall notation.} A queueing system is written $A/S/c/K/N$: $A$ is the law
+of the interarrival times, $S$ the law of the service times, $c$ the number of servers,
+$K$ the system capacity and $N$ the size of the customer population, the last two
+$\infty$ when omitted. The symbols for the laws are $M$ (Markov: exponential and
+independent), $D$ (deterministic: constant) and $G$ (general: an arbitrary law, i.i.d.).
+The queues used in these notes are collected here once; each lecture refers back to
+this list.
+
+\begin{definition}[The queues of these notes]\label{L1:def:queues}
+In (a)--(e) arrivals form a Poisson process of rate $\lambda$ (\cref{def:poisson}),
+the service times are i.i.d., independent of the arrivals, with generic $S$ and
+$\E[S]<\infty$, and the waiting room is infinite.
+\begin{enumerate}[label=(\alph*)]
+\item \term{M/M/1}: one FIFO server and $S\sim\mathrm{Exp}(\mu)$ (\cref{L1:def:exp});
+  its load is $\rho=\lambda/\mu$ (\cref{sec:L2}).
+\item \term{M/M/$m$}: $m$ identical servers, $S\sim\mathrm{Exp}(\mu)$, customers served
+  in arrival order; a customer waits only when all $m$ servers are busy. Its
+  \term{offered load} $a=\lambda/\mu$ is the mean number of busy servers, and the load
+  per server is $a/m$ (\cref{L2:sec:mmm}).
+\item \term{M/G/1}: one FIFO server and an arbitrary law $G$ of $S$; when the server
+  becomes free it serves the earliest waiting customer to completion without
+  interruption (\cref{sec:L3}).
+\item \term{M/G/1-PS}: one server with an arbitrary law $G$ of $S$, under processor
+  sharing (\cref{def:ps}).
+\item \term{M/G/$\infty$}: a delay station with an arbitrary law $G$ of $S$
+  (\cref{L4:sec:campbell}).
+\item \term{M/M/1//$N$}, the \term{finite-source} or machine-repairman model: a closed
+  system of $N$ customers and two stations, a delay station with exponential think
+  times of mean $Z$ and a FIFO server with service times $\mathrm{Exp}(\mu)$. Each
+  customer goes to the server when its think time ends and starts thinking again when
+  its service ends; all think and service times are mutually independent
+  (\cref{L4:sec:closed}).
+\end{enumerate}
+\end{definition}
+
 \section{The colocated replica as queues}\label{L1:sec:projection}
 
-A queueing model of a serving system is a projection: it keeps what decides who waits
-and for how long, and drops the rest. \Cref{fig:projection} shows the projection used
-throughout these notes; its stations are defined formally in later chapters.
+A queueing model of a serving system keeps what decides which request waits and for
+how long, and leaves out the rest. \Cref{fig:projection} shows the model of a colocated
+replica used throughout these notes; its stations are defined formally in later chapters.
 
 \begin{figure}[t]
 \centering
@@ -145,8 +164,9 @@ throughout these notes; its stations are defined formally in later chapters.
     {\textbf{Memory pool} (dashed): $M$ bytes: KV of running turns, and cached KV of paused sessions\\
      (evictable); a constraint in the paper's model, a queue of slots in engines that admit whole prompts};
 \end{tikzpicture}
-\caption{The serving system projected onto queues. Turns are the customers of the
-stations; sessions are the customers of the closed loop through the tool call. The
+\caption{A colocated replica as a queueing model. Each turn (one request to the
+engine) passes through prefill and decode; each session loops through the tool call
+until the agent program ends. The
 dashed pool is shared memory: what it drops decides whether the next turn is a hit
 (short prefill work) or a miss (long prefill work). The memory-admission station
 (orange) is \emph{not} in the paper's model: it appears in engines that admit a turn
@@ -155,9 +175,13 @@ start of its prefill to the end of its decode (\cref{L5:sec:honest}).}
 \label{fig:projection}
 \end{figure}
 
-\paragraph{Customers at two levels.} A \emph{turn} is a customer of the prefill and
-decode stations: it arrives, waits, is served and leaves. A \emph{session} circulates
-through prefill, decode and the tool call, and leaves when the agent program ends. New
+\paragraph{Requests and sessions.} A \emph{turn} is one request to the engine: the
+agent sends its context, the engine prefills it and decodes the reply, and the request
+completes. A \emph{session} is one run of the agent program: it sends a turn, waits for
+the reply, calls a tool, sends the next turn with the tool output appended, and ends
+when the program ends. In the vocabulary of \cref{L1:sec:systems} the turns are the
+customers of the prefill and decode stations, and the sessions are the customers of
+the loop through the tool call. New
 sessions arrive as a Poisson process of rate $\Lambda$, but a session's next turn exists
 only after its previous one has been served, so turn arrivals depend on the state.
 
@@ -176,18 +200,21 @@ the waits (\cref{L5:sec:honest}).
 service-time law is given. Here the KV policy chooses it: a hit has short prefill work,
 a miss recomputes the whole context. The TTFT is the sojourn time at prefill,
 $W_q+S$, and the objective is $L=L_P+L_D$, which by Little's law (\cref{thm:little}) is
-the mean delay per unit time. The projection measures work in seconds, averages the
+the mean delay per unit time. The model measures work in seconds, averages the
 budget the decode batch leaves to prefill, and treats turn arrivals as Poisson;
 \cref{sec:L5} returns to these gaps, and \cref{sec:L6} draws the same picture for
 disaggregated serving.
 
-\section{The exponential distribution and memorylessness}
+\section{The Poisson process}
 
 \begin{definition}[Exponential distribution]\label{L1:def:exp}
 A random variable $X\ge0$ with $\Prob(X>t)=e^{-\mu t}$ for $t\ge0$ has the
 \term{exponential distribution} with \term{rate} $\mu>0$, written
-$X\sim\mathrm{Exp}(\mu)$. Then $\E[X]=1/\mu$ and $\E[X^2]=2/\mu^2$.
+$X\sim\mathrm{Exp}(\mu)$.
 \end{definition}
+
+Integrating the tail gives $\E[X]=\int_0^\infty e^{-\mu t}\dd t=1/\mu$ and
+$\E[X^2]=\int_0^\infty 2t\,e^{-\mu t}\dd t=2/\mu^2$.
 
 \begin{proposition}[Memorylessness \cite{ross1996}]\label{prop:memoryless}
 If $X\sim\mathrm{Exp}(\mu)$, then for all $s,t\ge0$
@@ -227,7 +254,9 @@ $\min_iX_i\sim\mathrm{Exp}(\sum_i\mu_i)$.
 $\Prob(\min_iX_i>t)=\prod_i\Prob(X_i>t)=e^{-(\sum_i\mu_i)t}$.
 \end{proof}
 
-\section{The Poisson process}
+Memorylessness at the server gives Markovian service; at the arrivals it gives the
+Poisson process: a stream whose interarrival times are independent and exponential
+(\cref{L1:thm:interarrival}).
 
 \begin{definition}[Counting process and Poisson process]\label{def:poisson}
 A \term{counting process} $A=(A(t))_{t\ge0}$ is a nondecreasing, right-continuous,

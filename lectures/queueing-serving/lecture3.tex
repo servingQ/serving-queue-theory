@@ -12,24 +12,13 @@ also on its second moment.}
 
 \section{The M/G/1 queue and the residual service time}
 
-\begin{definition}[M/G/1 FIFO queue]\label{L3:def:mg1}
-An \term{M/G/1 queue} is a single-server queue with the following properties.
-\begin{enumerate}[label=(\alph*)]
-\item Arrivals form a Poisson process of rate $\lambda>0$ (\cref{def:poisson}).
-\item The \term{service time} (work) $S_k$ of the $k$-th customer is i.i.d.\ with
-  an arbitrary distribution $G$ (``General'') and independent of the arrival
-  process. $S$ denotes a generic random variable with law $G$, and we assume
-  $\E[S]<\infty$.
-\item There is one server, the waiting room is infinite, and the service
-  discipline is \term{FIFO} (first in, first out): when the server becomes free,
-  it serves the earliest waiting customer to completion without interruption.
-\end{enumerate}
-The load is $\rho=\lambda\E[S]$ (\cref{def:load}). The \term{waiting time in
-queue} $W_q$ of a customer is the time from arrival to the start of service, and
-the \term{sojourn time} is $W_q+S$. $L_q$ and $L$ are the time averages of the
-number of customers in the waiting room and in the whole system (waiting room
-and server), respectively.
-\end{definition}
+The M/G/1 queue (\cref{L1:def:queues}(c)) has Poisson arrivals of rate $\lambda>0$,
+i.i.d.\ work $S_k$ with an arbitrary law $G$ (``General''), independent of the
+arrivals, with generic $S$ and $\E[S]<\infty$, and one FIFO server that serves each
+customer to completion without interruption. The load is $\rho=\lambda\E[S]$
+(\cref{def:load}). As in \cref{L1:def:measures}, $W_q$ is the wait from arrival to the
+start of service, the sojourn time is $W_q+S$, and $L_q$ and $L$ are the time averages
+of the number of customers in the waiting room and in the whole system.
 
 Unlike the exponential distribution, a general service distribution is not
 memoryless (\cref{prop:memoryless}). How much longer a customer who has already
@@ -184,13 +173,15 @@ under FIFO, but not under PS, where all customers share the server.
 The KV cache policy decides whether each turn is a hit or a miss, and hence sets
 the law of the prefill work.
 
-\begin{definition}[Hit/miss mixture work]\label{L3:def:mixture}
 Let $S^{\mathrm{hit}}$ and $S^{\mathrm{miss}}$ be square-integrable nonnegative
-random variables with $S^{\mathrm{miss}}\ge S^{\mathrm{hit}}$ (a.s.). At
-\term{hit rate} $h\in[0,1]$ the work $S_h$ has the law of $S^{\mathrm{hit}}$ with
-probability $h$ and the law of $S^{\mathrm{miss}}$ with probability $1-h$ (the
-choice is made by an independent coin toss).
-\end{definition}
+random variables with $S^{\mathrm{miss}}\ge S^{\mathrm{hit}}$ (a.s.), and let $U$ be
+uniform on $(0,1)$ and independent of them. At \term{hit rate} $h\in[0,1]$ the work is
+the \term{hit/miss mixture}
+\begin{equation}\label{L3:eq:mixture}
+  S_h=\1\{U\le h\}\,S^{\mathrm{hit}}+\1\{U>h\}\,S^{\mathrm{miss}},
+\end{equation}
+which has the law of $S^{\mathrm{hit}}$ with probability $h$ and that of
+$S^{\mathrm{miss}}$ with probability $1-h$.
 
 \begin{corollary}[A higher hit rate lowers the PK wait]\label{cor:mixture}
 Let $m_1(h)=\E[S_h]$, $m_2(h)=\E[S_h^2]$ and $\rho(h)=\lambda m_1(h)$.
@@ -209,14 +200,13 @@ Let $m_1(h)=\E[S_h]$, $m_2(h)=\E[S_h^2]$ and $\rho(h)=\lambda m_1(h)$.
 If we drop the KV state of a particular program $i$, so that its next turn is a
 miss, by how much does the delay of the whole prefill stage grow?
 
-\begin{definition}[Mean number in the prefill stage and policy change]\label{L3:def:policy-change}
 Model the prefill stage as an M/G/1 FIFO queue with arrival rate $\lambda$, work
 $S$ ($m_1=\E[S]$, $m_2=\E[S^2]<\infty$) and load $\rho=\lambda m_1<1$. Let
 $W=\lambda m_2/(2(1-\rho))$ be the PK wait and $L_P$ the mean number in the
 prefill stage (waiting and in service). By Little's law
-\[
+\begin{equation}\label{L3:eq:LP}
   L_P=\lambda(W+m_1)=\rho+\frac{\lambda^2m_2}{2(1-\rho)}.
-\]
+\end{equation}
 For programs (classes) $i=1,\dots,k$, a \term{policy change} turns a fraction
 $q_i\ge0$ of arrivals ($\sum_iq_i\le1$) from hits with work
 $S_i^{\mathrm{hit}}\ge0$ into misses with work
@@ -228,10 +218,9 @@ the work become
 \]
 and the new load is $\rho'=\rho+\lambda\delta_1$. We write $L_P'$ for the new mean
 number and $\Delta L_P=L_P'-L_P$ for the change.
-\end{definition}
 
 \begin{theorem}[The price of a miss]\label{thm:price}
-In the setting of \cref{L3:def:policy-change}, suppose $\rho'<1$ and define
+In this setting, suppose $\rho'<1$ and define
 \begin{equation}\label{L3:eq:price}
   \Phi_i=\Delta S_i
   +\frac{\lambda\bigl((S_i^{\mathrm{miss}})^2-(S_i^{\mathrm{hit}})^2\bigr)}{2(1-\rho)}

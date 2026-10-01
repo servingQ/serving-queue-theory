@@ -12,27 +12,11 @@ what to drop when memory runs short (\cref{L4:sec:knapsack}).
 
 \section{Closed systems and mean value analysis}\label{L4:sec:closed}
 
-\begin{definition}[Delay station, think time]\label{L4:def:delay}
-A \term{delay station} or \term{infinite-server station} is a station with
-infinitely many servers, so that an arriving customer is served at once without
-waiting. A customer's sojourn time equals its own service time and does not
-depend on other customers. In a closed system the time spent at a delay station
-is called the \term{think time}, and its mean is written $Z$.
-\end{definition}
-
-\begin{definition}[Closed system, finite-source model]\label{L4:def:closed}
-A \term{closed system} is a system in which a fixed number $N$ of customers
-circulate among stations forever, with no entry from or exit to the outside. The
-\term{finite-source model} or machine-repairman model M/M/1//$N$ is the closed
-system made of two stations:
-\begin{enumerate}[label=(\alph*)]
-\item a delay station with exponential think times of mean $Z$,
-\item a FIFO single server with exponential service times of mean $1/\mu$.
-\end{enumerate}
-Each customer (session) submits a turn to the server when it finishes thinking,
-and starts thinking again when its service is done. All think times and service
-times are mutually independent.
-\end{definition}
+The simplest closed system (\cref{L1:sec:systems}) is the finite-source model
+M/M/1//$N$ (\cref{L1:def:queues}(f)). $N$ customers (sessions) alternate between a
+delay station, where each thinks for an exponential time of mean $Z$, and a FIFO
+server with service times $\mathrm{Exp}(\mu)$: a session submits a turn when it
+finishes thinking and starts thinking again when the turn is served.
 
 \serving{Sessions are the customers of the closed loop. The think time is the
 time for tool execution and user response, and the server is the prefill stage.
@@ -176,11 +160,9 @@ We now count memory. Live sessions do not wait for each other and each keeps its
 own KV cache, so from the point of view of memory the sessions are customers of a
 delay station.
 
-\begin{definition}[M/G/$\infty$]\label{L4:def:mginf}
-An M/G/$\infty$ system is a delay station with Poisson arrivals of rate $\lambda$
-(\cref{def:poisson}) and i.i.d.\ service times $S$ independent of the arrival
-process.
-\end{definition}
+The model is the M/G/$\infty$ system (\cref{L1:def:queues}(e)): a delay station fed
+by Poisson arrivals of rate $\lambda$, with i.i.d.\ service times $S$ independent of
+the arrivals.
 
 The following lemma is a standard property of the Poisson process.
 

@@ -25,17 +25,15 @@ the conclusions.
 
 \section{The replica}\label{L7:sec:model}
 
-\begin{definition}[Replica with a prefix cache]\label{L7:def:replica}
-Sessions submit turns to one replica. A session has at most one turn outstanding. Waiting
+\paragraph{Replica with a prefix cache.}\label{L7:def:replica} Sessions submit turns to one replica. A session has at most one turn outstanding. Waiting
 turns are admitted first come first served (FCFS), at most $B$ at a time. The prefix
 cache holds the prefixes of at most $C$ sessions, all of the same size, and a session's
 prefix enters it only when the session's turn is served. A turn whose prefix is resident
 is a \term{hit} and costs $S^{\mathrm{hit}}$ of prefill; otherwise it is a \term{miss}
 and costs $S^{\mathrm{miss}}\ge S^{\mathrm{hit}}$. An admitted turn also holds $a$ units
 of working memory, in units of one prefix.
-\end{definition}
 
-vLLM's scheduler approximates this definition. It admits waiting requests in arrival
+vLLM's scheduler approximates this model. It admits waiting requests in arrival
 order up to \texttt{max\_num\_seqs}, keeps a finished request's blocks in an LRU free
 queue, and evicts from that queue when an admission needs blocks; the blocks of a waiting
 request stay evictable until it is admitted (serQ's \texttt{docs/language.md}, \S7, maps
@@ -240,8 +238,7 @@ congested mode to the saddle, mean recovery time to the empty queue
 The queue length is not the whole state. A model of the replica that keeps the cache is
 the following chain.
 
-\begin{definition}[Queue-and-cache chain]\label{L7:def:three}
-$N$ sessions. A state $(h,m,c)$ counts the waiting turns whose prefix is resident ($h$)
+\paragraph{Queue-and-cache chain.}\label{L7:def:three} There are $N$ sessions. A state $(h,m,c)$ counts the waiting turns whose prefix is resident ($h$)
 and lost ($m$), and the thinking sessions whose prefix is lost ($c$); $w=N-h-m-c$ think
 with a resident prefix, and $q=h+m$. Warm sessions return at rate $w/Z$ as hits, cold
 ones at rate $c/Z$ as misses. The queue is served by processor sharing, so hits complete
@@ -250,7 +247,6 @@ turn leaves a warm thinker. The idle prefixes $w+h$ must fit in $C-aq$: every wa
 holds memory $a$, the case \cref{L7:prop:hold} warns against. While they do not fit, a
 waiting hit is evicted with probability $1-\phi$ and a warm thinker with probability $\phi$
 ($\phi=1$ protects waiting prefixes).
-\end{definition}
 
 With $N=40$, $Z=27$\,s, $C=48$, $a=1$, $\phi=0$, $S^{\mathrm{hit}}=0.5$\,s and
 $S^{\mathrm{miss}}=5$\,s, the chain has \metaStates{} states and a closed class of
@@ -505,7 +501,7 @@ number of hits in a round as a function of $N$ and $C$.
 \end{exercise}
 
 \begin{exercise}\label{L7:ex:cost}
-Add a concurrency cost to \cref{L7:def:three}: pinned prefixes slow every turn by the
+Add a concurrency cost to the queue-and-cache chain of \cref{L7:def:three}: pinned prefixes slow every turn by the
 factor $1+\gamma\,\phi h/N$. Find, numerically, a $\gamma$ at which an interior $\phi$
 minimises the recovery time.
 \end{exercise}
