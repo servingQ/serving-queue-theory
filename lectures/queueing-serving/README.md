@@ -1,7 +1,8 @@
 # Queueing Theory for LLM Serving
 
-One course, six chapters: shared queueing foundations, a colocated scheduler,
-and a PD extension. `notes.tex` is the sole lecture PDF entry point.
+One course, six chapters and an appendix: shared queueing foundations
+(chapters 1–4), a colocated scheduler (chapter 5), a PD extension (chapter 6),
+and the executable examples (appendix A, `release-check.tex`). `notes.tex` is the sole lecture PDF entry point.
 
 The executable examples target **serQ v0.1.0**, IR v9,
 commit `f9fe9f2cad9e7d88e585860572c3757c295d58c6`.

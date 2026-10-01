@@ -1,7 +1,8 @@
 \chapter*{About These Notes}
 \addcontentsline{toc}{chapter}{About These Notes}
 These notes combine the queueing primer and the disaggregated-serving course.
-They assume real analysis and mathematical statistics, but no prior queueing theory.
+They assume undergraduate probability and real analysis (conditional expectation,
+the strong law of large numbers, power series), but no prior queueing theory.
 Definitions, proofs and exercises for the common tools appear once. The final two
 chapters apply them to a colocated replica and a prefill--decode deployment.
 
@@ -12,18 +13,43 @@ different processes. A cache policy changes how much prefill work a turn needs.
 A colocated engine shares iterations between prefill and decode; a disaggregated
 engine transfers KV between their separate memory pools.
 
-\paragraph{Reading plan.} \Cref{sec:L1} introduces both architectures, serQ v0.1.0,
-Poisson arrivals, PASTA, renewal rewards and Little's law. \Cref{sec:L2} develops
-Markov chains, M/M/1, memory slots, processor sharing and insensitivity.
-\Cref{sec:L3} proves Pollaczek--Khinchine and the price of a miss.
-\Cref{sec:L4} covers finite populations, resident memory and eviction.
-\Cref{sec:L5} builds the colocated scheduler and its holding-time rule.
-\Cref{sec:L6} adds transfer prices, two memory pools and cache feedback.
-The final appendix records what a release comparison can and cannot establish.
+\paragraph{Reading plan.}
+\begin{itemize}
+\item \Cref{sec:L1}: the colocated replica as queues, Poisson arrivals, PASTA,
+  renewal rewards and Little's law.
+\item \Cref{sec:L2}: Markov chains, M/M/1, memory slots, processor sharing and
+  insensitivity.
+\item \Cref{sec:L3}: the Pollaczek--Khinchine formula and the price of a miss.
+\item \Cref{sec:L4}: finite populations, resident memory and eviction.
+\item \Cref{sec:L5}: the colocated scheduler and its holding-time rule.
+\item \Cref{sec:L6}: the disaggregated replica, transfer prices, two memory pools and
+  cache feedback.
+\item \Cref{app:serq}: how to run the executable examples, and what they check.
+\end{itemize}
+\Cref{sec:L1,sec:L2,sec:L3,sec:L4} are the common tools. A reader interested only in
+colocated serving can stop after \cref{sec:L5}.
 
-\paragraph{Language and models.} Executable examples use serQ v0.1.0 (IR v9).
-Mathematical queues remain idealisations with explicit assumptions; a step engine
-with block admission and preemption does not inherit their formulas automatically.
-The original paper concerns colocated serving. Disaggregation is a course extension.
-The exercises reinforce the proofs; \cite{kleinrock1975,harchol2013} are introductory
-references and \cite{asmussen2003} gives a rigorous treatment.
+\paragraph{Models and programs.} The mathematical queues are idealisations with
+explicit assumptions. A step engine with block admission and preemption does not
+inherit their formulas automatically. The executable examples in \cref{app:serq}
+make some of these engine rules explicit. The original paper concerns colocated
+serving; disaggregation is a course extension. The exercises reinforce the proofs;
+\cite{kleinrock1975,harchol2013} are introductory references and \cite{asmussen2003}
+gives a rigorous treatment.
+
+\paragraph{Notation.} Symbols are defined where they first appear. The table lists
+those whose meaning changes between chapters.
+\begin{center}\small
+\begin{tabular}{@{}lp{0.6\linewidth}@{}}
+\toprule
+Symbol & Meaning \\
+\midrule
+$W_q$, $W$ & wait before service; in \cref{sec:L1} $W$ is the sojourn time,
+  from \cref{sec:L3} on the PK wait \\
+$D$ & decode work: seconds in \cref{sec:L5}, tokens in \cref{sec:L6} \\
+$\mathcal B$, $\gamma$ & byte-second budget (\cref{sec:L5,sec:L6}); $\gamma=\mu Z$ in \cref{sec:L4} \\
+$B$, $X$ & link bandwidth; transfer work (\cref{sec:L6}) \\
+$h$, $H$ & hit rate; hit indicator, or the feedback map in \cref{L6:sec:feedback} \\
+\bottomrule
+\end{tabular}
+\end{center}

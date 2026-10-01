@@ -1,67 +1,170 @@
-\chapter{Putting It Together: A Queueing Model of Disaggregated Serving}\label{sec:L6}
+\chapter{Disaggregated Serving}\label{sec:L6}
 
-The common tools and the colocated scheduler now extend to a model of a
-disaggregated deployment and derives what a scheduler for it needs: what a miss costs
-at each place where it can happen, what each instance should keep in memory and for how
-long, how many sessions to admit, and when misses feed
-themselves. Every step names the result of Lectures 1--4 that carries it.
+This chapter extends the tools of \cref{sec:L1,sec:L2,sec:L3,sec:L4} and the colocated
+scheduler of \cref{sec:L5} to a disaggregated deployment. There, prefill and decode run
+on separate instances with separate memory pools, and a link carries the KV cache
+between them. The chapter derives what a scheduler for it needs: what a miss costs at
+each place where it can happen, what each instance should keep in memory and for how
+long, how many sessions to admit, and when misses feed themselves.
 
-\section{The model on one page}\label{L6:sec:model}
+\section{The disaggregated replica}\label{L6:sec:model}
 
-\Cref{fig:deployment} in \cref{L1:sec:model} shows the deployment, and
-\cref{L1:def:workload,L1:def:costs} and the program of \cref{L1:ex:program} define the system exactly. We
-recall the notation.
+\Cref{fig:deployment} shows the model.
 
-\begin{definition}[Disaggregated replica]\label{L6:def:replica}
-A \term{disaggregated replica} consists of the following stations, visited in this
-order by every turn.
-\begin{enumerate}[label=(\alph*)]
-\item A \emph{prefill instance} with a memory pool of $M_P$ bytes: a waiting turn is
-  admitted, in arrival order, only when its whole context fits; the part of the pool not
-  held by admitted turns keeps a \emph{prefix cache} of paused sessions, evicted least
-  recently used first; admitted turns are prefilled one at a time, in arrival order, by
-  a server of full capacity.
-\item A \emph{link} that carries the turn's KV to a decode instance, shared equally by
-  concurrent transfers: a processor-sharing station of capacity 1 (\cref{def:ps}).
-\item A \emph{decode instance} with a pool of $M_D$ bytes, the same whole-context
-  admission, and a processor-sharing batch of capacity $\varphi(m)$ for $m$ running turns.
-\item The \emph{tool call}, a delay station (\cref{L4:def:delay}) with mean think time
-  $Z$, after which the paused session sends its next turn with probability $p$.
-\end{enumerate}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.8cm, y=0.8cm, >=Stealth, font=\small, line width=0.6pt,
+  station/.style={circle, draw, thick, minimum size=10mm, align=center, inner sep=1pt},
+  note/.style={font=\footnotesize, align=center, text=black!75}]
+  % ---------- prefill instance ----------
+  \foreach \i in {0,1}
+    \draw[fill=orange!10] (0.4+0.5*\i,-0.3) rectangle ++(0.45,0.6);
+  \draw (0.35,-0.3) -- (1.4,-0.3) (0.35,0.3) -- (1.4,0.3);
+  \node[draw, thick, rounded corners=1pt, fill=orange!10, minimum width=12mm, minimum height=9mm] (SP) at (2.5,0) {};
+  \foreach \x in {-0.36,0,0.36}
+    \foreach \y in {-0.17,0.17}
+      \draw[orange!60!black, fill=white] ($(SP)+(\x-0.13,\y-0.11)$) rectangle ++(0.26,0.22);
+  \node[station, fill=blue!8] (P) at (4.4,0) {FIFO};
+  \draw[->] (SP.east) -- (P.west);
+  \draw[fill=gray!15, draw=gray!60] (0.2,-1.4) rectangle (5.3,-0.85);
+  \node[font=\scriptsize, text=black!75] at (2.75,-1.12) {prefix cache of paused sessions};
+  \node[note] at (2.5,0.85) {$m_P$ slots};
+  \node[note] at (4.4,0.9) {prefill};
+  \node[draw, dashed, rounded corners=3mm, inner sep=2.5mm, fit={(0.2,-1.4) (5.3,1.2)}] (MP) {};
+  \node[note, anchor=south] at (MP.north) {\textbf{Prefill instance} (pool $M_P$)};
+  % ---------- link ----------
+  \node[station, fill=green!8] (L) at (7.0,0) {PS};
+  \node[note, anchor=north] at (7.0,-0.65) {KV link\\bandwidth $B$};
+  % ---------- decode instance ----------
+  \foreach \i in {0,1}
+    \draw[fill=orange!10] (8.9+0.5*\i,-0.3) rectangle ++(0.45,0.6);
+  \draw (8.85,-0.3) -- (9.9,-0.3) (8.85,0.3) -- (9.9,0.3);
+  \node[draw, thick, rounded corners=1pt, fill=orange!10, minimum width=12mm, minimum height=9mm] (SD) at (11.0,0) {};
+  \foreach \x in {-0.36,0,0.36}
+    \foreach \y in {-0.17,0.17}
+      \draw[orange!60!black, fill=white] ($(SD)+(\x-0.13,\y-0.11)$) rectangle ++(0.26,0.22);
+  \node[station, fill=red!8] (D) at (12.9,0) {PS};
+  \draw[->] (SD.east) -- (D.west);
+  \node[note] at (11.0,0.85) {$m_D$ slots};
+  \node[note] at (12.9,-0.95) {batch $\varphi(m)$};
+  \node[draw, dashed, rounded corners=3mm, inner sep=2.5mm, fit={(8.8,-1.25) (14.0,1.2)}] (MD) {};
+  \node[note, anchor=south] at (MD.north) {\textbf{Decode instance} (pool $M_D$)};
+  % ---------- tool call ----------
+  \node[draw, thick, rounded corners, fill=teal!8, minimum width=20mm, minimum height=9mm] (T) at (7.0,-3.1) {};
+  \foreach \k in {-2,-1,0,1,2}
+    \draw[teal!60!black] ($(T)+(0.36*\k,0)$) circle (0.13);
+  \node[note, anchor=north] at ($(T.south)+(0,-0.05)$) {\textbf{Tool call}: delay station};
+  % ---------- flows ----------
+  \draw[->] (-3.0,0) -- (0.3,0);
+  \node[note, anchor=south] at (-2.1,0.05) {new sessions\\Poisson $\Lambda$};
+  \draw[->] (P.east) -- (L.west);
+  \draw[->] (L.east) -- (8.8,0);
+  \draw[->] (D.east) -- (15.4,0) node[note, right] {ends};
+  \draw[->] (D.south) |- node[note, right, pos=0.25] {resume w.p.\ $p$} (T.east);
+  \draw[->] (T.west) -| (-0.2,0) -- (0.3,0);
+  \node[note, anchor=east] at (-0.3,-2.2) {next turn\\(hit or miss)};
+\end{tikzpicture}
+\caption{A disaggregated deployment as a queueing model. A turn waits for KV memory
+at a prefill instance (it is admitted only when its whole context fits, in arrival
+order), is prefilled one request at a time in arrival order, sends its KV cache over a
+link whose bandwidth concurrent transfers share, waits for KV memory at a decode
+instance, and decodes in a batch that shares the instance's throughput. Sessions loop
+through a tool call back to the prefill instance, where the prefix cache decides
+whether the next turn is a hit (short prefill work) or a miss (the whole context is
+recomputed).}
+\label{fig:deployment}
+\end{figure}
+
+\begin{definition}[Workload and costs]\label{L6:def:workload}
+Sessions arrive as a Poisson process of rate $\Lambda$ (\cref{def:poisson}). Turn $j$
+of session $i$ has a cached prefix of $K_{ij}$ tokens, $n_{ij}$ new tokens and
+$o_{ij}$ output tokens, with context $T_{ij}=K_{ij}+n_{ij}$ and
+\begin{equation}\label{L6:eq:context}
+  K_{i1}=0,\qquad K_{i,j+1}=T_{ij},\qquad n_{i,j+1}\ge o_{ij},
+\end{equation}
+since the next turn's new tokens contain the previous output and the tool's output.
+After each turn the session calls a tool for a time with mean $Z$. A replica has
+prefill constants $a,b>0$, $\kappa$ KV bytes per token, a link of bandwidth $B$ bytes
+per second with overhead $x_0$, a decode capacity $\varphi$, and pools of $M_P$ and
+$M_D$ bytes. With the hit indicator $H_{ij}$ (the prefix is still cached at
+admission), turn $(i,j)$ has
+\begin{equation}\label{L6:eq:work}
+  S_{ij}=P(n_{ij},K_{ij})+(1-H_{ij})\,\Delta S(K_{ij}),\qquad
+  X_{ij}=x_0+\frac{\kappa T_{ij}}{B},\qquad D_{ij}=o_{ij},\qquad c_{ij}=\kappa T_{ij},
+\end{equation}
+the prefill work in seconds ($P$ and $\Delta S(K)=aK+bK^2/2$ as in
+\cref{L5:def:replica,cor:price-mono}), the link work in seconds, the decode work in
+tokens, and the footprint in bytes on either instance. A batch of $m$ decodes takes
+$\tau(m)$ seconds per step, so $\varphi(m)=m/\tau(m)$ tokens per second.
 \end{definition}
 
-\paragraph{Costs.} Prefilling $n$ new tokens on a cached prefix of $K$ tokens takes
-\begin{equation}\label{L6:eq:prefill}
-  P(n,K)=a\,n+b\,n\,(K+n/2)
-\end{equation}
-seconds. A \term{hit} (the session's prefix is cached) costs $S^{\mathrm{hit}}=P(n,K)$; a
-\term{miss} costs $S^{\mathrm{miss}}=P(K+n,0)$, so the extra work of a miss is
-$\Delta S=aK+bK^2/2$ (\cref{cor:price-mono}). We write $S$ for the prefill work of a turn,
-$h$ for the hit rate and $\rho_P=\lambda\E[S]$ for the prefill load, with $\lambda$ the turn
-rate. A transfer of $T_i$ tokens needs
-\begin{equation}\label{L6:eq:transfer}
-  X_i=x_0+\frac{\kappa\,T_i}{B}
-\end{equation}
-seconds of the link, with $x_0$ a fixed overhead, $\kappa$ the KV bytes per token and $B$
-the bandwidth; the link load is $\rho_L=\lambda\E[X]$. Decoding $o_i$ tokens is a demand
-$D_i$ at the decode batch. If every context needs about $c$ bytes, instance
-$j\in\{P,D\}$ has $m_j=\lfloor M_j/c\rfloor$ memory slots, and its admission station is the
-multi-server queue of \cref{prop:mmm} with service time equal to the holding time
-(prefill plus transfer at the prefill instance, decode at the decode instance).
+\begin{definition}[Path of a turn]\label{L6:def:path}
+\begin{enumerate}[label=(\roman*)]
+\item A turn waits in arrival order at the prefill pool until $c=\kappa T$ bytes of
+  running turns' allocations are free. Cached bytes are evicted as needed and never
+  block admission. At admission the turn uses its own cached prefix if it survived;
+  a hit is all or nothing.
+\item It receives $S$ seconds of FIFO prefill, which produces the first token, and
+  $X$ seconds of link work. It then releases its prefill allocation and leaves its
+  $\kappa T$ bytes cached. Ending a session does not erase this prefix.
+\item It waits in the same way for $c$ bytes at the decode pool, receives $D$ tokens of
+  processor-sharing decode, and releases the allocation.
+\item With probability $p<1$ the session calls a tool and submits another turn;
+  otherwise it ends. So the number of turns $J$ has $\E[J]=1/(1-p)$.
+\end{enumerate}
+A FIFO stage serves only its first turn, at rate one; a PS stage with $m$ turns serves
+each at rate $\varphi(m)/m$; the tool serves at rate one without waiting. Allocated plus
+cached bytes never exceed a pool.
+\end{definition}
 
-\paragraph{What the time to first token contains.} Define TTFT here as the time to first-token production at the
-prefill instance. Under this observation endpoint,
-\[
-  \mathrm{TTFT}=W^M_P+W_P+S,
-\]
-the wait for a memory slot at the prefill instance, the wait for the prefill server,
-and the prefill itself. The transfer and the decode do not enter it: they delay the
-second token and every later one. They matter for the TTFT only through memory, since a
-slot at the prefill instance stays held until the transfer has finished.
-A client that receives its first token only after a handoff also pays the
-link and destination wait. That delivery metric has a different decomposition.
+The executable transfer of \cref{app:serq} reserves the decode pool before the
+transfer, which changes how long each pool is held.
 
-The variance split is already proved in \cref{L5:lem:split}; it applies to the prefill work here under the same binary-mixture assumptions.
+\section{Sample paths}\label{L6:sec:paths}
+
+Number the turns in order of arrival at the prefill pool, and let turn $k$ of session
+$\sigma(k)$ have the epochs
+$a_k\le\alpha_k\le s_k\le f_k\le e_k\le\alpha'_k\le d_k$: arrival, admission, start and
+end of prefill, end of transfer, admission at decode, and end of decode. Let
+$R_P(t)=\{k:\alpha_k\le t<e_k\}$ be the turns holding prefill memory. Then
+(\cref{L6:ex:paths})
+\begin{align}
+  \alpha_k&=\inf\Bigl\{t\ge\max(a_k,\alpha_{k-1}):
+      \textstyle\sum_{l\in R_P(t)}c_l+c_k\le M_P\Bigr\},\label{L6:eq:admitP}\\
+  s_k&=\max(\alpha_k,f_{k-1}),\qquad f_k=s_k+S_k,\label{L6:eq:lindley}\\
+  a_{k^+}&=d_k+Z_k\quad\text{if the session continues},\label{L6:eq:feedback}
+\end{align}
+where $k^+$ is the next turn of $\sigma(k)$. \Cref{L6:eq:lindley} is the FIFO recursion
+of \cref{sec:L3,sec:L4}, and \eqref{L6:eq:feedback} is the closed loop. If the system
+is stable, the turn rate is still fixed by the session rate,
+$\lambda=\Lambda\E[J]=\Lambda/(1-p)$. The link and decode batch are PS stations, the
+tool a delay station, and each pool a slot queue (\cref{L2:sec:mmm}) with
+$m_j=\lfloor M_j/c\rfloor$ slots; a prefill slot is held through the transfer, until
+$e_k$.
+
+\paragraph{The cache chooses the prefill work.} The eviction order decides $H_k$, so
+with hit rate $h=\E[H]$
+\begin{equation}\label{L6:eq:ES}
+  \E[S]=\E\bigl[P(n,K)\bigr]+\E\bigl[(1-H)\,\Delta S(K)\bigr],
+\end{equation}
+and only the second term depends on the policy. \Cref{L5:lem:split} splits the
+variance of this work.
+
+\paragraph{Performance.} The first token appears when the prefill ends, so
+\begin{equation}\label{L6:eq:ttft}
+  \mathrm{TTFT}_k=f_k-a_k
+  ={\underbrace{(\alpha_k-a_k)}_{W^M_{P,k}}}
+  +{\underbrace{(s_k-\alpha_k)}_{W_{P,k}}}+S_k ,
+\end{equation}
+the wait for prefill memory, the wait for the prefill server ($W_P$ is its mean), and
+the prefill work. Transfer and decode reach the TTFT only through memory, because a
+prefill slot is held until $e_k$. A client that sees its first token only after the
+handoff also waits for the link and the decode pool. No stage is stable unless
+\begin{equation}\label{L6:eq:stable}
+  \rho_P=\lambda\,\E[S]<1,\qquad \rho_L=\lambda\,\E[X]<1,\qquad
+  \lambda\,\E[D]<\max_{m\le m_D}\varphi(m),
+\end{equation}
+and by \eqref{L6:eq:ES} the first condition already depends on the eviction policy.
 
 \section{Three prices}\label{L6:sec:prices}
 
@@ -81,7 +184,9 @@ $[\lambda\sum_iq_i\Phi_i,\ \frac{1-\rho_P}{1-\rho_P'}\lambda\sum_iq_i\Phi_i]$, w
 The middle term is the head-of-line term: every turn that arrives while the miss is
 prefilled waits for all of it.
 
-\paragraph{(b) A miss at the decode instance.} If the decode instance still holds the
+\paragraph{(b) A miss at the decode instance.} The path of \cref{L6:def:path} sends
+the whole context every turn. Suppose now that the decode instance also keeps the KV
+of paused sessions. If it still holds the
 session's KV from its previous turn, the next turn transfers only its new tokens,
 $T_i=n_i$; if not, it transfers the whole context, $T_i=K_i+n_i$. A decode-side miss
 therefore adds $\Delta X_i=\kappa K_i/B$ of link work.
@@ -122,16 +227,16 @@ At a decision epoch each instance holds KV for a set of paused sessions. Session
 holds $c_i$ bytes, resumes with probability $p_i$ after an expected further $\tau_i$
 seconds, and its next turn pays $\Phi_i$ if its prefix is not in the prefill instance's
 cache and $\Phi^X_i$ if its KV is not at the decode instance. With indicators
-$x^P_i,x^D_i\in\{0,1\}$ of ``keep'' at each instance and byte-second budgets $B_P$ and
-$B_D$, the keep-or-drop problem is
+$x^P_i,x^D_i\in\{0,1\}$ of ``keep'' at each instance and byte-second budgets $\mathcal B_P$ and
+$\mathcal B_D$, the keep-or-drop problem is
 \begin{equation}\label{L6:eq:primal}
   \mathrm{OPT}=\min_{x^P,x^D}\ \sum_i\bigl[(1-x^P_i)\,p_i\Phi_i+(1-x^D_i)\,p_i\Phi^X_i\bigr]
-  \quad\text{s.t.}\quad \sum_ic_i\tau_ix^P_i\le B_P,\ \ \sum_ic_i\tau_ix^D_i\le B_D .
+  \quad\text{s.t.}\quad \sum_ic_i\tau_ix^P_i\le \mathcal B_P,\ \ \sum_ic_i\tau_ix^D_i\le \mathcal B_D .
 \end{equation}
 Relaxing the two constraints with multipliers $\theta_P,\theta_D\ge0$, the
 \term{shadow prices} of a byte-second at each instance, gives the Lagrangian
 $\mathcal{L}=\sum_i[(1-x^P_i)p_i\Phi_i+(1-x^D_i)p_i\Phi^X_i]
-+\theta_P(\sum_ic_i\tau_ix^P_i-B_P)+\theta_D(\sum_ic_i\tau_ix^D_i-B_D)$.
++\theta_P(\sum_ic_i\tau_ix^P_i-\mathcal B_P)+\theta_D(\sum_ic_i\tau_ix^D_i-\mathcal B_D)$.
 
 \begin{proposition}[One price per pool]\label{L6:prop:shadow}
 Let $u^P_i=p_i\Phi_i/(c_i\tau_i)$ and $u^X_i=p_i\Phi^X_i/(c_i\tau_i)$.
@@ -145,7 +250,7 @@ Let $u^P_i=p_i\Phi_i/(c_i\tau_i)$ and $u^X_i=p_i\Phi^X_i/(c_i\tau_i)$.
 \end{proposition}
 
 \begin{proof}
-(i) $\mathcal{L}=\sum_ip_i(\Phi_i+\Phi^X_i)-\theta_PB_P-\theta_DB_D
+(i) $\mathcal{L}=\sum_ip_i(\Phi_i+\Phi^X_i)-\theta_P\mathcal B_P-\theta_D\mathcal B_D
 +\sum_ix^P_i(\theta_Pc_i\tau_i-p_i\Phi_i)+\sum_ix^D_i(\theta_Dc_i\tau_i-p_i\Phi^X_i)$ is
 separable: each $x^P_i$ is best set to 1 exactly when $\theta_Pc_i\tau_i<p_i\Phi_i$, that
 is $u^P_i>\theta_P$, and likewise each $x^D_i$. For a feasible $(x^P,x^D)$ both brackets
@@ -159,7 +264,7 @@ This is the threshold rule of \cref{thm:threshold}, once per pool: each instance
 what is worth more per byte-second than its own memory.
 
 \begin{corollary}[Free transfer]\label{L6:cor:free-transfer}
-As $B\to\infty$, $\Phi^X_i\to0$ for every session, so for any $\theta_D>0$ the decode
+As the link bandwidth $B\to\infty$, $\Phi^X_i\to0$ for every session, so for any $\theta_D>0$ the decode
 instance keeps nothing for paused sessions, and all of $M_D$ serves running decodes.
 \end{corollary}
 
@@ -181,17 +286,12 @@ changes those prices and is treated below.
 
 \section{How many sessions to admit}\label{L6:sec:admit}
 
-Two memory quantities decide admission. The running turns at each instance occupy slots:
-with exponential holding times the wait for a slot is the Erlang C wait of
-\cref{prop:mmm}, and it grows without bound as the offered load of slots approaches
-$m_j$. The paused sessions occupy the prefix cache: with sessions arriving as a Poisson
-process of rate $\Lambda$, living for $T_s$ and holding $K(t)$ tokens at age $t$, the mean
-resident KV is $\kappa\Lambda\E[\int_0^{T_s}K(t)\dd t]$ (\cref{cor:resident-kv}), which
-exceeds the naive product whenever long contexts belong to long sessions. The admission
-step caps the live sessions near the number at which this estimate fills the prefix
-cache, and holds the rest in an entry queue. The cap has a price of its own, the wait at
-the entry queue: a session is worth admitting while the memory it will hold, priced at
-$\theta_P$ per byte-second, costs less than that wait.
+The admission rule of \cref{L5:sec:scheduler} applies with two changes. First, each
+instance has its own slot queue: with exponential holding times the wait for a slot is
+the Erlang C wait of \cref{prop:mmm}, which grows without bound as the offered load of
+slots approaches $m_P$ or $m_D$. Second, the Campbell estimate of resident KV
+(\cref{cor:resident-kv}) is compared with the prefix cache of the prefill instance,
+and memory is priced at $\theta_P$.
 
 \section{Misses that feed themselves}\label{L6:sec:feedback}
 
@@ -216,10 +316,9 @@ its cached blocks stay evictable) has the wait channel. An engine that pins the
 prefix when the turn arrives has survival $G(Z;h)$ instead of $G(Z+W(h);h)$, a larger
 value for every $h$, but it holds the pinned bytes and so lowers $G$ for the other
 paused prefixes; the comparison of \cref{L6:prop:tarski}(ii) applies only when the
-first effect dominates. This comparison is conditional on the survival laws. Pinning can protect a
-waiting prefix while reducing the capacity available to others, so no universal
-improvement follows from the language change alone. A numerical cliff must be
-recomputed with the stated program, workload, memory capacity and release.
+first effect dominates. Pinning thus helps the pinned turn and hurts the other paused
+sessions. Which effect wins depends on the survival laws, so it must be computed for a
+given workload and memory size.
 
 $H$ is nondecreasing: if $h\le h'$ then $W(h)\ge W(h')$, so
 $G(Z+W(h);h)\le G(Z+W(h');h)\le G(Z+W(h');h')$ for every $Z$, and taking expectations
@@ -231,8 +330,8 @@ Let $H:[0,1]\to[0,1]$ be nondecreasing.
 \item $\bar h=\sup\{x:x\le H(x)\}$ is an equilibrium, and every equilibrium is at most
   $\bar h$; $\underline h=\inf\{x:H(x)\le x\}$ is an equilibrium, and every
   equilibrium is at least $\underline h$.
-\item If $K:[0,1]\to[0,1]$ is nondecreasing and $H\le K$ pointwise, then
-  $\bar h_H\le\bar h_K$ and $\underline h_H\le\underline h_K$.
+\item If $\tilde H:[0,1]\to[0,1]$ is nondecreasing and $H\le\tilde H$ pointwise, then
+  $\bar h_H\le\bar h_{\tilde H}$ and $\underline h_H\le\underline h_{\tilde H}$.
 \end{enumerate}
 \end{proposition}
 
@@ -243,9 +342,9 @@ an upper bound of $A$ and $\bar h\le H(\bar h)$. Then $H(\bar h)\le H(H(\bar h))
 $H(\bar h)\in A$ and $H(\bar h)\le\bar h$. Hence $H(\bar h)=\bar h$. Every equilibrium lies
 in $A$, so it is at most $\bar h$. The argument for $\underline h$ is the mirror image
 with $B=\{x:H(x)\le x\}\ni1$ and infima.
-(ii) $\bar h_H=H(\bar h_H)\le K(\bar h_H)$, so $\bar h_H$ lies in the set $A$ of $K$, and
-$\bar h_H\le\bar h_K$. Likewise $H(\underline h_K)\le K(\underline h_K)=\underline h_K$
-puts $\underline h_K$ in the set $B$ of $H$, so $\underline h_H\le\underline h_K$.
+(ii) $\bar h_H=H(\bar h_H)\le\tilde H(\bar h_H)$, so $\bar h_H$ lies in the set $A$ of $\tilde H$, and
+$\bar h_H\le\bar h_{\tilde H}$. Likewise $H(\underline h_{\tilde H})\le\tilde H(\underline h_{\tilde H})=\underline h_{\tilde H}$
+puts $\underline h_{\tilde H}$ in the set $B$ of $H$, so $\underline h_H\le\underline h_{\tilde H}$.
 \end{proof}
 
 A larger prefix cache raises $G$ and so $H$, and by (ii) it raises both extremal
@@ -259,16 +358,16 @@ $\lambda\E[S_h]\ge1$, and $G(\infty;h)=0$.
 \item If $\lambda\,\E[S^{\mathrm{miss}}]\ge1$, then $H(0)=0$, and every $h$ at which the
   instance is overloaded is mapped to 0, which is mapped to itself: all-miss attracts
   the overloaded hit rates.
-\item If moreover $H(a)\ge a$ for some $a>0$, the least equilibrium is 0 and the
-  greatest is at least $a$: the instance has two distinct extremal equilibria.
+\item If moreover $H(h_1)\ge h_1$ for some $h_1>0$, the least equilibrium is 0 and the
+  greatest is at least $h_1$: the instance has two distinct extremal equilibria.
 \end{enumerate}
 \end{proposition}
 
 \begin{proof}
 (i) At $h=0$ every turn misses, the load is $\lambda\E[S^{\mathrm{miss}}]\ge1$, so
 $W(0)=\infty$ and $H(0)=G(\infty;0)=0$. At an overloaded $h$, $H(h)=0$ in the same way,
-and $H(0)=0$. (ii) 0 is an equilibrium, so $\underline h\le0$; and $a\in A$, so
-$\bar h\ge a$ by \cref{L6:prop:tarski}.
+and $H(0)=0$. (ii) 0 is an equilibrium, so $\underline h\le0$; and $h_1\in A$, so
+$\bar h\ge h_1$ by \cref{L6:prop:tarski}.
 \end{proof}
 
 In a closed system the population bounds the wait and removes this mechanism for $H(0)=0$,
@@ -278,9 +377,9 @@ load, is classical in paging systems; the admission cap of \cref{L6:sec:admit} i
 cure here.
 
 \begin{example}[Two equilibria and a cap]\label{L6:ex:bistable}
-Take deterministic $S^{\mathrm{hit}}=0.5$\,s, $S^{\mathrm{miss}}=5$\,s, $Z=7$\,s and the
+Take deterministic $S^{\mathrm{hit}}=0.5$\,s, $S^{\mathrm{miss}}=5$\,s, a deterministic think time $Z=7$\,s and the
 wait channel alone, $G(T)=e^{-T/60\,\mathrm{s}}$, with the Pollaczek--Khinchine wait. At
-$\lambda=0.25$/s the all-miss load is $1.25$, $H=0$ on $[0,2/9)$, and a grid search finds
+$\lambda=0.25$/s the all-miss load is $1.25$, $H=0$ on $[0,2/9]$, and a grid search finds
 three equilibria: 0 (stable), about 0.250 (unstable, slope $H'\approx12$) and about
 0.882 (stable, slope 0.07). At $\lambda=0.18$/s the all-miss load is $0.9$ and the only
 equilibrium is about 0.885. Lowering the load removes the collapse without moving the
@@ -288,20 +387,15 @@ good equilibrium much.
 \end{example}
 
 \begin{proposition}[The forced-miss multiplier]\label{L6:prop:multiplier}
-Let $H(h)=c+kh$ near an equilibrium, with $c\ge0$ and $0\le k<1$, so $h_0=c/(1-k)$, and
+Let $H(h)=\nu+kh$ near an equilibrium, with $\nu\ge0$ and $0\le k<1$, so $h_0=\nu/(1-k)$, and
 force a fraction $\delta\in[0,1]$ of turns to miss, so the realised hit rate is
-$(1-\delta)H(h)$. The new equilibrium is $h_\delta=(1-\delta)c/(1-(1-\delta)k)$, and
+$(1-\delta)H(h)$. The new equilibrium is $h_\delta=(1-\delta)\nu/(1-(1-\delta)k)$, and
 \[
-  h_0-h_\delta=\frac{\delta\,c}{(1-k)(1-(1-\delta)k)}\ \ge\ \delta\,h_0 .
+  h_0-h_\delta=\frac{\delta\,\nu}{(1-k)(1-(1-\delta)k)}\ \ge\ \delta\,h_0 .
 \]
 \end{proposition}
 
-\begin{proof}
-$h_\delta(1-(1-\delta)k)=(1-\delta)c$ is the equation $h=(1-\delta)(c+kh)$. Over the
-common denominator $(1-k)(1-(1-\delta)k)$ the numerator of $h_0-h_\delta$ is
-$c(1-(1-\delta)k)-(1-\delta)(1-k)c=\delta c$. The inequality is
-$1/(1-(1-\delta)k)\ge1$, true since $(1-\delta)k\ge0$.
-\end{proof}
+\begin{proof}See \cref{L6:ex:multiplier}.\end{proof}
 
 To first order in $\delta$ a forced miss converts a would-be hit with probability $h_0$
 and induces $h_0k/(1-k)$ further misses on other turns, each with its own price, so its
@@ -313,31 +407,46 @@ the comparisons with $\theta_P$ (keep or drop, admit).
 
 \section{What is exact and what is approximate}\label{L6:sec:honest}
 
+The list of \cref{L5:sec:honest} applies. In addition,
+\cref{L6:prop:link-price,L6:prop:shadow,L6:prop:tarski,L6:prop:collapse,L6:prop:multiplier}
+are exact given the model. The new modelling choices are the link as fair bandwidth
+sharing (a transfer engine that sends in arrival order would add a head-of-line term
+to \cref{L6:prop:link-price}) and a single survival law with the mean wait in the
+feedback map. The link constants $x_0$, $\kappa$ and $B$ must be measured, and the
+survival law $G$ estimated from the workload.
+
+\section{Summary}
 \begin{itemize}
-\item \emph{Exact, given the model:} the price bracket (\cref{thm:price}), the prices at
-  processor-sharing stations (\cref{prop:decode-price,L6:prop:link-price}), the
-  monotonicity of the decode batch (\cref{thm:L-mono}), the finite-population
-  inequalities (\cref{prop:finite}), the price-blind bounds (\cref{prop:blind}), and
-  \cref{L6:prop:shadow,L5:prop:hold,L6:prop:tarski,L6:prop:collapse,L6:prop:multiplier}.
-\item \emph{Modelling choices:} the Poisson reading of turn arrivals, which the session
-  loop makes non-Poisson (\cref{prop:finite} shows the open formula overstates the wait
-  for exponential work); equal slot sizes (with unequal contexts a turn needs several
-  slots and the memory station has no closed form); the link as fair bandwidth sharing
-  (a transfer engine that sends in arrival order would add a head-of-line term to
-  \cref{L6:prop:link-price}); a single survival law and the mean wait in the feedback
-  map; and the pricing of one eviction, a transient event, by a stationary comparison.
-\item \emph{Estimates:} $p_i$, $\tau_i$ and $G$ must be predicted from a session's phase,
-  tool and history; $a$, $b$, $x_0$, $\kappa$, $B$ and $\varphi$ must be measured on the
-  instances.
+\item A transfer miss is priced exactly by insensitivity and grows linearly in the context; a prefill miss grows quadratically and has a head-of-line term.
+\item Each pool has its own shadow price, and a decode cache is worth only the transfers it saves.
+\item The hit rate is also an output: overload can add an all-miss equilibrium, and an admission cap removes it.
 \end{itemize}
 
 \section{Exercises}
 
+\begin{exercise}\label{L6:ex:paths}
+Derive \eqref{L6:eq:admitP}--\eqref{L6:eq:feedback} from \cref{L6:def:path}. Why can
+turn $k$ be admitted only after turn $k-1$, and why does it reach the prefill server in
+arrival order? Which steps take zero time?
+\emph{Hint:} admission is in arrival order, and a FIFO stage serves only its first turn.
+\end{exercise}
 
+\begin{exercise}\label{L6:ex:nocache}
+Disable prefix caching in the model of \cref{L6:def:path}. Show from
+\cref{L6:def:path} that every turn then has $H_k=0$, and compute $\E[S]$ from
+\eqref{L6:eq:ES}. Which of the conditions \eqref{L6:eq:stable} becomes harder to meet?
+\end{exercise}
 
 \begin{exercise}\label{L6:ex:compare}
 A session with context $K$ is paused at both instances. Using \cref{L6:prop:shadow},
 show that for $K$ large enough it is kept at the prefill instance whenever it is kept at
 the decode instance, if $\theta_P=\theta_D$ and $b>0$.
 \emph{Hint:} $\Phi_i\ge\Delta S_i\ge bK^2/2$ grows quadratically, $\Phi^X_i$ linearly in $K$.
+\end{exercise}
+
+\begin{exercise}\label{L6:ex:multiplier}
+Prove \cref{L6:prop:multiplier}: $h_\delta$ solves $h=(1-\delta)(\nu+kh)$. Then take $k=0.5$ and $h_0=0.8$. Force $\delta=0.1$ of the turns
+to miss. Compute $h_\delta$ and compare the loss $h_0-h_\delta$ with the direct loss
+$\delta h_0$. How does the ratio behave as $k\uparrow1$?
+\emph{Hint:} the ratio is $1/(1-(1-\delta)k)$.
 \end{exercise}

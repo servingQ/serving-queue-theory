@@ -5,7 +5,7 @@ outside population, leave after service, and the arrival rate does not change
 when the queue is long. Agent sessions are different. A session submits a turn,
 receives the response, runs a tool, and only then submits its next turn. A
 waiting session cannot create a new turn, so the longer the queue, the fewer the
-arrivals. This lecture treats this \emph{closed} structure
+arrivals. This chapter treats this \emph{closed} structure
 (\cref{L4:sec:closed}), computes the mean memory held by sessions
 (\cref{L4:sec:campbell}), and solves the combinatorial optimisation problem of
 what to drop when memory runs short (\cref{L4:sec:knapsack}).
@@ -84,12 +84,10 @@ both are probability distributions they are equal.
 \begin{remark}[Back to PASTA as $N\to\infty$]\label{L4:rem:arrival-limit}
 Fix $\lambda>0$ and $\mu>\lambda$, and let the think time grow with the population,
 $Z=N/\lambda$, so that the total arrival rate when all sessions think stays $\lambda$.
-Then $\pi_N(n)\propto\frac{N!}{(N-n)!\,N^n}\rho^n$ with $\rho=\lambda/\mu$, and
-$\frac{N!}{(N-n)!\,N^n}=\prod_{k<n}(1-k/N)$ lies in $[0,1]$ and tends to $1$. By
-dominated convergence (with dominating sequence $\rho^n$) both $\pi_N$ and
-$\pi_{N-1}$ converge to the M/M/1 law $(1-\rho)\rho^n$. So in the limit the law seen
-by an arriving turn equals the time-average law: this is PASTA. For a finite $N$ the
-arrival theorem measures exactly how far the closed system is from that limit.
+Then $\pi_N$ and $\pi_{N-1}$ both converge to the M/M/1 law $(1-\rho)\rho^n$
+(\cref{L4:ex:limit}), so in the limit an arriving turn sees the time-average law: this
+is PASTA. For finite $N$ the arrival theorem measures how far the closed system is from
+that limit.
 \end{remark}
 
 The arrival theorem lets us solve a closed system by recursion on the number of
@@ -121,27 +119,27 @@ substitution gives the remaining formulas.
 \end{proof}
 
 \begin{proposition}[Finite population]\label{prop:finite}
-Let $c=\mu Z>0$ and define $Q_n$ by the recursion of \cref{thm:mva}.
+Let $\gamma=\mu Z>0$ and define $Q_n$ by the recursion of \cref{thm:mva}.
 \begin{enumerate}[label=(\roman*)]
 \item $Q_n$ is nondecreasing in $n$, $0\le Q_n\le n$, and $Q_n$ is nonincreasing
-  in $c$. Moreover $\rho_N<1$ for all $N\ge1$.
+  in $\gamma$. Moreover $\rho_N<1$ for all $N\ge1$.
 \item $W_N\le\rho_N/(\mu(1-\rho_N))$. The right side is the open M/M/1 waiting
   time at the same utilisation (\cref{prop:mm1}).
 \end{enumerate}
 \end{proposition}
 
 \begin{proof}
-Put $g_c(q)=(1+q)/(c+1+q)$, so that $Q_n=n\,g_c(Q_{n-1})$. On $q\ge0$, $g_c$ is
-nondecreasing in $q$, nonincreasing in $c$, and $0<g_c\le1$.
+Put $g_\gamma(q)=(1+q)/(\gamma+1+q)$, so that $Q_n=n\,g_\gamma(Q_{n-1})$. On $q\ge0$, $g_\gamma$ is
+nondecreasing in $q$, nonincreasing in $\gamma$, and $0<g_\gamma\le1$.
 
-(i) $0\le Q_n\le n$ follows by induction from $g_c\le 1$. $Q_1=g_c(0)\ge0=Q_0$,
-and if $Q_n\ge Q_{n-1}$ then $Q_{n+1}=(n+1)g_c(Q_n)\ge n\,g_c(Q_{n-1})=Q_n$.
-For $c\le c'$, assuming $Q_{n-1}(c')\le Q_{n-1}(c)$,
-$Q_n(c')=n\,g_{c'}(Q_{n-1}(c'))\le n\,g_{c'}(Q_{n-1}(c))\le n\,g_c(Q_{n-1}(c))=Q_n(c)$.
-$\rho_N<1$ is equivalent to $Q_{N-1}>N-1-c$, so it suffices to show $Q_n>n-c$ for
-all $n\ge0$ by induction. For $n=0$ this is $0>-c$, and a computation gives
+(i) $0\le Q_n\le n$ follows by induction from $g_\gamma\le 1$. $Q_1=g_\gamma(0)\ge0=Q_0$,
+and if $Q_n\ge Q_{n-1}$ then $Q_{n+1}=(n+1)g_\gamma(Q_n)\ge n\,g_\gamma(Q_{n-1})=Q_n$.
+For $\gamma\le \gamma'$, assuming $Q_{n-1}(\gamma')\le Q_{n-1}(\gamma)$,
+$Q_n(\gamma')=n\,g_{\gamma'}(Q_{n-1}(\gamma'))\le n\,g_{\gamma'}(Q_{n-1}(\gamma))\le n\,g_\gamma(Q_{n-1}(\gamma))=Q_n(\gamma)$.
+$\rho_N<1$ is equivalent to $Q_{N-1}>N-1-\gamma$, so it suffices to show $Q_n>n-\gamma$ for
+all $n\ge0$ by induction. For $n=0$ this is $0>-\gamma$, and a computation gives
 \[
-  Q_{n+1}-(n+1-c)=\frac{c\,(Q_n+c-n)}{c+1+Q_n}>0 .
+  Q_{n+1}-(n+1-\gamma)=\frac{\gamma\,(Q_n+\gamma-n)}{\gamma+1+Q_n}>0 .
 \]
 
 (ii) Since $\rho_N<1$, the inequality is equivalent to
@@ -150,7 +148,7 @@ $Q_{N-1}(1-\rho_N)\le\rho_N$, that is, $Q_{N-1}\le\rho_N(1+Q_{N-1})=Q_N$, which 
 \end{proof}
 
 \begin{example}\label{L4:ex:two}
-With $N=2$ and $Z=2/\mu$ ($c=2$), $Q_1=1/3$, $\rho_2=2/(3+1/3)=3/5$ and
+With $N=2$ and $Z=2/\mu$ ($\gamma=2$), $Q_1=1/3$, $\rho_2=2/(3+1/3)=3/5$ and
 $W_2=1/(3\mu)$. The open formula at the same utilisation gives
 $\rho_2/(\mu(1-\rho_2))=3/(2\mu)$, which is $4.5$ times the actual wait.
 \end{example}
@@ -283,25 +281,19 @@ problem} is
   \min_{S\subseteq I}\ w(S):=\sum_{i\in S}w_i\quad\text{s.t.}\quad c(S):=\sum_{i\in S}c_i\ge\Delta C .
 \]
 Allowing $x\in[0,1]^I$ in place of $S$ and minimising $\sum w_ix_i$ subject to
-$\sum c_ix_i\ge\Delta C$ gives the \term{fractional version}. This relaxation assumes cost is linear in the evicted fraction. Block-based
-engines do not generally satisfy that assumption: losing one prefix block
-invalidates later blocks for reuse. We
-call $v_i=w_i/c_i$ the \term{price per byte}.
+$\sum c_ix_i\ge\Delta C$ gives the \term{fractional version}, which assumes that cost is
+linear in the evicted fraction. We call $v_i=w_i/c_i$ the \term{price per byte}.
 \end{definition}
 
-\paragraph{Tail blocks are not fractional items.}
-If $b_t$ tokens are dropped from the tail of a cached prefix of $K$ tokens,
-the additional prefill work is
+\paragraph{Tail blocks are not fractional items.} Engines evict blocks from the tail
+of a cached prefix, not whole programs. Dropping the last $d$ of $K$ cached tokens adds
 \[
- r_K(b_t)=a b_t+b\bigl(Kb_t-b_t^2/2\bigr),\qquad 0\le b_t\le K.
+  r_K(d)=P(n+d,K-d)-P(n,K)=a\,d+b\bigl(Kd-d^2/2\bigr),\qquad 0\le d\le K,
 \]
-This follows by subtracting $P(n,K)$ from $P(n+b_t,K-b_t)$.
-Its derivative $a+b(K-b_t)$ decreases with $b_t$, so the cost is concave,
-not proportional to the number of dropped blocks. The theorem below remains
-an exact statement about additive items and its linear relaxation; it does
-not prove that greedy block eviction is optimal. Price-blind comparisons
-still apply when either tail alone meets the required space; the factor-two
-shortest-first claim below concerns whole programs.
+of prefill work. The marginal cost $a+b(K-d)$ falls as $d$ grows, so the cost is
+concave in $d$, not linear. The threshold rule below is therefore exact for whole
+programs and for the linear relaxation, but it does not prove that greedy block
+eviction is optimal. \Cref{prop:blind} below also concerns whole programs.
 
 \begin{theorem}[Threshold rule \cite{dantzig1957}]\label{thm:threshold}
 \begin{enumerate}[label=(\roman*)]
@@ -401,16 +393,39 @@ Part (i) says that when resume probabilities differ between programs, no fixed
 key can stand in for the price. How large such differences are in practice is a
 question about the workload and must be measured.
 
+\section{Summary}
+\begin{itemize}
+\item In a closed system the arrival theorem replaces PASTA, and mean value analysis gives the mean queue; for exponential work the open formula overstates the wait.
+\item Campbell's formula gives the mean resident KV, above the naive product when long sessions have long contexts.
+\item Eviction is a covering knapsack: the threshold rule solves its fractional version, and a key blind to resume probabilities has no constant ratio.
+\end{itemize}
+
 \section{Exercises}
 
+\begin{exercise}\label{L4:ex:limit}
+Prove the limit in \cref{L4:rem:arrival-limit}.
+\emph{Hint:} with $Z=N/\lambda$, $\pi_N(n)\propto\frac{N!}{(N-n)!\,N^n}\rho^n$, and
+$\frac{N!}{(N-n)!\,N^n}=\prod_{k<n}(1-k/N)$ lies in $[0,1]$ and tends to $1$; use
+dominated convergence with $\rho^n$.
+\end{exercise}
+
 \begin{exercise}
-For $N=2$ and $c=\mu Z$, compute $\sum_nn\,\pi_2(n)$ directly from
+For $N=2$ and $\gamma=\mu Z$, compute $\sum_nn\,\pi_2(n)$ directly from
 \eqref{L4:eq:piN} and check that it equals $Q_2$ of \cref{thm:mva}.
-\emph{Hint:} $G_2=1+2/c+2/c^2$.
+\emph{Hint:} $G_2=1+2/\gamma+2/\gamma^2$.
 \end{exercise}
 
 \begin{exercise}
 Show that the stationary mean number of customers in M/G/$\infty$ is $\lambda\E[S]$
 without using \cref{L4:prop:mginf}.
 \emph{Hint:} at a delay station $W=\E[S]$, so use Little's law.
+\end{exercise}
+
+\begin{exercise}\label{L4:ex:growing}
+Sessions arrive at rate $\Lambda$ and live for $T_s$. A session's context grows
+linearly, $K(u)=k_0+gu$ at age $u$. Use \cref{cor:resident-kv} to show that the mean
+resident KV is $\kappa\Lambda\bigl(k_0\E[T_s]+g\E[T_s^2]/2\bigr)$. For exponential $T_s$,
+compare it with the naive estimate $\kappa\Lambda\E[T_s]\,(k_0+g\E[T_s]/2)$, which uses
+the mean lifetime alone.
+\emph{Hint:} $\E[T_s^2]=2\E[T_s]^2$ for an exponential lifetime.
 \end{exercise}

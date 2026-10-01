@@ -1,52 +1,50 @@
 \appendix
-\chapter{Release Verification}
+\chapter{Executable Examples in serQ}\label{app:serq}
 
-The executable examples target serQ v0.1.0, commit
-\texttt{f9fe9f2}, with IR version 9. The accompanying verifier runs
-four FIFO service laws, three PS service laws, three finite-population
-sizes, four PD bottleneck configurations, and three seeds of the
-continuous tandem. It also recomputes the feedback example's roots and
-checks the step-engine miss-price approximation.
+The examples accompanying these notes are programs in serQ v0.1.0 (IR version 9,
+commit \texttt{f9fe9f2}). A serQ program declares memory pools, service stages, a
+workload and a server block. Running it simulates the deployment; it does not measure
+a real serving system. Each stage kind is one of the queues of the notes.
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+serQ & Queue & Where \\
+\midrule
+\texttt{stage s : fifo;} & single FIFO server & \cref{sec:L3} \\
+\texttt{stage s : ps(f);} & processor sharing with capacity $f$ & \cref{sec:L2} \\
+\texttt{stage s : delay;} & delay station & \cref{sec:L4} \\
+\texttt{stage s : step \{\dots\}} & engine iterations with a token budget & \cref{sec:L5} \\
+\texttt{hold}, \texttt{reserve} & a pool allocation and its admission gate & \cref{L2:sec:mmm} \\
+\texttt{transfer} & KV transfer over a link & \cref{sec:L6} \\
+\bottomrule
+\end{tabular}
+\end{center}
+For example, \texttt{stage decode : ps(min(present, 16));} is a batch whose capacity
+grows with the number \texttt{present} of turns up to $16$. A step stage schedules
+tokens per iteration with a \texttt{budget}, a \texttt{cost} and a \texttt{serve} order;
+a FIFO prefill order must be chosen there, since chunking alone does not give it.
 
-\paragraph{Results that retain their assumptions.} PK, PS insensitivity,
-finite-source MVA and the PD bottleneck formula agree with the simulations
-within the verifier's stated finite-run tolerances. The feedback example
-still has equilibria $0$, approximately $0.250$ and $0.882$ at
-$\lambda=0.25$/s, and approximately $0.885$ at $\lambda=0.18$/s.
-The step-engine test compares increased prefill occupancy with the FIFO
-bracket at mean prefill availability. That is a check of an approximation,
-not a proof that the engine is M/G/1. Its decode occupancy changes slightly
-because prefill affects shared iteration time.
+The programs follow engine rules that the analytical models leave out. The
+executable \texttt{transfer} reserves the destination before it releases the source,
+unlike \cref{L6:def:path}. Allocations round up to whole blocks and cached prefixes round
+down, so a partial hit has its own work law (\cref{L5:rem:partial}). A preempted decode
+keeps its generated tokens and re-prefills only lost KV. Ending a session does not
+remove its cached blocks.
 
-\paragraph{A changed result in the previous PD example.} The old PS
-capacity expression used a name that also denoted the workload's appended
-token count. The interpreter resolved it as that attribute, rather than
-as the number at the station, giving almost every decode the full capped
-throughput even when alone. Using \texttt{present} in
-\texttt{ps(min(present,16))} restores the stated model. A turn with
-mean decode work $200\times0.0002=0.04$ seconds cannot receive service in
-about $0.0025$ seconds at a per-turn rate of at most one.
-The table is generated from three matched seeds of the preceding example
-and its serQ v0.1.0 port; it contains simulated means, not measurements.
+\section{What to run and what it checks}
+
+\texttt{programs/lecture\_pd.sq} implements \cref{L6:def:path};
+\texttt{programs/vllm.sq} implements a step engine with vLLM's rules. From the
+repository root, \texttt{make lecture-results} runs the course checks, which compare
+simulations with Pollaczek--Khinchine, PS insensitivity, mean value analysis, the
+disaggregated bottlenecks, the equilibria of \cref{L6:ex:bistable}, and the price
+bracket on a step engine. Passing checks support the formulas in their stated models;
+they do not make a program a proved queue.
+
+\paragraph{A corrected result.} An earlier version of these notes ran the
+disaggregated example on the preceding serQ release, where the decode capacity used a
+name that the workload also used for a token count. Every decode then received the
+full capped throughput even when alone, which is impossible: mean decode work is
+$200\times0.0002=0.04$\,s, yet the decode took about $0.0025$\,s. The table gives
+simulated means over three matched seeds.
 \input{results}
-The prefill cost and TTFT remain close, while decode and whole-turn response
-change. Matching a few seeds does not establish equality of all trajectories.
-
-\paragraph{Results that need new interpretation.} A tail-block eviction has
-a concave recomputation cost, so the fractional-knapsack proof does not
-establish optimal block eviction. Partial reuse requires its own work
-moments. The explicit KV-transfer operation reserves the destination and
-releases the source after transfer; an ideal tandem that queues at the
-destination only afterwards has different holding times. A preempted decode
-retains generated tokens and re-prefills only lost KV. Waiting-prefix pinning
-can protect one turn while taking capacity from others, so its net effect
-requires the program and workload to be specified.
-
-\paragraph{Reproduction.} At the repository root, run
-\texttt{make lecture-results} for current-release checks.
-\texttt{scripts/check\_lecture\_results.py} optionally accepts a preceding
-runtime and its program directory to regenerate the comparison evidence
-and this table. The release's pool, PD-transfer, preemption and recorded
-vLLM-oracle tests check the underlying interpreter rules. The mathematical
-proofs in these notes establish results for their stated models; those tests
-do not turn every executable program into a formally proved queue.

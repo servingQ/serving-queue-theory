@@ -9,12 +9,15 @@ were removed. The public PDF, README and publication artifact now use
 
 Chapters 1–4 retain the common probability/queueing foundations once,
 including the primer's renewal-reward proof and the PD course's Erlang-C
-proof. Chapter 1 keeps both architectural diagrams and the PD sample-path
-derivation, stated as a continuous analytical model. Chapter 5 develops the
-colocated scheduler; chapter 6 adds the PD transfer price, two-pool shadow
-prices and feedback. The repeated variance split and holding-time proof
-were replaced by cross-references. All old Route/type/grammar exposition
-was removed; the course's executable language is serQ v0.1.0.
+proof. Chapter 1 keeps only the colocated picture. Chapter 5 develops the
+colocated scheduler. Chapter 6 opens with the disaggregated replica (figure,
+workload, costs, path of a turn, rules and sample-path equations, moved from
+chapter 1 on 2026-10-01) and then adds the transfer price, two-pool shadow
+prices and feedback. The appendix "Executable Examples in serQ" merges the
+former language subsection and release-verification appendix. Each chapter
+ends with a short summary; the front matter has a notation table. All old
+Route/type/grammar exposition was removed; the course's executable language
+is serQ v0.1.0.
 
 ## Release and reproducible checks
 
