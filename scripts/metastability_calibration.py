@@ -4,11 +4,15 @@
 (research/metastability-serq.json), then predict serQ's held-out burst
 recoveries.
 
-Two chains (scripts/metastability_ctmc.py): the processor-sharing chain of
-Definition 7.10, with vLLM's memory accounting (an admitted miss holds the
-prefix it recomputes, at most 16 admitted), and the FIFO-victim chain
-`build3_fifo` (one turn served at a time; the LRU victim is the next waiting
-turn in line with weight beta). Models and simulation, not measurements.
+Two chains (scripts/metastability_ctmc.py), each fitted over a grid of two
+parameters: the processor-sharing chain of the lecture's queue-and-cache
+definition, with vLLM's memory accounting (an admitted miss holds the prefix it
+recomputes, at most 16 admitted; the other waiting turns are still served by
+processor sharing, one reason it fails), and `build3_fifo` (one turn served at
+a time, the next one picked at random among the waiting turns unless an
+evicted turn waits at the head; a waiting prefix is LRU's victim with weight
+beta against a thinking one). The target is serQ's full-reuse hit rate; the
+held-out bursts are compared on serQ's 25 s windows. Models and simulation, not measurements.
 Writes research/metastability-calibration.json, lectures/queueing-serving/
 fig-meta-calibration.pdf and metastability-exp.tex (generated; do not edit).
   uv run --with numpy --with scipy --with matplotlib python scripts/metastability_calibration.py
@@ -29,16 +33,17 @@ from metastability_figs import BLUE, ORANGE, AQUA, INK, INK2, save
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'lectures/queueing-serving'
 
-# serQ's replica (programs/metastable.sq) in the chain's units. Engine seconds
-# per turn from the serQ report: utilisation / turn rate at Z = 4 s (hit 0.80)
-# and at Z = 1.5 s (hit 0.01, engine saturated) give S_hit and S_miss. Memory
-# in prefixes of K0 + n + o = 16 700 tokens: the pool is 34 000 x 16 tokens,
-# an admitted turn adds n + o = 700, and at most max_seqs = 16 are admitted.
-SQ = dict(N=40, sh=0.037, sm=0.336, C=34000 * 16 / 16700, a=700 / 16700, qcap=16)
+# serQ's replica (programs/metastable.sq) in the chain's units. S_hit and
+# S_miss: engine seconds per turn, solved from two loads of the serQ report
+# (scripts/metastability_serq.py). Memory in prefixes of K0 + n + o = 16 700
+# tokens: the pool is 34 000 x 16 tokens, an admitted turn adds n + o = 700,
+# and at most max_seqs = 16 are admitted.
+_ES = json.loads((ROOT / 'research/metastability-serq.json').read_text())['engine_seconds']
+SQ = dict(N=40, sh=_ES['S_hit'], sm=_ES['S_miss'], C=34000 * 16 / 16700, a=700 / 16700, qcap=16)
 
 
-def ps_chain(Z, C):
-    return mc.build3(SQ['N'], Z, C, SQ['a'], sh=SQ['sh'], sm=SQ['sm'], qcap=SQ['qcap'], miss_mem=True)
+def ps_chain(Z, C, a=SQ['a']):
+    return mc.build3(SQ['N'], Z, C, a, sh=SQ['sh'], sm=SQ['sm'], qcap=SQ['qcap'], miss_mem=True)
 
 
 def fifo_chain(Z, C, beta):
@@ -77,9 +82,20 @@ def fit(build, rates, Zs, target, grid):
     return min(rows, key=lambda r: r['rmse']), rows
 
 
-def burst_curve(build, rates, B_s, kw, Z=4.0, Zb=1.5, t1=1000.0, horizon=1600.0, dt=5.0):
+def recovery_on_windows(hit, win, t1, B_s, base):
+    """serQ's definition: the end of the first window starting at or after the
+    burst's end whose hit rate is within 0.05 of the baseline."""
+    end = t1 + B_s
+    for k, x in enumerate(hit):
+        if k * win >= end and x is not None and abs(x - base) <= 0.05:
+            return float((k + 1) * win - end)
+    return None
+
+
+def burst_curve(build, rates, B_s, kw, Z=4.0, Zb=1.5, t1=1000.0, horizon=1600.0, dt=5.0, win=25.0):
     """Expected hit share of completions for normal -> burst -> normal from the
-    stationary law at Z: the chain's version of serQ's burst runs."""
+    stationary law at Z: the chain's version of serQ's burst runs, also
+    averaged on serQ's windows."""
     st, idx, Q = build(Z, **kw)
     _, _, Qb = build(Zb, **kw)
     rh, rm = rates(st)
@@ -91,25 +107,29 @@ def burst_curve(build, rates, B_s, kw, Z=4.0, Zb=1.5, t1=1000.0, horizon=1600.0,
     rest = horizon - t1 - B_s
     seg = spl.expm_multiply(Q.T, seg[-1], start=0, stop=rest, num=int(rest / dt) + 1, endpoint=True)
     ts += list(t1 + B_s + np.linspace(0, rest, len(seg)))[1:]; ys += [share(v, rh, rm) for v in seg][1:]
-    end = t1 + B_s
-    rec = next((t - end for t, y in zip(ts, ys) if t > end and abs(y - base) <= 0.05), None)
-    return dict(t=[float(t) for t in ts], hit=ys, base=base, recovery_s=rec)
+    ts, ys = np.array(ts), np.array(ys)
+    nwin = int(horizon // win)
+    wins = [float(ys[(ts >= k * win) & (ts < (k + 1) * win)].mean()) if k * win >= t1 else base
+            for k in range(nwin)]
+    rec = recovery_on_windows(wins, win, t1, B_s, base)
+    return dict(t=ts.tolist(), hit=ys.tolist(), base=base, windows=wins, recovery_s=rec,
+                burst_min=float(ys[(ts > t1) & (ts <= t1 + B_s)].min()))
 
 
 def figure(Zs, target, ps_best, fifo_best, burst, serq):
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(6.6, 2.4))
     a1.plot(Zs, target, color=INK2, marker='o', ms=3, label='serQ (vLLM rules)')
     a1.plot(Zs, ps_best['pred'], color=AQUA, ls='--', label='PS chain, best fit')
-    a1.plot(Zs, fifo_best['pred'], color=BLUE, label='FIFO-victim chain, best fit')
+    a1.plot(Zs, fifo_best['pred'], color=BLUE, label='one-at-a-time chain, best fit')
     a1.set_xlabel('think time $Z$ (s)'); a1.set_ylabel('hit rate'); a1.legend(loc='lower right', fontsize=6)
     a1.set_title('(a) fitted on the load sweep', fontsize=8, color=INK, loc='left')
     for (Bs, cur), col in zip(burst.items(), [BLUE, ORANGE]):
-        a2.plot(cur['t'], cur['hit'], color=col, label=f'chain, burst {Bs} s')
+        a2.plot(np.arange(len(cur['windows'])) * 25 + 12.5, cur['windows'], color=col, label=f'chain, burst {Bs} s')
     for row, col in zip([r for r in serq['burst'] if r['B']], [BLUE, ORANGE]):
         w = row['window_s']; h = row['hit']
         a2.plot(np.arange(len(h)) * w + w / 2, h, color=col, ls=':', label=f"serQ, burst {row['B']} s")
     a2.set_xlim(950, 1500); a2.set_xlabel('time (s)'); a2.set_ylabel('hit rate')
-    a2.set_title('(b) held-out bursts', fontsize=8, color=INK, loc='left'); a2.legend(loc='lower right', fontsize=6)
+    a2.set_title('(b) held-out bursts, 25 s windows', fontsize=8, color=INK, loc='left'); a2.legend(loc='lower right', fontsize=6)
     save(fig, 'calibration')
 
 
@@ -119,9 +139,10 @@ def main():
     target = np.array([(r['cold']['hit'] + r['warm']['hit']) / 2 for r in serq['sweep']])
     t0 = time.perf_counter()
     ps_ab = sweep(ps_chain, ps_rates, Zs, C=SQ['C'])
-    ps_best, ps_rows = fit(ps_chain, ps_rates, Zs, target, [dict(C=C) for C in [30, 32.6, 35, 38, 41]])
+    ps_best, ps_rows = fit(ps_chain, ps_rates, Zs, target,
+                           [dict(C=C, a=a) for C in [30, 32.6, 35, 38, 41] for a in [0.04, 0.25, 0.5, 1.0]])
     fifo_best, fifo_rows = fit(fifo_chain, fifo_rates, Zs, target,
-                               [dict(C=C, beta=b) for C in [35, 36, 37, 38] for b in [3.0, 4.0, 6.0]])
+                               [dict(C=C, beta=b) for C in [35, 36, 37, 38, 39] for b in [4.0, 6.0, 8.0, 12.0]])
     kw = {k: fifo_best[k] for k in ['C', 'beta']}
     burst = {Bs: burst_curve(fifo_chain, fifo_rates, Bs, kw) for Bs in [60, 300]}
     seconds = time.perf_counter() - t0
@@ -132,6 +153,7 @@ def main():
                seconds=seconds)
     (ROOT / 'research/metastability-calibration.json').write_text(json.dumps(res, indent=1) + '\n')
     sqb = {r['B']: r for r in serq['burst']}
+    betas = sorted({r['beta'] for r in fifo_rows})
     slope = lambda p: 'rises' if p[0] > p[-1] else 'falls'
     m = ['% Generated by scripts/metastability_calibration.py; do not edit.',
          f"\\newcommand{{\\metaPsRmse}}{{{ps_best['rmse']:.2f}}}",
@@ -146,7 +168,12 @@ def main():
          f"\\newcommand{{\\metaPredRecThreeHundred}}{{{burst[300]['recovery_s']:.0f}}}",
          f"\\newcommand{{\\metaSqRecSixtyB}}{{{sqb[60]['recovery_s']:.0f}}}",
          f"\\newcommand{{\\metaSqRecThreeHundredB}}{{{sqb[300]['recovery_s']:.0f}}}",
-         f"\\newcommand{{\\metaCalMinutes}}{{{seconds / 60:.0f}}}"]
+         f"\\newcommand{{\\metaCalMinutes}}{{{seconds / 60:.0f}}}",
+         f"\\newcommand{{\\metaPsA}}{{{ps_best['a']:g}}}", f"\\newcommand{{\\metaPsC}}{{{ps_best['C']:g}}}",
+         f"\\newcommand{{\\metaFifoBetaMax}}{{{betas[-1]:g}}}",
+         f"\\newcommand{{\\metaFifoBurstMin}}{{{burst[60]['burst_min']:.2f}}}",
+         f"\\newcommand{{\\metaSqBurstMin}}{{{sqb[60]['min_hit']:.2f}}}",
+         f"\\newcommand{{\\metaShit}}{{{SQ['sh']:.3f}}}", f"\\newcommand{{\\metaSmiss}}{{{SQ['sm']:.3f}}}"]
     (OUT / 'metastability-exp.tex').write_text('\n'.join(m) + '\n')
     print(json.dumps(dict(ps=ps_best['rmse'], fifo={k: fifo_best[k] for k in ['C', 'beta', 'rmse']},
                           pred={k: v['recovery_s'] for k, v in burst.items()},

@@ -16,7 +16,8 @@ Key theorems:
   attains the bound: `C` hits per round.
 * `mattson_lru_hit_iff` — Mattson's stack-distance criterion: a session finds
   its prefix under LRU exactly when fewer than `C` distinct sessions were
-  served since its last turn. Under FCFS, a turn with `C` turns ahead misses.
+  served since its last turn. (That under FCFS a turn with `C` turns ahead
+  misses is the lecture's prose step from this theorem.)
 * `lruRun_eq_take`, `recency_split` — the LRU cache is the head of the
   recency list.
 -/

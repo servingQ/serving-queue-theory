@@ -23,14 +23,15 @@ current at the end of every work block.
 
 **Done.**
 - **Metastability, Lecture 7 (2026-10-01, serQ #120; lecture note only, not
-  the paper).** Serving propositions proved in Lean (`CacheOrder.lean`,
-  `Metastability.lean`): Mattson's criterion (a turn behind `C` waiting turns
-  misses under FCFS + LRU), saturated rounds (LRU 0 hits, any rule ≤ `C`,
-  pinning `C` attains it), FCFS–LRU stability iff `λ S_miss < 1` for every `C`,
-  admit-then-hold. Experiments after Alvaro et al. (arXiv:2510.03551): drift,
-  recovery, region (bistable only with ≈ one context of memory per waiting
-  turn), serQ on vLLM's rules (cliff, no hysteresis), calibration (PS chain
-  fails, FCFS chain fits and predicts held-out bursts). serQ issues #230–#232.
+  the paper).** Serving results proved in Lean (`CacheOrder.lean`,
+  `Metastability.lean`): saturated rounds (LRU 0 hits, any rule ≤ `C`, pinning
+  `C` attains it; Mattson's criterion as cited prose), the closed FCFS–LRU
+  replica (congested queue `N − Z/S_miss`, admission rule `N ≤ C + Z/S_miss`,
+  which puts serQ's cliff at Z* ≈ 2.5 s), admit-then-hold (barriers at or
+  below the batch cap). Experiments after Alvaro et al. (arXiv:2510.03551):
+  failure in time, drift, recovery, region (bistable with ≈ one context per
+  waiting turn), serQ on vLLM's rules (cliff, no hysteresis), calibration
+  (PS chain fails; a one-at-a-time chain fits partly). serQ issues #230–#232.
   Record: `research/metastability.md`. Lecture 6's Tarski proposition is now
   titled "Knaster–Tarski".
 - **Unified lecture course (2026-09-30).** The primer and PD notes are now

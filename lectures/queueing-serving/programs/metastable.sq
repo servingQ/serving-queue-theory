@@ -46,6 +46,7 @@ session {
     set o = ceil(~exp(nout)) + 1;
     vllm_request(reqs, kv, engine, prompt, o, t0);
     observe response = now - t0;
+    observe full_hit = c >= K0;   // the whole context reused (the library's `hit` counts any reuse)
   }
 }
 

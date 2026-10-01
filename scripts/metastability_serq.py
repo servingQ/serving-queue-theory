@@ -24,14 +24,15 @@ SEEDS = [1, 2, 3, 4, 5]
 WARM = dict(Zwarm=200, twarm=300)   # a light first 300 s fills the cache with hits
 
 
-def run(serq, seed, horizon, win, **settings):
-    """Hit rate and mean TTFT in windows of `win` seconds."""
+def run(serq, seed, horizon, win, report=False, **settings):
+    """Full-reuse hit rate and mean TTFT in windows of `win` seconds (and the
+    run's JSON report if asked)."""
     with tempfile.TemporaryDirectory() as d:
         cmd = [str(serq), 'run', str(PROG), '--seed', str(seed), '--horizon', str(horizon),
                '--warmup', '0', '--dump', d, '--json']
         for k, v in settings.items():
             cmd += ['--set', f'{k}={v}']
-        subprocess.check_output(cmd, text=True)
+        rep = json.loads(subprocess.check_output(cmd, text=True))
         bins = np.arange(0, horizon + win, win)
 
         def series(name):
@@ -41,7 +42,8 @@ def run(serq, seed, horizon, win, **settings):
             i = np.digitize(t, bins) - 1
             return [float(v[i == k].mean()) if (i == k).any() else None
                     for k in range(len(bins) - 1)]
-        return series('hit'), series('ttft')
+        out = (series('full_hit'), series('ttft'))
+        return out + (rep,) if report else out
 
 
 def tail_mean(xs, start):
@@ -55,6 +57,19 @@ def main():
     args = ap.parse_args()
     out = dict(note='serQ v0.1.0 simulation of metastable.sq; not measurements',
                 seeds=SEEDS, sweep=[], burst=[])
+    # engine seconds per hit and per miss turn, from two loads: utilisation /
+    # turn rate = h S_hit + (1 - h) S_miss at each, h the full-reuse rate
+    rows = []
+    for Z in [4, 1.5]:
+        h, _, rep = run(args.serq, 1, 4000, 100, report=True, Z=Z)
+        eng = next(x for x in rep['stages'] if x['name'] == 'engine')
+        thk = next(x for x in rep['stages'] if x['name'] == 'think')
+        rows.append((tail_mean(h, 20), eng['utilization'] / thk['throughput']))
+    (h1, e1), (h2, e2) = rows
+    s_miss = (e1 * h2 - e2 * h1) / (h2 - h1)
+    s_hit = (e1 - (1 - h1) * s_miss) / h1
+    out['engine_seconds'] = dict(points=rows, S_hit=s_hit, S_miss=s_miss)
+    print(out['engine_seconds'], flush=True)
     # load sweep: mean over 2000-4000 s, cold start vs warm start
     for Z in [1.5, 2, 2.5, 3, 3.5, 4, 6, 8]:
         row = dict(Z=Z)

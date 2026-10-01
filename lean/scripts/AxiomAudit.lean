@@ -134,6 +134,9 @@ open ServingQueueTheory
 #print axioms open_wait_loss_stable_iff_ratio_test
 #print axioms open_wait_loss_stability
 #print axioms open_stability_tail_only
+#print axioms bdWeight_pos_of
+#print axioms closed_fcfs_lru_rises_iff
+#print axioms closed_fcfs_lru_no_congested_mode
 #print axioms admission_hold_service_le
 #print axioms admission_hold_recovery_le
 #print axioms admission_hold_no_trough

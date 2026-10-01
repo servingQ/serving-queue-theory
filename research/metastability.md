@@ -33,31 +33,38 @@ in the issue were not read; no novelty claim.
 ## Results
 
 Proved (Lean names):
-1. **Mattson's stack-distance criterion** (`mattson_lru_hit_iff`): under LRU a
-   session hits iff fewer than `C` distinct sessions were served since its last
-   turn. Under FCFS with one outstanding turn per session, a turn behind `C`
-   waiting turns misses (Cor. 7.2, prose step).
+1. **Mattson's stack-distance criterion** (`mattson_lru_hit_iff`; cited prose in
+   the lecture, not a proposition): under LRU a session hits iff fewer than `C`
+   distinct sessions were served since its last turn. Under FCFS with one
+   outstanding turn per session, a turn behind `C` waiting turns misses.
 2. **Saturated rounds** (`lru_round_robin_all_miss`, `round_hits_le_capacity`,
-   `pinned_round_hits`): round-robin with `N > C`: LRU 0 hits; any rule at most
-   `C` per round; pinning `C` sessions attains `C`.
-3. **Stability of an FCFS–LRU replica** (`fcfs_lru_open_stable_iff`): with
-   `s(n) = S_miss` for `n ≥ C`, the open queue is stable iff `λ S_miss < 1`, for
-   every `C`. The cache moves the lifetime of the good state (exponential in
-   `C`, Exercise 7.1), not the limit.
+   `pinned_round_hits`): round-robin with `N > C`, from an empty cache: LRU 0
+   hits; any rule at most `C` per round; pinning `C` sessions attains `C`.
+3. **The closed FCFS–LRU replica** (`closed_fcfs_lru_rises_iff`,
+   `closed_fcfs_lru_no_congested_mode`): with completion rate `1/S_miss` above
+   `C` (queue-length analogue, assumed), the queue law peaks at `N − Z/S_miss`
+   above the cache, and `N ≤ C + Z/S_miss` admitted sessions leave no congested
+   mode: an admission rule. For serQ's replica it puts the cliff at
+   `Z* = (N − C) S_miss ≈ 2.5 s`; serQ's full-reuse hit rate is 0.67, 0.31, 0.03
+   at Z = 3, 2.5, 2 s. Open limit (remark only): stable iff `λ S_miss < 1` for
+   every `C` (`fcfs_lru_open_stable_iff`).
 4. **Admit, then hold** (`admission_hold_service_le`,
    `admission_hold_recovery_le`, `admission_hold_no_trough`): memory taken at
    admission (cap `B`) never slows service or recovery, and the queue law has no
-   trough above `B`.
+   trough above `B`, so every barrier lies at or below `B`. It does **not**
+   exclude a congested mode: with large enough `a B` losses start below `B` and
+   a mode above `B` is possible (round-2 review counterexample).
 5. Tools: product form, passage times, locality/monotonicity, Arrhenius lower
    bound, d'Alembert (`bd_*`, `passTime_*`, `recoveryTime_*`,
    `open_wait_loss_stable_iff_ratio_test`, …); `recovery_ranking_flip` is kept in
    Lean but no longer in the lecture.
 
 Numerical (exact chain or serQ):
-- Metastable failure in time (Fig. 7.1 of the experiments): a=1.2, Z=42.5 s,
-  60 s burst at Z=12 s, 40 exact sample paths: congested with probability
-  0.95 at 1000 s and 0.60 at 3000 s when waiting turns hold memory; 0.05 at
-  1000 s when memory is taken at admission (B=16).
+- Metastable failure in time: a=1.2, Z=42.5 s, 60 s burst at Z=12 s. Exact
+  laws (`expm_multiply`): congested with probability 0.93 at 1000 s and 0.60
+  at 3000 s when waiting turns hold memory, against 0.10 at 3000 s without the
+  burst (stationary 0.18); 0.04 at 1000 s and 0.00 at 3000 s with memory taken
+  at admission (B=16). 40 Gillespie paths for the picture only.
 - Queue-and-cache chain (N=40, Z=27, C=48, a=1): closed class of 297 of
   12 341 states (h ≤ 8, c ≡ 0; reviewer finding); lumped chain exact for the
   marginal, optimistic ×3 for recovery; warm vs flushed start 0.005 vs 0.96.
@@ -65,9 +72,14 @@ Numerical (exact chain or serQ):
 - serQ (vLLM rules, admission-time allocation): cliff (hit 0.80 → 0.01, TTFT
   0.29 → 7 s) without hysteresis (cold/warm within 0.006); recovery 40–50 s
   after bursts.
-- Calibration: PS chain cannot fit (RMSE 0.37, wrong slope); FCFS chain that
-  evicts the next turn in line fits (C=37, β=6, RMSE 0.13) and predicts 30 s
-  recovery for the held-out bursts (serQ 40, 50 s).
+- serQ hits are now full-reuse hits (`full_hit`; the library's `hit` counts any
+  reuse): 0.77 at Z=4 s, 0.00 at Z=1.5 s.
+- Calibration (round-2 fixes: same 25 s windows for both, two-parameter grids
+  for both chains, service times derived from serQ, full-reuse target): PS
+  chain cannot fit (RMSE 0.36); the one-at-a-time chain (random order among
+  the waiting turns, evicted turn at the head) fits partly (C=38 above the
+  physical 32.6, β=12 at the grid edge, RMSE 0.12, 0.16 vs 0.00 at the highest
+  load) and recovers from the held-out bursts in 65/75 s vs serQ 40/50 s.
 
 ## serQ issues filed (2026-10-01)
 

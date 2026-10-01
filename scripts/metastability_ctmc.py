@@ -13,6 +13,7 @@ lectures/queueing-serving/metastability-tables.tex (generated; do not edit). Run
   uv run --with numpy --with scipy python scripts/metastability_ctmc.py
 """
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -132,23 +133,6 @@ def exp_open(M=400):
                          fluid_saddle=sad, truncated_mass_top_half=float(pi[M // 2:].sum()),
                          log10_time_to_collapse_from_empty_s=log10_T))
     return rows
-
-
-def exp_ranking_flip():
-    """The Lean example (recovery_ranking_flip) and a serving-sized analogue:
-    speeding up the levels below n lowers the mean queue but leaves the
-    recovery to n unchanged."""
-    N, Z = 40, 60.0
-    base = lambda n: logistic_s(n, 10, 2)
-    low = lambda n: base(n) * (0.5 if n <= 6 else 1.0)    # faster hit path only
-    high = lambda n: base(n) * (0.9 if n > 6 else 1.0)    # 10% faster at congestion
-    out = {}
-    for name, s in [('base', base), ('hit_path_x2', low), ('congested_x1.11', high)]:
-        up, dn = closed_bd(N, Z, s)
-        pi, _ = bd(up, dn)
-        out[name] = dict(mean_q=float(np.arange(N + 1) @ pi),
-                         recovery_30_to_6_s=float(bd_recovery(pi, dn, 30, 6)))
-    return out
 
 
 # ------------------------------------------------------- three-dimensional chain
@@ -533,30 +517,46 @@ def tex_tables(res):
     out.append('\\newcommand{\\metaInterventionTable}{\\begin{tabular}{lrrrrr}\\toprule\n'
                'arm & response (s) & rank & $\\Prob(q\\ge16)$ & recovery (s) & rank'
                '\\\\\\midrule\n' + '\n'.join(rows) + '\n\\bottomrule\\end{tabular}}')
-    f = res['ranking_flip_1d']
-    out.append(f"\\newcommand{{\\metaFlipBase}}{{{f['base']['mean_q']:.1f}}}")
-    out.append(f"\\newcommand{{\\metaFlipLow}}{{{f['hit_path_x2']['mean_q']:.1f}}}")
-    out.append(f"\\newcommand{{\\metaFlipHigh}}{{{f['congested_x1.11']['mean_q']:.1f}}}")
-    out.append(f"\\newcommand{{\\metaFlipRecBase}}{{{sci(f['base']['recovery_30_to_6_s'])}}}")
-    out.append(f"\\newcommand{{\\metaFlipRecHigh}}{{{sci(f['congested_x1.11']['recovery_30_to_6_s'])}}}")
+    wc = q['warm_vs_cold']['30']
+    out.append(f"\\newcommand{{\\metaWarmThirty}}{{{wc['p_bad_warm']:.3f}}}")
+    out.append(f"\\newcommand{{\\metaColdThirty}}{{{wc['p_bad_cold']:.2f}}}")
+    br = {r['burst_s']: r for r in res['burst']['rows']}
+    out.append(f"\\newcommand{{\\metaBurstNone}}{{{br[0]['p_bad_600s_after']:.2f}}}")
+    out.append(f"\\newcommand{{\\metaBurstThirty}}{{{br[30]['p_bad_600s_after']:.2f}}}")
+    recs = [r['mean_time_to_q1_after_burst_s'] for b, r in br.items() if b >= 30]
+    out.append(f"\\newcommand{{\\metaBurstRecLo}}{{{min(recs):.0f}}}")
+    out.append(f"\\newcommand{{\\metaBurstRecHi}}{{{max(recs):.0f}}}")
+    sc = res['closed_scaling']
+    slope = np.polyfit([r['N'] for r in sc], [r['barrier_bad_to_good'] for r in sc], 1)[0]
+    out.append(f"\\newcommand{{\\metaScalingSlope}}{{{slope:.2f}}}")
+    band = [r for r in res['open'] if r['log10_time_to_collapse_from_empty_s'] is not None]
+    out.append(f"\\newcommand{{\\metaOpenFirstLog}}{{{band[0]['log10_time_to_collapse_from_empty_s']:.0f}}}")
+    out.append(f"\\newcommand{{\\metaOpenLastRatio}}{{{band[-1]['lam_S_miss']:g}}}")
+    out.append(f"\\newcommand{{\\metaOpenLastSec}}{{{10 ** band[-1]['log10_time_to_collapse_from_empty_s']:.0f}}}")
     return '\n'.join(out) + '\n'
 
 
 def main():
+    if '--tex-only' in sys.argv:          # regenerate the lecture tables from the stored results
+        write_tex(json.loads((ROOT / 'research/metastability-results.json').read_text()))
+        return
     res = dict(
         note='CTMC numerics for lecture 7 (serQ #120); models, not measurements',
         closed_scaling=exp_closed_scaling(),
         closed_hysteresis=exp_closed_hysteresis(),
         open=exp_open(),
-        ranking_flip_1d=exp_ranking_flip(),
         queue_enough=exp_queue_enough(),
         burst=exp_burst(),
         interventions=exp_interventions(),
     )
     path = ROOT / 'research/metastability-results.json'
     path.write_text(json.dumps(res, indent=1) + '\n')
+    write_tex(res)
+
+
+def write_tex(res):
     (ROOT / 'lectures/queueing-serving/metastability-tables.tex').write_text(tex_tables(res))
-    print(f'wrote {path.relative_to(ROOT)} and lectures/queueing-serving/metastability-tables.tex')
+    print('wrote lectures/queueing-serving/metastability-tables.tex')
 
 
 if __name__ == '__main__':

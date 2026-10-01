@@ -17,7 +17,7 @@ field, its slow eigenvalues and a calibration against a simulator. Here the loop
 The answers depend on three engine rules: the order in which waiting turns are admitted,
 the eviction rule of the prefix cache, and the moment a turn's working memory is taken.
 \Cref{L7:sec:lru} proves what LRU keeps under first-come-first-served admission,
-\cref{L7:sec:open} what that implies for the stability of a replica,
+\cref{L7:sec:open} what that implies for a closed replica and its admission cap,
 \cref{L7:sec:hold} why the memory should be taken at admission, \cref{L7:sec:enough} what
 state a predictive model must keep, and \cref{L7:sec:experiments} checks the
 predictions against vLLM's scheduler rules in serQ. \Cref{L7:sec:conclusions} collects
@@ -35,10 +35,15 @@ and costs $S^{\mathrm{miss}}\ge S^{\mathrm{hit}}$. An admitted turn also holds $
 of working memory, in units of one prefix.
 \end{definition}
 
-vLLM's scheduler fits this definition up to its block granularity. It admits waiting
-requests in arrival order up to \texttt{max\_num\_seqs}, keeps a finished request's
-blocks in an LRU free queue, and evicts from that queue when an admission needs blocks;
-the blocks of a waiting request stay evictable until it is admitted (\cref{L6:sec:feedback}).
+vLLM's scheduler approximates this definition. It admits waiting requests in arrival
+order up to \texttt{max\_num\_seqs}, keeps a finished request's blocks in an LRU free
+queue, and evicts from that queue when an admission needs blocks; the blocks of a waiting
+request stay evictable until it is admitted (serQ's \texttt{docs/language.md}, \S7, maps
+each rule to \texttt{scheduler.py} and \texttt{kv\_cache\_manager.py}). Two differences
+matter below. The cache shares its pool with the running requests' growing KV, so $C$
+must count the whole pool. And the hit is decided when a request is admitted, while its
+blocks become the most recent when it finishes, so for the recency order ``served'' means
+finished. Caching is by block, not by prefix.
 
 \begin{remark}[The correspondence with retries]\label{L7:rem:alvaro}
 In \cite{alvaro2025} a state is a pair $(u,v)$: $u$ requests in the server and its
@@ -53,47 +58,27 @@ gone (\cref{L7:sec:enough}).
 
 Number the services $t=0,1,2,\dots$ and let $x_t$ be the session served at $t$.
 
-\begin{proposition}[Mattson's stack-distance criterion]\label{L7:prop:mattson}
-Under LRU, let session $s$ be served at $t_1$ and not again before $t>t_1$. Then $s$ is a
-hit at $t$ if and only if fewer than $C$ distinct sessions were served at
-$t_1+1,\dots,t-1$.
-\end{proposition}
-\begin{proof}
-Keep the recency list of all sessions served so far, most recent first; a service moves
-its session to the front. LRU's cache is always the first $C$ entries of this list, since
-a service changes the cache exactly as it changes the head of the list. After $t_1$,
-$s$ is at the front. Every later service of another session puts that session in front
-of $s$ and leaves the others in order, so at $t$ the list is $P$, then $s$, where $P$ lists
-the distinct sessions served in between. Hence $s$ is among the first $C$ entries if and
-only if $P$ has fewer than $C$ entries.
-\end{proof}
-
-\begin{corollary}[A turn behind $C$ others has lost its prefix]\label{L7:cor:behind}
-Under FCFS and LRU, a turn that joins the queue behind $C$ or more waiting turns is a
-miss.
-\end{corollary}
-\begin{proof}
-The turns ahead belong to distinct sessions, since a session has at most one turn
-outstanding, and FCFS serves all of them before this one. So at least $C$ distinct
-sessions are served between this session's last service and this turn.
-\end{proof}
-
-So the loss probability of a turn is 1 from a queue of $C$ on, whatever the think times,
-the arrival process or the sizes of the other prefixes. When the queue is saturated,
-every session waits behind all the others and is served once per round.
+Under LRU a session finds its prefix exactly when fewer than $C$ distinct sessions have
+been served since its last turn: LRU's cache is the head of the recency list, and every
+other session served moves in front (Mattson's stack-distance criterion
+\cite{mattson1970}). Under FCFS the turns ahead of a waiting turn belong to distinct
+sessions, since a session has at most one turn outstanding, and all of them are served
+first. So a turn that joins behind $C$ waiting turns misses, whatever the think times or
+the arrival process. When the queue is saturated, every session
+waits behind all the others and is served once per round.
 
 \begin{proposition}[Saturated rounds]\label{L7:prop:rounds}
 Let $N>C\ge1$ sessions be served round-robin.
 \begin{enumerate}[label=(\roman*)]
-\item Under LRU every turn is a miss.
+\item Under LRU, from an empty cache, every turn is a miss.
 \item Under any eviction rule, at most $C$ of any $N$ consecutive turns are hits.
 \item Pinning the prefixes of $C$ sessions and caching no other attains the bound: $C$
   hits in every $N$ consecutive turns.
 \end{enumerate}
 \end{proposition}
 \begin{proof}
-(i) Between two services of a session, the other $N-1\ge C$ sessions are served, so
-\cref{L7:prop:mattson} applies. (ii) Only a served session's prefix enters the cache, and
+(i) Between two services of a session, the other $N-1\ge C$ sessions are served, so it
+is not among the $C$ most recent. (ii) Only a served session's prefix enters the cache, and
 the $N$ turns belong to distinct sessions, so a turn that hits must find a prefix that
 was resident when the $N$ turns began; there are at most $C$. (iii) The pinned sessions
 hit on each of their turns, and each is served once in every $N$ consecutive turns.
@@ -106,26 +91,45 @@ $u_i=p_i\Phi_i/(c_i\tau_i)$ of the paper's scheduler, gives the just-served sess
 longest time to its next use $\tau_i$ and so the lowest price. Protecting a fixed set
 of sessions, rather than the most recent ones, is optimal here.
 
-\section{The open queue: the limit and the lifetime}\label{L7:sec:open}
+\section{The closed replica: the congested queue and an admission rule}\label{L7:sec:open}
 
 Project the replica onto the number $n$ of waiting turns, with the mean service time
 $s(n)=S^{\mathrm{hit}}+m(n)(S^{\mathrm{miss}}-S^{\mathrm{hit}})$ of a turn served at
-queue length $n$ and turns arriving at rate $\lambda$. This is a birth--death chain, and
-we use four of its properties.
+queue length $n$. The queue then moves by one turn at a time, and its law is that of a
+birth--death chain (\cref{thm:birthdeath}), read in serving terms as follows.
+
+\begin{center}\small
+\begin{tabular}{@{}p{0.25\linewidth}p{0.68\linewidth}@{}}\toprule
+birth--death chain & replica \\\midrule
+level $n$ & turns waiting for prefill \\
+birth at rate $\lambda_n$ & a turn arrives: a session ends its think time or tool call;
+  $\lambda_n=\lambda$ (open), $(N-n)/Z$ (closed) \\
+death at rate $\mu_n=1/s(n)$ & the engine finishes a turn's prefill; slower when more
+  turns miss \\
+$\pi(n)$ & fraction of time with $n$ turns waiting \\
+mode, trough & queue length the replica settles at (empty, congested); the tipping point
+  between \\
+$T_k$, $R(m,n)$ & mean time for the queue to shrink by one from $k$; to drain from $m$ to
+  $n$ after a burst \\
+barrier $\Delta V$ & how persistent the congested queue is \\\bottomrule
+\end{tabular}
+\end{center}
 
 \begin{lemma}[Birth--death toolkit]\label{L7:lem:bd}
-For birth rates $\lambda_n$ and death rates $\mu_n$ on $\{0,\dots,M\}$, positive where they
-are used:
+For arrival rates $\lambda_n$ and completion rates $\mu_n$ on $\{0,\dots,M\}$, positive
+where they are used:
 \begin{enumerate}[label=(\roman*)]
-\item $\pi(n+1)\ge\pi(n)$ if and only if $\lambda_n\ge\mu_{n+1}$, so the modes of $\pi$ are
-  the stable fluid equilibria and its troughs the saddles;
-\item the mean time $T_k$ to step down from $k$ is $\sum_{j\ge k}\pi(j)/(\pi(k)\mu_k)$, and
-  the recovery time $R(m,n)=\sum_{k=n+1}^mT_k$ is the mean hitting time of $n$ from $m$;
-\item $R(m,n)$ depends only on the rates above $n$, and does not grow when the death
-  rates there grow or the birth rates fall;
-\item $T_k\ge\pi(j)/(\pi(k)\mu_k)$ for every $j\ge k$: the recovery past a saddle takes at
-  least $e^{\Delta V}/\mu_k$, where $\Delta V=\log(\pi(b)/\pi(k))$ is the barrier to a mode
-  $b$ above it (the lower half of the Arrhenius law).
+\item $\pi(n+1)\ge\pi(n)$ if and only if $\lambda_n\ge\mu_{n+1}$: the queue lengths the
+  replica settles at are those where arrivals stop outpacing completions, and the tipping
+  points those where they start to;
+\item the mean time $T_k$ for the queue to shrink from $k$ to $k-1$ is
+  $\sum_{j\ge k}\pi(j)/(\pi(k)\mu_k)$, and the drain time $R(m,n)=\sum_{k=n+1}^mT_k$ is the
+  mean time to reach $n$ waiting turns from $m$;
+\item $R(m,n)$ depends only on the rates at queue lengths above $n$, and does not grow
+  when completions there get faster or arrivals there slower;
+\item $T_k\ge\pi(j)/(\pi(k)\mu_k)$ for every $j\ge k$: draining past a tipping point $k$
+  takes at least $e^{\Delta V}/\mu_k$, where $\Delta V=\log(\pi(b)/\pi(k))$ is the barrier
+  to a congested queue length $b$ above it (the lower half of the Arrhenius law).
 \end{enumerate}
 \end{lemma}
 \begin{proof}
@@ -137,37 +141,45 @@ $\pi(k)\lambda_k=\pi(k+1)\mu_{k+1}$; the chain is skip-free, so passage times ad
 each factor $\lambda_i/\mu_{i+1}$ is monotone. (iv) Keep one term of the sum in (ii).
 \end{proof}
 
-\begin{theorem}[Stability of an FCFS--LRU replica]\label{L7:thm:open}
-If $s(n)=S^{\mathrm{miss}}$ for $n\ge C$, as \cref{L7:cor:behind} gives in the
-queue-length model, the open queue has a stationary distribution if and only if
-$\lambda S^{\mathrm{miss}}<1$, for every cache size $C$.
+A replica serves a closed population: $N$ admitted sessions, each thinking for a mean
+time $Z$ between its turns. Under FCFS and LRU a turn that joins behind $C$ waiting turns
+misses (\cref{L7:sec:lru}). In the queue-length model this becomes the assumption that the
+engine completes turns at the all-miss rate $1/S^{\mathrm{miss}}$ above queue length $C$.
+
+\begin{theorem}[The congested queue of an FCFS--LRU replica]\label{L7:thm:open}
+Let $\lambda_n=(N-n)/Z$ and $\mu_n=1/S^{\mathrm{miss}}$ for $n>C$.
+\begin{enumerate}[label=(\roman*)]
+\item For $C\le n<N$, $\pi(n+1)\ge\pi(n)$ if and only if $n\le N-Z/S^{\mathrm{miss}}$. Above
+  the cache the law peaks at the congested queue length $N-Z/S^{\mathrm{miss}}$.
+\item If $N\le C+Z/S^{\mathrm{miss}}$, the law falls at every queue length above $C$: there
+  is no congested mode behind the cache.
+\end{enumerate}
 \end{theorem}
 \begin{proof}
-By \cref{thm:birthdeath} a stationary distribution exists if and only if
-$\sum_nw_n<\infty$, where $w_n=\prod_{k=1}^n\lambda s(k)$. From $n=C$ on the ratio
-$w_{n+1}/w_n$ equals $\lambda S^{\mathrm{miss}}$: the tail is geometric, summable exactly
-when the ratio is below 1.
+(i) By \cref{L7:lem:bd}(i), $\pi(n+1)\ge\pi(n)$ if and only if $(N-n)/Z\ge1/S^{\mathrm{miss}}$.
+(ii) For $n>C$, $n>N-Z/S^{\mathrm{miss}}$, so (i) gives a strict fall.
 \end{proof}
 
-A larger cache, a faster hit path, or pinning that leaves $m(n)=1$ at long queues does
-not move the limit $\lambda<1/S^{\mathrm{miss}}$. What moves it is anything that lowers the
-work of a lost prefix: a faster prefill, or reloading the prefix from host memory instead
-of recomputing it. What the cache does change is the lifetime of the good state. For
-$1/S^{\mathrm{miss}}<\lambda<1/s(1)$ the queue has no stationary law, yet the empty queue
-is a stable fluid equilibrium, and it lasts for the time needed to climb past the saddle.
-With $m(n)=\1\{n\ge C\}$ that saddle is at $C$ and the climb takes a time of order
-$(\lambda S^{\mathrm{hit}})^{-C}$ (\cref{L7:ex:step}): exponential in the cache size.
-\Cref{L7:tab:open} shows the effect for a smooth $m$ ($S^{\mathrm{hit}}=0.5$\,s,
-$S^{\mathrm{miss}}=5$\,s, logistic $m$ centred at 20 waiting turns). Just above the limit
-the collapse takes $10^{16}$\,s, at 7.5 times the limit about a minute. A finite load
-test cannot tell the first case from a stable replica.
+The congested length is what the saturated throughput leaves. When every turn misses,
+the engine completes $1/S^{\mathrm{miss}}$ turns per second, so by Little's law only
+$Z/S^{\mathrm{miss}}$ sessions are thinking and the other $N-Z/S^{\mathrm{miss}}$ wait.
+Part~(ii) is an admission rule: admit at most $C+Z/S^{\mathrm{miss}}$ sessions, the cache
+plus the sessions that the think time hides at the all-miss rate. The cache appears only
+through $C$; what moves the bound otherwise is a faster recompute or a cheaper restore,
+which lowers $S^{\mathrm{miss}}$. For serQ's replica of \cref{L7:sec:experiments}, with
+the pool counted as $C\approx\metaAbC$ contexts and $N=40$, the rule binds at
+$Z^*=(N-C)S^{\mathrm{miss}}\approx\metaZstar$\,s. The hit rate there is
+\metaSqHitAtThree{} at $Z=3$\,s, \metaSqHitAtTwoHalf{} at 2.5\,s and \metaSqHitAtTwo{} at
+2\,s: the cliff sits where the rule says.
 
-\begin{table}[h]\centering\small
-\metaOpenTable
-\caption{Open queue with wait loss: the fluid saddle and the mean time to climb from
-the empty queue to ten levels past it (exact upward passage times). Below
-$\lambda S^{\mathrm{miss}}=1$ the queue is stable.}\label{L7:tab:open}
-\end{table}
+\begin{remark}[Many sessions: the open limit]\label{L7:rem:open}
+When sessions are many and short, the replica sees turns arriving at a rate $\lambda$ that
+does not depend on its queue. With $\mu_n=1/S^{\mathrm{miss}}$ for $n\ge C$ the queue then
+has a stationary law if and only if $\lambda S^{\mathrm{miss}}<1$, for every $C$: the tail
+of the product form is geometric with ratio $\lambda S^{\mathrm{miss}}$. The cache changes
+only the lifetime of the uncongested state below that limit, which grows exponentially in
+$C$ (\cref{L7:ex:step}).
+\end{remark}
 
 \section{Admit, then hold}\label{L7:sec:hold}
 
@@ -184,8 +196,8 @@ closed arrival rate $\lambda_n=(N-n)/Z$.
   queue length. Hence every recovery time is at least as short, and the stationary weight
   of every queue length relative to the empty queue is at least as small.
 \item With memory taken at admission, the stationary law of the queue length has no
-  trough above the batch cap $B$. A congested mode above $B$ therefore requires memory
-  that grows with the number of waiting turns.
+  trough above the batch cap $B$: above $B$ it is unimodal, and any barrier lies at or
+  below $B$.
 \end{enumerate}
 \end{proposition}
 \begin{proof}
@@ -195,9 +207,14 @@ $\mu_{n+1}$, is the same constant $\mu$. A trough at $n+1$ needs $\lambda_n<\mu$
 $\lambda_{n+1}>\mu$ by \cref{L7:lem:bd}(i), but $\lambda_{n+1}<\lambda_n$.
 \end{proof}
 
-When memory grows with the waiting turns, the congested mode is real and its recovery
-time grows exponentially with the population. With $m$ logistic in $n$, centred at
-$N/4$, and $Z=1.5N$\,s, the barrier of the congested mode grows by about $0.21$ per
+Part (ii) does not exclude a congested mode. It says that the saddle in front of one
+must lie at or below $B$, so that losses must already start while at most $B$ turns hold
+memory: admission-time memory can be bistable only if $aB$ is a sizeable part of the
+cache; with a large enough $a$ the law can have a congested mode above $B$ behind a
+trough below it. Reserving on arrival needs no such condition, since the memory keeps
+growing with the queue. Then the congested mode is real and its recovery time grows
+exponentially with the population. With $m$ logistic in $n$, centred at
+$N/4$, and $Z=1.5N$\,s, the barrier of the congested mode grows by about \metaScalingSlope{} per
 session (\cref{L7:tab:scaling}). At $N=40$ two modes coexist for
 $\metaHysZlo\le Z\le\metaHysZhi$\,s: the turn rate that triggers the collapse and the
 rate needed to recover from it differ by a factor of \metaHysRatio. The inverse spectral
@@ -237,9 +254,9 @@ at least 16 waiting turns.
 
 \begin{lemma}[Lumping preserves the stationary marginal]\label{L7:lem:lump}
 Let $X$ be an irreducible CTMC on a finite state space with stationary law $\pi$, and let
-$q(X)$ change by at most one per transition. The birth--death chain whose rates are the
-rates of $q\to q\pm1$ averaged over $\pi$ given $q=n$ has the unique stationary law
-$p(n)=\pi(q=n)$.
+$q(X)$, the number of waiting turns, change by at most one per transition. The
+birth--death chain whose arrival and completion rates at $n$ are those of the full chain
+averaged over $\pi$ given $q=n$ has the unique stationary law $p(n)=\pi(q=n)$.
 \end{lemma}
 \begin{proof}
 Irreducibility gives $p>0$ on the range of $q$ and an irreducible lumped chain. Summing
@@ -252,10 +269,11 @@ The lumped chain on the closed class reproduces the queue-length law to
 $\metaMarginalDiff$, but not the dynamics. Its gap is \metaGapOne{}/s against the full
 chain's slowest rate \metaSlowThree{}/s, and it predicts a recovery from the congested
 region to $q\le1$ of \metaRecOne\,s against \metaRecThree\,s. From the same empty queue
-the congested region has probability 0.005 after 30\,s with a warm cache and 0.96 after a
-cache flush (\cref{L7:tab:warmcold}). A burst of 30\,s (think time 12\,s) raises the
-probability of the congested region 600\,s later from 0.35 to 0.60, and the replica needs
-about 1400 to 1500\,s to drain (\cref{L7:tab:burst}). The waiting-miss count is the
+the congested region has probability \metaWarmThirty{} after 30\,s with a warm cache and
+\metaColdThirty{} after a cache flush (\cref{L7:tab:warmcold}). A burst of 30\,s (think
+time 12\,s) raises the probability of the congested region 600\,s later from
+\metaBurstNone{} to \metaBurstThirty, and the replica needs \metaBurstRecLo{} to
+\metaBurstRecHi\,s to drain (\cref{L7:tab:burst}). The waiting-miss count is the
 hidden slow variable, as the orbit is in~\cite{alvaro2025}; a queue-length model is right
 for steady state and optimistic about recovery.
 
@@ -286,9 +304,9 @@ laws and mean hitting times.}\label{L7:tab:interventions}
 
 \section{Experiments}\label{L7:sec:experiments}
 
-We repeat the main experiments of~\cite{alvaro2025}: a metastable failure in time, the
-drift field, recovery against the initial state, the region of metastability, and a
-calibration against a simulator.
+We follow the main experiments of~\cite{alvaro2025}: a failure in time, the drift field,
+recovery time against the initial state, the parameters where metastability appears,
+and a calibration against a simulator.
 The simulator is serQ running a closed-loop program on vLLM's scheduler rules (FCFS
 admission of at most 16 requests, an LRU block cache, continuous batching): 40 sessions
 with a 16\,000-token context each and a pool of about 33 contexts. All numbers are model
@@ -296,21 +314,23 @@ or simulation output, not measurements.
 
 \paragraph{A metastable failure.} \Cref{L7:fig:failure} follows a replica through
 normal load, a 60\,s burst and normal load again (think time \metaFailZ\,s, \metaFailZb\,s
-during the burst), in \metaFailPaths{} exact sample paths of the queue-and-cache chain.
-When every waiting turn holds \metaFailA{} contexts of memory, the burst fills the queue
-and the replica stays congested after the load has returned: the probability of at least
-16 waiting turns is \metaFailHeldThousand{} at $t=1000$\,s and still \metaFailHeldEnd{} at
-3000\,s, while the hit share of completed turns falls to about 0.1 and recovers over
-thousands of seconds. When the same replica takes the
-memory at admission, with at most 16 turns admitted, the queue drains within several
-hundred seconds: the probability is \metaFailAdmThousand{} at 1000\,s. This is the shape of
-the failures in~\cite{alvaro2025}, a trigger followed by a degraded state that outlives
-it, and \cref{L7:prop:hold} is why the second replica escapes it.
+during the burst) in the queue-and-cache chain. When every waiting turn holds \metaFailA{}
+contexts of memory, the burst fills the queue and the replica stays congested after the
+load has returned. The exact probability of at least 16 waiting turns is
+\metaFailHeldThousand{} at $t=1000$\,s and \metaFailHeldEnd{} at 3000\,s, against
+\metaFailHeldCtlEnd{} at 3000\,s without the burst (the stationary value is
+\metaFailHeldStat). The hit share of completed turns falls to about 0.1 and recovers over
+thousands of seconds. When the same replica takes the memory at admission, with at most
+16 turns admitted, the queue drains within several hundred seconds: the probability is
+\metaFailAdmThousand{} at 1000\,s (stationary \metaFailAdmStat). This is the shape of the
+failures in~\cite{alvaro2025}, a trigger followed by a degraded state that outlives it.
+Here $aB$ exceeds the slack $C-N$, so \cref{L7:prop:hold}(ii) alone does not exclude a
+congested mode for the second replica; the exact laws show how small it is at this load.
 
 \begin{figure}[h]\centering
 \includegraphics[width=\linewidth]{fig-meta-failure}
 \caption{A metastable failure. Offered turn rate (top), waiting turns (middle: mean of
-\metaFailPaths{} exact sample paths, three paths faint) and hit share of completed turns in
+\metaFailPaths{} sample paths drawn by the Gillespie algorithm, three paths faint) and hit share of completed turns in
 50\,s windows (bottom), for a queue-and-cache chain whose waiting turns hold memory and
 for the same chain with memory taken at admission. $N=40$, $C=48$, memory
 \metaFailA{} contexts per turn. The grey band is the burst.}\label{L7:fig:failure}
@@ -321,8 +341,8 @@ for the same chain with memory taken at admission. $N=40$, $C=48$, memory
 \includegraphics[width=0.48\linewidth]{fig-meta-recovery}
 \caption{Queue-and-cache chain ($a=1$). Left: mean drift of the waiting hits and misses
 (arrows, direction only) over the stationary mass. Right: mean time to $q\le1$ against the
-initial queue, from waiting hits with a warm cache, from waiting misses after a flush, and
-in the lumped chain.}\label{L7:fig:drift}
+initial queue, from as many waiting hits as the cache holds (at most \metaRecurrentH) with a
+warm cache, from waiting misses after a flush, and in the lumped chain.}\label{L7:fig:drift}
 \end{figure}
 
 \paragraph{Drift and recovery.} The mass sits at the empty queue and in a band of 16 to
@@ -334,10 +354,12 @@ time rises steeply over the first ten to fifteen turns and then saturates (right
 \paragraph{Where metastability appears.} \Cref{L7:fig:region} maps the slowest relaxation
 time over the memory $a$ held per waiting turn and the think time. The queue-length law
 is bimodal only for $a\ge\metaBimodalAmin$, memory per waiting turn comparable to a
-whole context, as \cref{L7:prop:hold} leads one to expect. An engine that allocates at
-admission has a small $a$ for at most $B$ turns. One that holds a whole prompt's blocks
-while the turn waits, as a disaggregated decoder does while it waits for a KV transfer,
-has $a\approx1$ for every waiting turn.
+whole context. An engine that allocates at admission has a small $a$ for at most $B$
+turns. A disaggregated decoder that admits a request and allocates blocks for its whole
+prompt while it waits for the KV transfer (vLLM's \texttt{WAITING\_FOR\_REMOTE\_KVS},
+\texttt{scheduler.py:1264--1294}, as cited in serQ's \texttt{docs/language.md}) holds about a
+context for every request whose transfer is pending. Whether that makes it metastable is
+the prediction to test.
 
 \begin{figure}[h]\centering
 \includegraphics[width=0.58\linewidth]{fig-meta-region}
@@ -345,13 +367,16 @@ has $a\approx1$ for every waiting turn.
 time; circles mark a bimodal queue-length law.}\label{L7:fig:region}
 \end{figure}
 
-\paragraph{vLLM's rules in serQ.} serQ's vLLM program allocates at admission, so the
-prediction is a cliff without metastability (\cref{L7:fig:sweep}). From five seeds and a
-cold or a warm start, the hit rate falls from \metaSqHitHigh{} at $Z=4$\,s to
+\paragraph{vLLM's rules in serQ.} serQ's vLLM program allocates at admission with
+$a\approx0.04$, far below what \cref{L7:fig:region} needs, so the prediction is a cliff
+without metastability (\cref{L7:fig:sweep}). Here a hit means that the whole context was
+reused. From five seeds and a cold or a warm start (both from an empty queue), the hit
+rate falls from \metaSqHitHigh{} at $Z=4$\,s to
 \metaSqHitLow{} at $Z=1.5$\,s and the mean TTFT rises from \metaSqTtftHigh{} to
 \metaSqTtftLow\,s; the two starts end within \metaSqColdWarmGap{} of each other at every
-load, so there is no hysteresis. The cliff is \cref{L7:prop:rounds}(i): near saturation
-the turns are served nearly round-robin and LRU evicts the next one in line. After a burst
+load. The cliff is consistent with \cref{L7:prop:rounds}(i): near saturation the turns are
+admitted nearly round-robin and LRU evicts the next one in line. The bursts are the
+congested starts, and they show no hysteresis either. After a burst
 at $Z=1.5$\,s the hit rate, \metaSqMinHit{} during the burst, is back within 0.05 of its
 baseline \metaSqRecSixty\,s after a 60\,s burst and \metaSqRecThreeHundred\,s after a
 300\,s burst (\cref{L7:fig:burst}b), against more than a thousand seconds in the chain
@@ -370,52 +395,62 @@ burst, exact transient means. (b) serQ, think time 4\,s and 1.5\,s during the bu
 rate in 25\,s windows, mean of five seeds.}\label{L7:fig:burst}
 \end{figure}
 
-\paragraph{Calibration.} We fit a chain to serQ's hit-rate sweep and predict the bursts,
-which the fit does not see. Service times come from serQ's engine utilisation, 0.037\,s
-per hit and 0.336\,s per miss; memory is counted in contexts, $C\approx\metaAbC$, an
-admitted turn adds $a=0.04$, and an admitted miss holds the prefix it recomputes. The
-chain of \cref{L7:def:three} cannot be fitted (\cref{L7:fig:calibration}a): its best error
-in hit rate is \metaPsRmse, and at the highest load it predicts \metaPsLowZ{} against
-serQ's \metaSqLowZ. Under processor sharing a short hit overtakes the misses, so the hit
-rate stays high under load. A chain that serves one turn at a time and evicts the next
-turn in line, with a waiting prefix weighted $\beta$ against a thinking one, fits with
-$C=\metaFifoC$, $\beta=\metaFifoBeta$ and an error of \metaFifoRmse. It predicts
-recoveries of \metaPredRecSixty\,s after both held-out bursts, against serQ's
-\metaSqRecSixtyB\,s and \metaSqRecThreeHundredB\,s (panel b). The order of service and the
-identity of the LRU victim, the content of \cref{L7:prop:mattson,L7:prop:rounds}, are the
-state a faithful model must keep.
+\paragraph{Calibration.} We fit a chain to serQ's hit-rate sweep and then compare the
+bursts, which the fit does not see. Service times come from serQ's engine utilisation at
+two loads, \metaShit\,s per hit and \metaSmiss\,s per miss; memory is counted in contexts,
+$C\approx\metaAbC$, an admitted turn adds $a=0.04$, and an admitted miss holds the prefix
+it recomputes. Each chain is fitted over a grid of two parameters. The chain of
+\cref{L7:def:three}, fitted over $C$ and $a$, cannot follow serQ
+(\cref{L7:fig:calibration}a): its best error in hit rate is \metaPsRmse, and at the highest
+load it predicts \metaPsLowZ{} against serQ's \metaSqLowZ. Under processor sharing a short
+hit overtakes the misses, and every waiting turn is served at once although only 16 are
+admitted. A chain that serves one turn at a time, picks the next at random among the
+waiting turns unless an evicted turn waits at the head, and makes a waiting prefix LRU's
+victim with weight $\beta$ against a thinking one, fits better: $C=\metaFifoC$,
+$\beta=\metaFifoBeta$, error \metaFifoRmse. The fitted $C$ is above the physical
+\metaAbC, $\beta$ is at the edge of its grid, and at the highest load the chain still
+predicts \metaFifoLowZ{} against \metaSqLowZ, so the fit is partial. On serQ's 25\,s
+windows it recovers from the held-out bursts in \metaPredRecSixty\,s and
+\metaPredRecThreeHundred\,s against serQ's \metaSqRecSixtyB\,s and
+\metaSqRecThreeHundredB\,s (panel b): the right order of magnitude, about 25\,s slow. Which
+turn is served next and which prefix LRU evicts are state that a model of vLLM's rules must
+keep; the queue length and the hit rate do not determine them.
 
 \begin{figure}[h]\centering
 \includegraphics[width=\linewidth]{fig-meta-calibration}
-\caption{Calibration against serQ. (a) Hit rate against the think time: serQ and the best
-fits of the processor-sharing and the FCFS chains. (b) Held-out bursts.}\label{L7:fig:calibration}
+\caption{Calibration against serQ. (a) Full-reuse hit rate against the think time: serQ
+and the best fits of the processor-sharing and the one-at-a-time chains. (b) Held-out
+bursts on 25\,s windows.}\label{L7:fig:calibration}
 \end{figure}
 
 \section{Conclusions}\label{L7:sec:conclusions}
 
 \begin{enumerate}
 \item \emph{FCFS with LRU loses every prefix behind a queue of $C$.} A turn behind $C$
-  others misses (\cref{L7:cor:behind}); under saturation LRU hits nothing, any rule at most
+  others misses (\cref{L7:sec:lru}); under saturation LRU hits nothing, any rule at most
   $C$ of $N$ per round, and pinning $C$ sessions attains $C$ (\cref{L7:prop:rounds}). This
-  is the cliff in serQ's run of vLLM's rules.
-\item \emph{The stability limit is set by the miss work, the lifetime by the cache.} An
-  FCFS--LRU replica is stable if and only if $\lambda S^{\mathrm{miss}}<1$, for every cache
-  size; a larger cache lengthens the good state's lifetime exponentially in $C$ but does
-  not move the limit (\cref{L7:thm:open}). Faster prefill or a cheaper restore moves it.
+  explains the cliff in serQ's run of vLLM's rules.
+\item \emph{Admit at most $C+Z/S^{\mathrm{miss}}$ sessions.} Behind the cache a closed
+  FCFS--LRU replica congests at $N-Z/S^{\mathrm{miss}}$ waiting turns, and with at most
+  $C+Z/S^{\mathrm{miss}}$ sessions it has no congested mode there (\cref{L7:thm:open}). For
+  serQ's replica the rule puts the cliff at $Z^*\approx\metaZstar$\,s, on the simulated cliff. Faster prefill or a cheaper restore raises the cap; in the
+  open limit the same miss work sets the stability limit $\lambda S^{\mathrm{miss}}<1$.
 \item \emph{Take memory at admission.} Doing so never slows service or recovery, and it
-  leaves no congested mode above the batch cap (\cref{L7:prop:hold}). After the same 60\,s
-  burst, a replica whose waiting turns hold memory is still congested with probability
-  \metaFailHeldEnd{} after 3000\,s; one that takes memory at admission has drained
-  (\cref{L7:fig:failure}). Metastability
-  appears when every waiting turn holds about a context of memory
-  (\cref{L7:fig:region}), and serQ's admission-time engine shows a cliff without
-  hysteresis (\cref{L7:fig:sweep}). Engines that reserve memory while a turn waits, such
-  as a decoder waiting for a KV transfer, are the ones to test.
+  puts every barrier at or below the batch cap, so bistability needs the admitted turns
+  alone to start the losses (\cref{L7:prop:hold}). After the same 60\,s burst, a replica
+  whose waiting turns hold memory is still congested with probability \metaFailHeldEnd{}
+  after 3000\,s; the same replica with memory taken at admission has drained
+  (\cref{L7:fig:failure}). Metastability appears when every waiting turn holds about a
+  context of memory (\cref{L7:fig:region}), and serQ's admission-time engine shows a cliff
+  without hysteresis (\cref{L7:fig:sweep}). Engines that hold memory while a request waits,
+  such as a decoder waiting for a KV transfer, are the ones to test.
 \item \emph{A predictive model must keep the waiting misses and the service order.}
   Queue length alone is exact for steady state and optimistic about recovery by a factor
-  of about three (\cref{L7:sec:enough}); a processor-sharing chain cannot be calibrated to
-  vLLM's rules, an FCFS chain can, and it predicts a recovery of \metaPredRecSixty\,s after held-out
-  bursts where serQ shows \metaSqRecSixtyB{} and \metaSqRecThreeHundredB\,s.
+  of about three (\cref{L7:sec:enough}). A processor-sharing chain cannot be calibrated to
+  vLLM's rules; a chain that serves one turn at a time and evicts the next in line fits
+  partly and recovers from held-out bursts in \metaPredRecSixty{} and
+  \metaPredRecThreeHundred\,s where serQ takes \metaSqRecSixtyB{} and
+  \metaSqRecThreeHundredB\,s.
 \item \emph{Rank interventions by the question asked.} Steady state and recovery rank
   them differently (\cref{L7:tab:interventions}): the best response time comes from a
   faster prefill, the fastest recovery from more cache.
@@ -425,16 +460,18 @@ fits of the processor-sharing and the FCFS chains. (b) Held-out bursts.}\label{L
 
 \begin{itemize}
 \item \emph{Proved} (and checked in Lean, module \texttt{CacheOrder} and
-  \texttt{Metastability}, except where noted): \cref{L7:prop:mattson,L7:prop:rounds},
-  \cref{L7:cor:behind} (its FCFS step is in the proof above), \cref{L7:lem:bd} (its
+  \texttt{Metastability}, except where noted): \cref{L7:prop:rounds}, the LRU criterion of \cref{L7:sec:lru} (its FCFS step is in
+  the prose), \cref{L7:lem:bd} (its
   algebraic content; that $T_k$ and $R$ are hitting times is proved here only),
   \cref{L7:thm:open,L7:prop:hold}, and \cref{L7:lem:lump} (here only). Every chain number
-  is computed from the generator, not simulated.
+  is computed from the generator; the sample paths of \cref{L7:fig:failure} are drawn
+  from it for the picture only.
 \item \emph{Simulation:} the serQ runs model vLLM's scheduler; they are not measurements
   of an engine.
 \item \emph{Modelling choices:} prefixes of equal size and session-level LRU instead of
   blocks; the queue-length model of \cref{L7:thm:open}, in which the loss depends on the
-  current queue rather than the queue a turn joined; exponential service; processor
+  current queue rather than the queue a turn joined, and a single completion rate in place
+  of a batched engine; exponential service; processor
   sharing or one turn at a time instead of a batched engine; no cost of pinned memory.
 \item \emph{To be measured:} the loss onset, the slack $C-N$ and the memory per waiting
   turn on a real engine, with the burst protocol (normal load, a short burst, normal load;

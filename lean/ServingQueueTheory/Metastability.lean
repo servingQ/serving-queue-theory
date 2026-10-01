@@ -35,6 +35,10 @@ Key theorems:
 * `fcfs_lru_open_stable_iff` — with FCFS admission and an LRU cache of `C`
   prefixes (`CacheOrder.lean`), the open queue is stable exactly when
   `λ S_miss < 1`, for every `C`.
+* `closed_fcfs_lru_rises_iff`, `closed_fcfs_lru_no_congested_mode` — the
+  closed FCFS–LRU replica: above the cache the queue law peaks at
+  `N - Z / S_miss`, and admitting at most `C + Z / S_miss` sessions leaves no
+  congested mode.
 * `admission_hold_service_le`, `admission_hold_recovery_le`,
   `admission_hold_no_trough` — admit, then hold: taking a turn's memory at
   admission (batch cap `B`) rather than on arrival never slows service or
@@ -378,11 +382,12 @@ theorem open_stability_tail_only (lam : ℝ) (s s' : ℕ → ℝ) (K : ℕ) (hla
     rw [key]
     field_simp [(hw K).ne', (hw' K).ne']
 
-/-- FCFS admission with an LRU cache of `C` prefixes: a turn that has `C` or
-more turns ahead of it has lost its prefix (`mattson_lru_hit_iff`), so in the
-queue-length model the service time is the miss work from queue length `C`
-on. Then the open queue is stable exactly when `lam * sMiss < 1`, for every
-cache size `C`: a larger cache moves where the losses start, not the limit. -/
+/-- FCFS admission with an LRU cache of `C` prefixes: a turn that joins
+behind `C` or more turns has lost its prefix (`mattson_lru_hit_iff`). The
+queue-length analogue, assumed here, is that the service time is the miss work
+from queue length `C` on. Then the open queue is stable exactly when
+`lam * sMiss < 1`, for every cache size `C`: a larger cache moves where the
+losses start, not the limit. -/
 theorem fcfs_lru_open_stable_iff (lam sMiss : ℝ) (s : ℕ → ℝ) (C : ℕ) (hlam : 0 < lam)
     (hs : ∀ n, 0 < s n) (hC : ∀ n, C ≤ n → s n = sMiss) :
     Summable (openWeight lam s) ↔ lam * sMiss < 1 := by
@@ -410,6 +415,53 @@ theorem fcfs_lru_open_stable_iff (lam sMiss : ℝ) (s : ℕ → ℝ) (C : ℕ) (
     have hlim : Filter.Tendsto s Filter.atTop (𝓝 sMiss) :=
       tendsto_const_nhds.congr' (Filter.eventually_atTop.2 ⟨C, fun n hn => (hC n hn).symm⟩)
     exact (open_wait_loss_stable_iff_ratio_test lam sMiss s hlam hs hlim).1 hlt
+
+/-! ### The closed FCFS–LRU replica -/
+
+/-- The weights stay positive up to a level whose lower births are positive. -/
+theorem bdWeight_pos_of (up down : ℕ → ℝ) (n : ℕ) (hu : ∀ i, i < n → 0 < up i)
+    (hd : ∀ i, 0 < down i) : 0 < bdWeight up down n := by
+  induction n with
+  | zero => simp [bdWeight, bdRatio]
+  | succ k ih =>
+    rw [bdWeight_succ]
+    exact mul_pos (ih fun i hi => hu i (by omega)) (div_pos (hu k (by omega)) (hd _))
+
+/-- A closed population of `N` sessions with think time `Z` behind an FCFS–LRU
+cache of `C` prefixes: from queue length `C` on every served turn misses, so
+the completion rate is `1 / sMiss`. Above `C` the stationary law rises from
+`n` to `n + 1` exactly when `n ≤ N - Z / sMiss`: the congested queue length is
+`N - Z / sMiss`, the sessions that the think time cannot hide at the
+saturated throughput `1 / sMiss`. -/
+theorem closed_fcfs_lru_rises_iff (N : ℕ) (Z sMiss : ℝ) (down : ℕ → ℝ) (C n : ℕ)
+    (hZ : 0 < Z) (hS : 0 < sMiss) (hn : C ≤ n) (hnN : n < N)
+    (hdown : ∀ i, C < i → down i = 1 / sMiss) (hpos : ∀ i, 0 < down i) :
+    bdWeight (fun i => ((N : ℝ) - i) / Z) down n ≤
+        bdWeight (fun i => ((N : ℝ) - i) / Z) down (n + 1) ↔
+      (n : ℝ) ≤ N - Z / sMiss := by
+  have hw := bdWeight_pos_of (fun i => ((N : ℝ) - i) / Z) down n
+    (fun i hi => div_pos (by
+      have : (i : ℝ) < N := by exact_mod_cast (show i < N by omega)
+      linarith) hZ) hpos
+  rw [bd_weight_le_iff _ _ n hw (hpos _), hdown (n + 1) (by omega),
+    div_le_div_iff₀ hS hZ, one_mul, le_sub_iff_add_le, ← le_sub_iff_add_le',
+    div_le_iff₀ hS]
+
+/-- Admission rule: with at most `N ≤ C + Z / sMiss` sessions admitted, the
+stationary law falls at every queue length above `C`, so there is no congested
+mode behind the cache. -/
+theorem closed_fcfs_lru_no_congested_mode (N : ℕ) (Z sMiss : ℝ) (down : ℕ → ℝ) (C : ℕ)
+    (hZ : 0 < Z) (hS : 0 < sMiss) (hcap : (N : ℝ) ≤ C + Z / sMiss)
+    (hdown : ∀ i, C < i → down i = 1 / sMiss) (hpos : ∀ i, 0 < down i) (n : ℕ)
+    (hn : C < n) (hnN : n < N) :
+    bdWeight (fun i => ((N : ℝ) - i) / Z) down (n + 1) <
+      bdWeight (fun i => ((N : ℝ) - i) / Z) down n := by
+  by_contra h
+  push Not at h
+  have := (closed_fcfs_lru_rises_iff N Z sMiss down C n hZ hS hn.le hnN hdown hpos).1 h
+  have hCn : (C : ℝ) < n := by exact_mod_cast hn
+  have hzs : 0 < Z / sMiss := div_pos hZ hS
+  linarith
 
 /-! ### Admit, then hold -/
 
