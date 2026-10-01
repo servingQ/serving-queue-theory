@@ -168,8 +168,9 @@ def main():
         close(value, expected, .01, 'feedback roots .25')
     close(roots['0.18'][0], .885, .01, 'feedback roots .18')
     current = release_identity(args.serq)
-    assert current['release'] is None or current['release_verified'], \
-        f"serq at {args.serq} is {current['release']}, pinned {current['pinned']}"
+    assert current['release_verified'], (
+        f"serq at {args.serq} is {current['release']!r}, pinned {current['pinned']!r}; "
+        "build it with scripts/fetch_serq.sh, which records the release in .serq/tag")
     result = dict(**current, ir_version=ir['version'], checks=checks,
                   baseline=release_identity(args.baseline, pinned=False) if args.baseline else None,
                   baseline_comparison=comparisons, feedback_roots=roots)
