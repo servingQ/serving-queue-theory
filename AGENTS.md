@@ -125,7 +125,7 @@ scripts/check_lean.sh          build + sorry + axiom audit
 scripts/check_lean_refs.sh     \leanref ↔ Lean name check
 scripts/check_sim.sh           simulator: cited Lean names exist + ruff + pytest + report
 scripts/fetch_serq.sh          the pinned serQ release into .serq/ (research/serq.md: pin, upgrading, CI access)
-programs/{price,open,replay}_vllm.sq  where a miss is paid (Poisson turns), the eviction/admission experiment (two-class open sessions) and §4.2's replica (the WEKA sessions) on vLLM v1's engine rules and the testbed's cost model (run by validation/src/sim/{replay,open}_vllm.py for paper/sim/; replay ablations by scripts/exp/serq_replay42.py, research/serq-replay42*.md)
+programs/{price,open,replay}_vllm.sq  where a miss is paid (Poisson turns), the eviction/admission experiment (two-class open sessions) and §4.2's replica (the WEKA sessions) on vLLM v1's engine rules and the testbed's cost model (run by validation/src/sim/{price,open,replay}_vllm.py for paper/sim/; replay ablations by scripts/exp/serq_replay42.py, research/serq-replay42*.md)
 validation/src/theory/     closed forms, laws, independent reproductions; never imports serQ (tests/test_layers.py)
 validation/src/sim/        serQ runs and their measurement; never imports checks or report
 validation/src/checks.py  one named check per proposition (tests + report)
