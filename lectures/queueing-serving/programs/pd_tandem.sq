@@ -1,5 +1,5 @@
 // Aggregated pool vs prefill -> KV link -> decode tandem
-// (`libqueuingsim::models::pd`, paper App. B, `prop:pd`). `jobs` requests
+// (the bottleneck check of the lecture notes, appendix A). `jobs` requests
 // circulate (saturated load): the throughput is the capacity
 // N/(s_P + s_D + I) aggregated, min(N_P g_P/s_P, N_D g_D/s_D, B/K) split.
 let N = 32;

@@ -421,7 +421,7 @@ survival law $G$ estimated from the workload.
 \begin{itemize}
 \item A transfer miss is priced exactly by insensitivity and grows linearly in the context; a prefill miss grows quadratically and has a head-of-line term.
 \item Each pool has its own shadow price, and a decode cache is worth only the transfers it saves.
-\item The hit rate is also an output: overload can add an all-miss equilibrium, and an admission cap removes it.
+\item The hit rate is also an output: overload can add an all-miss equilibrium. An admission cap removes the overload cause, but the pool channel can still leave one.
 \end{itemize}
 
 \section{Exercises}
