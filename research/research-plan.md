@@ -31,10 +31,12 @@ Keep this section current at the end of every work block.
   dedicated decode engine `(λ/f, φ)` has the colocated engine's `(λ, fφ)`
   occupancy and `f` times its sojourn; the token-weighted TPOT scales
   with it, the request-weighted TPOT only for a fixed output length
-  (two-point counterexample). `psNum_anti_capacity` records the limit: a
-  miss adds no decode demand, but an exclusive prefill step lowers the
-  decode capacity, which raises the mean number; §2.2's decode paragraph
-  says this in one sentence. Conditions (constant share, Poisson arrivals
+  (two-point counterexample). `psMeanNumber_anti_share` (any capacity
+  function, via `stationaryMean_mono`) and `psNum_anti_capacity` record the
+  limit: a miss adds no decode demand, but an exclusive prefill step lowers
+  the decode capacity, which raises the mean number; §2.2's decode
+  paragraph says which step rule `prop:decode` assumes and what the other
+  does. Conditions (constant share, Poisson arrivals
   at the decode station, split-independent work law) are in the module's
   doc comment; the step-engine comparison is simulation (serQ #208,
   `tools/pd_batching/`), to be wired into the validation checks next.
@@ -434,7 +436,7 @@ Conventions that follow from the user's review of v0.1:
 ## 3. Status of analytical results
 
 All propositions and cited numbers compile in Lean with no `sorry` and
-only standard axioms (`make lean` reports `OK: 120 theorems audited`).
+only standard axioms (`make lean` reports `OK: 170 theorems audited`).
 
 | Result | Status | Notes |
 |--------|--------|-------|
@@ -450,7 +452,7 @@ only standard axioms (`make lean` reports `OK: 120 theorems audited`).
 | `prop:blind` (ii) SF = `w=c²` price-per-byte order, feasible, 2-approx + tightness | proved | formerly `prop:evict` (ii); v0.1 wrongly said the ratio is unbounded |
 | SF not optimal on `{4,5,6}`, ΔC=6 | proved | prose sentence after `prop:blind` with inline `\provedby`; contradicts ThunderAgent App. F.3 |
 | PD capacity (follow-up only) | proved | capacity model only, no batching; outside the current paper |
-| Decode scaling identity (PS, follow-up only; issue #28) | proved | `DecodeScaling.lean`: scaling arrival rate and capacity by the same factor keeps the PS law and mean number, divides the sojourn (Little); a dedicated decode engine `(λ/f, φ)` is the colocated `(λ, fφ)` scaled by `1/f`; token-weighted TPOT scales, request-weighted TPOT only for a fixed output length; a smaller capacity at the same demand raises the mean number (`psNum_anti_capacity`, cited in §2.2). Conditional on a constant share `f`, Poisson arrivals and a split-independent work law; says nothing about a step engine |
+| Decode scaling identity (PS, follow-up only; issue #28) | proved | `DecodeScaling.lean`: scaling arrival rate and capacity by the same factor keeps the PS law and mean number, divides the sojourn (Little); a dedicated decode engine `(λ/f, φ)` is the colocated `(λ, fφ)` scaled by `1/f`; token-weighted TPOT scales, request-weighted TPOT only for a fixed output length; a smaller share of the capacity at the same demand raises the mean number (`psMeanNumber_anti_share`, `psNum_anti_capacity`, cited in §2.2). Conditional on a constant share `f`, Poisson arrivals and a split-independent work law; says nothing about a step engine |
 | Placement: inversion load and monotonicity (prose, `eq:rhostar`) | proved | a shared KV store enters through the move cost; append routing belongs to the PD follow-up |
 | `prop:finite` | proved | M/M/1//N MVA recursion, monotonicity, open-wait bound; finite-source price cap in prose |
 
