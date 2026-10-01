@@ -1,95 +1,89 @@
-# Metastability: the wait-loss feedback as dynamics (serQ issue #120)
+# Metastability of a prefix cache under load (serQ issue #120)
 
 Status: 2026-10-01, **lecture note only** (Lecture 7 of
 `lectures/queueing-serving/notes.tex`, at the user's request), not in the paper.
-Lean: `lean/ServingQueueTheory/Metastability.lean` (16 theorems in the axiom
-audit). Numerics: `scripts/metastability_ctmc.py` →
-`research/metastability-results.json` and the generated
-`lectures/queueing-serving/metastability-tables.tex`. All numbers are exact
-CTMC computations on models (no simulation, no measurement; rule 7).
+Lean: `lean/ServingQueueTheory/CacheOrder.lean` (what LRU keeps under FCFS) and
+`Metastability.lean` (birth–death tools, open stability, admit-then-hold), all in
+the axiom audit. Numerics and simulation, all generated:
+
+| script | output |
+|---|---|
+| `scripts/metastability_ctmc.py` | exact CTMC tables → `metastability-tables.tex`, `research/metastability-results.json` |
+| `scripts/metastability_serq.py` | serQ v0.1.0 runs of `lectures/queueing-serving/programs/metastable.sq` → `research/metastability-serq.json` |
+| `scripts/metastability_figs.py` | figures `fig-meta-{drift,recovery,region,burst,sweep}.pdf`, `metastability-figs.tex` |
+| `scripts/metastability_failure.py` | Gillespie sample paths of a burst → `fig-meta-failure.pdf`, `metastability-failure.tex`, `research/metastability-failure.json` |
+| `scripts/metastability_calibration.py` | calibration against serQ → `fig-meta-calibration.pdf`, `metastability-exp.tex`, `research/metastability-calibration.json` |
+
+Nothing here is a measurement (rule 7): CTMC numbers are exact model output,
+serQ runs are a discrete-event model of vLLM's scheduler.
 
 ## Source read
 
 Alvaro, Isaacs, Majumdar, Muniswamy-Reddy, Salamati, Soudjani, *Formal Analysis
-of Metastable Failures in Software Systems*, arXiv:2510.03551 v2 (read via the
-arXiv HTML, 2026-10-01). What we use: state `(u, v)` = requests in the server
-and queue, requests in the retry orbit; timeout probability rising with `u`;
-the drift field `Σ Q((u,v),(u',v'))·(u'−u, v'−v)` (§5.1, "Qualitative
-Analysis through Visualization"); ρ-metastability by escape probabilities
-(Def. 5.1) and eigenvalues near 0 ↔ inverse mean hitting times (Thm 5.2);
-recovery time as a mean hitting time. Metastable Failures in the Wild
-(OSDI 2022) is named in the issue but has **not** been read; not cited.
-
-## Mapping
-
-| Alvaro et al. | here |
-|---------------|------|
-| queue `u` | prefill queue length `n` |
-| orbit `v` (requests to retry) | lost prefixes: queued misses `m`, cold thinkers `c` |
-| timeout probability `r(u)` ↑ | loss probability `m(n)` ↑ (LRU evicts waiting prefixes first) |
-| a timeout adds **arrivals** | a loss adds **work**; turns are conserved |
-| open arrivals | open `λ`, or closed `N` sessions with think time `Z` |
-
-The change of mechanism changes the answers: the closed system is finite and
-ergodic (metastability = slow mixing, never instability); projected on `n`
-the chain is birth–death with closed-form passage times.
+of Metastable Failures in Software Systems*, arXiv:2510.03551 v2 (arXiv HTML,
+read 2026-10-01, through a summariser plus verbatim quotes of Def. 5.1, Thm 5.2,
+the (u, v) state and the drift definition of §5.1). Their experiments:
+calibration by CMA-ES (§4, §6.1), drift visualisation (§5.1, §6.2), parameter
+sensitivity of the two hitting times (§6.2, Fig. 13), recovery policies (§6.3),
+a two-server pipeline (§6.4). We repeat drift, recovery vs. initial state,
+region of metastability, and calibration with held-out bursts; the user asked
+for the main ones only. The OSDI 2022 paper and the four related papers named
+in the issue were not read; no novelty claim.
 
 ## Results
 
 Proved (Lean names):
-1. Modes of the stationary law = stable fluid equilibria
-   (`bd_weight_le_iff`, `bd_local_mode_iff`).
-2. Passage time `T_k = Σ_{j≥k} π_j/(π_k μ_k)`, unique solution of the
-   first-step equations (`passTime_first_step`, `passTime_top`,
-   `passTime_unique`).
-3. Locality: recovery to level `n` reads only rates above `n`; monotone in them
-   (`passTime_congr`, `recoveryTime_congr`, `passTime_mono`, `recoveryTime_mono`).
-4. Arrhenius lower bound `T_k ≥ π_j/(π_k μ_k)` (`passTime_ge_barrier`).
-5. **Open queue: stable iff `λ S_miss < 1`** (strictly; d'Alembert), whatever the
-   hit work or the onset of losses; profiles equal beyond `K` are stable together
-   (`open_wait_loss_stable_iff_ratio_test`, `open_wait_loss_stable_iff`,
-   `open_stability_tail_only`). KV capacity, pinning and a faster hit path cannot
-   move the limit; prefill speed and cheaper restore (reload) can.
-6. Steady state and recovery rank interventions differently, 3-state example
-   (`recovery_ranking_flip`).
-7. (lecture proof only, not in Lean) Lumping onto a ±1 coordinate with
-   stationary-averaged rates preserves the stationary marginal (cut equation).
+1. **Mattson's stack-distance criterion** (`mattson_lru_hit_iff`): under LRU a
+   session hits iff fewer than `C` distinct sessions were served since its last
+   turn. Under FCFS with one outstanding turn per session, a turn behind `C`
+   waiting turns misses (Cor. 7.2, prose step).
+2. **Saturated rounds** (`lru_round_robin_all_miss`, `round_hits_le_capacity`,
+   `pinned_round_hits`): round-robin with `N > C`: LRU 0 hits; any rule at most
+   `C` per round; pinning `C` sessions attains `C`.
+3. **Stability of an FCFS–LRU replica** (`fcfs_lru_open_stable_iff`): with
+   `s(n) = S_miss` for `n ≥ C`, the open queue is stable iff `λ S_miss < 1`, for
+   every `C`. The cache moves the lifetime of the good state (exponential in
+   `C`, Exercise 7.1), not the limit.
+4. **Admit, then hold** (`admission_hold_service_le`,
+   `admission_hold_recovery_le`, `admission_hold_no_trough`): memory taken at
+   admission (cap `B`) never slows service or recovery, and the queue law has no
+   trough above `B`.
+5. Tools: product form, passage times, locality/monotonicity, Arrhenius lower
+   bound, d'Alembert (`bd_*`, `passTime_*`, `recoveryTime_*`,
+   `open_wait_loss_stable_iff_ratio_test`, …); `recovery_ranking_flip` is kept in
+   Lean but no longer in the lecture.
 
-Numerical (model, exact):
-- Open, `S_hit=0.5`, `S_miss=5`, logistic `m` at 20: mean collapse time from
-  empty `10^16.2` s at `λS_miss=1.05`, `10^3.2` s at 5. Mathematical
-  instability vs practical lifetime: capacity planning needs the barrier.
-- Closed, `Z=1.5N`, `m` at `N/4`: barrier ≈ 0.21 per session; recovery and
-  1/gap exponential in `N` (8.5e3 s at N=20 → 2.5e17 s at N=160).
-- Hysteresis (N=40): bimodal for 25 ≤ Z ≤ 120 s; collapse needs rate > N/25,
-  recovery needs rate < N/120 (factor ≈ 5).
-- 3D chain `(h, m, c)` (N=40, Z=27, C=48, a=1; 12 341 states): lumped chain
-  matches the marginal to 3e-16 but its gap is 3.2× too large and its recovery
-  time 418 s vs 1375 s; warm vs cold start at the same empty queue: P(bad at
-  30 s) 0.005 vs 0.96. **Queue length is enough for steady state, not for
-  dynamics**; the lost-prefix count is the slow variable (the orbit analogue).
-- Burst (Z 27 → 12 s for B s): P(bad 600 s later) 0.35 → 0.62, saturating by
-  B ≈ 60 s; ~1500 s back to an empty queue.
-- Interventions (ranks by response / by recovery): prefill ×1.25 1/2; KV +4 3/1;
-  hit path ×1.25 2/3; protect waiting φ=1 4/4; φ=0.5 5/5; miss path ×1.25 6/6.
-  Steady-state and recovery winners differ. Protection is monotone in φ here
-  because the chain has no cost of pinned memory.
+Numerical (exact chain or serQ):
+- Metastable failure in time (Fig. 7.1 of the experiments): a=1.2, Z=42.5 s,
+  60 s burst at Z=12 s, 40 exact sample paths: congested with probability
+  0.95 at 1000 s and 0.60 at 3000 s when waiting turns hold memory; 0.05 at
+  1000 s when memory is taken at admission (B=16).
+- Queue-and-cache chain (N=40, Z=27, C=48, a=1): closed class of 297 of
+  12 341 states (h ≤ 8, c ≡ 0; reviewer finding); lumped chain exact for the
+  marginal, optimistic ×3 for recovery; warm vs flushed start 0.005 vs 0.96.
+- Region: bimodal only for a ≥ 1 (memory per waiting turn ≈ one context).
+- serQ (vLLM rules, admission-time allocation): cliff (hit 0.80 → 0.01, TTFT
+  0.29 → 7 s) without hysteresis (cold/warm within 0.006); recovery 40–50 s
+  after bursts.
+- Calibration: PS chain cannot fit (RMSE 0.37, wrong slope); FCFS chain that
+  evicts the next turn in line fits (C=37, β=6, RMSE 0.13) and predicts 30 s
+  recovery for the held-out bursts (serQ 40, 50 s).
 
-## What is new relative to the issue's prior work
+## serQ issues filed (2026-10-01)
 
-Narrow and conditional: (i) the open-queue stability limit under wait loss is
-`1/S_miss` independent of cache size/protection, with the metastable band up to
-`1/S_hit`; (ii) locality of recovery (interventions acting only on lightly
-loaded states cannot shorten recovery); (iii) exact demonstration that a
-queue-length model is stationary-exact but dynamically optimistic. Not checked
-against PEEK, Continuum, 2605.04595, 2606.15555 (named in the issue, unread).
+- vrvrv/serQ#230: a hold nested in a hold on the same pool loses the session's
+  cached prefix (blocked the reservation-on-arrival experiment in serQ).
+- vrvrv/serQ#231: a session attribute silently shadows a context variable
+  (`present`), PS capacity 8× off; same class as the old PD lecture bug.
+- vrvrv/serQ#232: diagnostics umbrella (lints, degenerate-observe note, state
+  sampling, `--version`).
 
 ## Next
 
-1. Measure `m(n)` (or the overflow slack `C − N` and per-turn memory `a`) on the
-   testbed or with serQ's vLLM program; fit and predict the burst table before
-   running it (registered).
-2. Add a concurrency cost of pinning (Exercise 7.3) to answer "partial vs full
-   protection".
-3. FIFO instead of PS in the 3D chain; block-level LRU.
-4. Read the four related papers named in the issue before any novelty claim.
+1. The positive prediction: an engine that holds a prompt's blocks while the
+   turn waits (PD decoder waiting for a KV transfer) should be metastable.
+   Needs serQ#230 fixed, or the PD program `llmd_nixl_pull.sq`.
+2. Measure the loss onset, `C − N` and memory per waiting turn on the testbed
+   with the burst protocol, predictions registered first.
+3. A concurrency cost of pinning (Exercise 7.3).
+4. Read PEEK, Continuum, 2605.04595, 2606.15555 before any novelty claim.

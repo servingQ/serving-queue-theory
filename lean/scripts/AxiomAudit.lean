@@ -132,8 +132,22 @@ open ServingQueueTheory
 #print axioms recovery_ranking_flip
 #print axioms openWeight_eq_bdWeight
 #print axioms open_wait_loss_stable_iff_ratio_test
-#print axioms open_wait_loss_stable_iff
+#print axioms open_wait_loss_stability
 #print axioms open_stability_tail_only
+#print axioms admission_hold_service_le
+#print axioms admission_hold_recovery_le
+#print axioms admission_hold_no_trough
+-- serving: what LRU keeps under FCFS (CacheOrder.lean)
+#print axioms fcfs_lru_open_stable_iff
+#print axioms round_hits_le_capacity
+#print axioms lru_round_robin_all_miss
+#print axioms lruRun_round_robin
+#print axioms pinCache_card
+#print axioms pinCache_step
+#print axioms pinned_round_hits
+#print axioms lruRun_eq_take
+#print axioms recency_split
+#print axioms mattson_lru_hit_iff
 -- serQ, the serving-deployment language (Serq*.lean; research/seq.md)
 -- syntax and pool semantics (Serq.lean)
 #print axioms SerqLang.Step.invariant

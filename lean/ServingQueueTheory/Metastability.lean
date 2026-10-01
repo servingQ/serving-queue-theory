@@ -28,7 +28,17 @@ Key theorems:
 * `open_wait_loss_stable_iff_ratio_test` — d'Alembert's ratio test on the
   stationary weights: if the service time tends to the miss work, the open queue
   has a stationary law when `λ S_miss < 1` and none when `λ S_miss > 1`,
-  whatever the hit work and however late the losses start.
+  whatever the hit work and however late the losses start, provided the
+  service time still tends to `S_miss`.
+* `open_wait_loss_stability` — the serving instance: hit work plus the miss
+  probability times the extra work, with the miss probability tending to one.
+* `fcfs_lru_open_stable_iff` — with FCFS admission and an LRU cache of `C`
+  prefixes (`CacheOrder.lean`), the open queue is stable exactly when
+  `λ S_miss < 1`, for every `C`.
+* `admission_hold_service_le`, `admission_hold_recovery_le`,
+  `admission_hold_no_trough` — admit, then hold: taking a turn's memory at
+  admission (batch cap `B`) rather than on arrival never slows service or
+  recovery, and leaves no trough of the queue law beyond `B`.
 * `open_stability_tail_only` — two service profiles that agree beyond some
   queue length have a stationary law together or not at all.
 * `recovery_ranking_flip` — an intervention can lower the stationary mean queue
@@ -154,7 +164,9 @@ theorem passTime_first_step (up down : ℕ → ℝ) (M k : ℕ) (hk : k < M)
   field_simp
   ring
 
-/-- The closed form is the only solution of the first-step equations. -/
+/-- The closed form is the only solution of the first-step equations. The
+equation at `k = 0` uses a death rate `down 0 ≠ 0` that the chain does not
+have; it only extends `T` to level 0 and does not constrain the levels `≥ 1`. -/
 theorem passTime_unique (up down : ℕ → ℝ) (M : ℕ) (T : ℕ → ℝ)
     (hd : ∀ i, down i ≠ 0) (htop : down M * T M = 1)
     (hstep : ∀ k < M, down k * T k = 1 + up k * T (k + 1)) :
@@ -325,7 +337,7 @@ theorem open_wait_loss_stable_iff_ratio_test (lam sMiss : ℝ) (s : ℕ → ℝ)
 probability `m n` times the extra work of a miss, and the miss probability of
 a queued turn tends to one as the queue grows. Then stability is decided by
 `lam * sMiss` alone; the hit work and the shape of `m` do not enter. -/
-theorem open_wait_loss_stable_iff (lam sHit sMiss : ℝ) (m : ℕ → ℝ)
+theorem open_wait_loss_stability (lam sHit sMiss : ℝ) (m : ℕ → ℝ)
     (hlam : 0 < lam) (hHit : 0 < sHit) (hle : sHit ≤ sMiss)
     (hm : ∀ n, 0 ≤ m n) (hlim : Tendsto m atTop (𝓝 1)) :
     (lam * sMiss < 1 → Summable (openWeight lam fun n => sHit + m n * (sMiss - sHit))) ∧
@@ -337,8 +349,10 @@ theorem open_wait_loss_stable_iff (lam sHit sMiss : ℝ) (m : ℕ → ℝ)
     simpa using this
 
 /-- Two service profiles that agree beyond queue length `K` have a stationary
-law together or not at all: KV capacity, pinning or a faster hit path, which
-change only how early the losses start, cannot move the stability limit. -/
+law together or not at all: a change confined to finitely many queue lengths
+cannot move the stability limit. (A change of the hit work or of the onset of
+losses that leaves the limit `sMiss` alone is covered by
+`open_wait_loss_stable_iff_ratio_test` instead.) -/
 theorem open_stability_tail_only (lam : ℝ) (s s' : ℕ → ℝ) (K : ℕ) (hlam : 0 < lam)
     (hs : ∀ n, 0 < s n) (hs' : ∀ n, 0 < s' n) (hK : ∀ n, K < n → s n = s' n) :
     Summable (openWeight lam s) ↔ Summable (openWeight lam s') := by
@@ -363,5 +377,87 @@ theorem open_stability_tail_only (lam : ℝ) (s s' : ℕ → ℝ) (K : ℕ) (hla
     refine h2.congr fun j => ?_
     rw [key]
     field_simp [(hw K).ne', (hw' K).ne']
+
+/-- FCFS admission with an LRU cache of `C` prefixes: a turn that has `C` or
+more turns ahead of it has lost its prefix (`mattson_lru_hit_iff`), so in the
+queue-length model the service time is the miss work from queue length `C`
+on. Then the open queue is stable exactly when `lam * sMiss < 1`, for every
+cache size `C`: a larger cache moves where the losses start, not the limit. -/
+theorem fcfs_lru_open_stable_iff (lam sMiss : ℝ) (s : ℕ → ℝ) (C : ℕ) (hlam : 0 < lam)
+    (hs : ∀ n, 0 < s n) (hC : ∀ n, C ≤ n → s n = sMiss) :
+    Summable (openWeight lam s) ↔ lam * sMiss < 1 := by
+  have hpos := openWeight_pos lam s hlam hs
+  constructor
+  · intro hsum
+    by_contra hge
+    push Not at hge
+    -- beyond `C` the weights never fall, so they cannot tend to zero
+    have hmono : ∀ j, openWeight lam s C ≤ openWeight lam s (C + j) := by
+      intro j
+      induction j with
+      | zero => simp
+      | succ j ih =>
+        rw [show C + (j + 1) = (C + j) + 1 by omega, openWeight, hC _ (by omega)]
+        nlinarith [hpos (C + j)]
+    have ht := hsum.tendsto_atTop_zero
+    have hev : ∀ᶠ n in Filter.atTop, openWeight lam s n < openWeight lam s C :=
+      ht.eventually (gt_mem_nhds (hpos C))
+    obtain ⟨n, hn⟩ := (hev.and (Filter.eventually_ge_atTop C)).exists
+    have := hmono (n - C)
+    rw [show C + (n - C) = n by omega] at this
+    linarith [hn.1]
+  · intro hlt
+    have hlim : Filter.Tendsto s Filter.atTop (𝓝 sMiss) :=
+      tendsto_const_nhds.congr' (Filter.eventually_atTop.2 ⟨C, fun n hn => (hC n hn).symm⟩)
+    exact (open_wait_loss_stable_iff_ratio_test lam sMiss s hlam hs hlim).1 hlt
+
+/-! ### Admit, then hold -/
+
+/-- Where a turn's working memory is taken. Reserved on arrival, the `n` turns
+present leave `C - a n` for cached prefixes; taken at admission with a batch
+cap `B`, they leave `C - a min n B`. With a loss probability `g` that falls
+as the free cache grows, admission never serves slower. -/
+theorem admission_hold_service_le (sHit dS a C : ℝ) (B : ℕ) (g : ℝ → ℝ)
+    (hg : Antitone g) (hdS : 0 ≤ dS) (ha : 0 ≤ a) (n : ℕ) :
+    sHit + g (C - a * (min n B : ℕ)) * dS ≤ sHit + g (C - a * n) * dS := by
+  have : C - a * n ≤ C - a * (min n B : ℕ) := by
+    have : ((min n B : ℕ) : ℝ) ≤ n := by exact_mod_cast min_le_left n B
+    nlinarith
+  nlinarith [hg this]
+
+/-- Admit, then hold (i): if admission serves at least as fast at every queue
+length, every recovery is at least as short and the stationary weight of every
+level relative to the empty queue is at least as small. -/
+theorem admission_hold_recovery_le (up dAdm dRes : ℕ → ℝ) (M m n : ℕ)
+    (hu : ∀ i, 0 ≤ up i) (hres : ∀ i, 0 < dRes i) (hle : ∀ i, dRes i ≤ dAdm i) :
+    recoveryTime up dAdm M m n ≤ recoveryTime up dRes M m n ∧
+      ∀ k, bdWeight up dAdm k ≤ bdWeight up dRes k := by
+  refine ⟨recoveryTime_mono up dAdm up dRes M m n (fun i _ => ⟨hu i, le_rfl⟩)
+      (fun i _ => ⟨hres i, hle i⟩), fun k => ?_⟩
+  exact bdRatio_mono up dAdm up dRes 0 (fun i _ => ⟨hu i, le_rfl⟩) (fun i _ => ⟨hres i, hle i⟩) k
+
+/-- Admit, then hold (ii): beyond the batch cap `B` the service rate no longer
+depends on the queue, while a closed population's arrival rate keeps falling,
+so the stationary law has no trough there: a congested mode beyond the cap
+needs memory that grows with the waiting turns. -/
+theorem admission_hold_no_trough (up down : ℕ → ℝ) (B : ℕ) (d : ℝ)
+    (hu : ∀ i, 0 < up i) (hd : ∀ i, 0 < down i)
+    (hcap : ∀ i, B < i → down i = d) (hanti : ∀ i j, B ≤ i → i ≤ j → up j ≤ up i)
+    (n : ℕ) (hn : B ≤ n) :
+    ¬ (bdWeight up down (n + 1) < bdWeight up down n ∧
+        bdWeight up down (n + 1) < bdWeight up down (n + 2)) := by
+  rintro ⟨h1, h2⟩
+  have hw : ∀ k, 0 < bdWeight up down k := bdRatio_pos up down 0 hu hd
+  have a1 : up n < down (n + 1) := by
+    by_contra h; push Not at h
+    exact absurd ((bd_weight_le_iff up down n (hw n) (hd _)).2 h) (not_le.2 h1)
+  have a2 : down (n + 1 + 1) < up (n + 1) := by
+    by_contra h; push Not at h
+    rw [bdWeight_succ up down (n + 1)] at h2
+    have : up (n + 1) / down (n + 1 + 1) ≤ 1 := (div_le_one (hd _)).2 h
+    nlinarith [hw (n + 1)]
+  rw [hcap (n + 1) (by omega)] at a1
+  rw [hcap (n + 1 + 1) (by omega)] at a2
+  linarith [hanti n (n + 1) hn (by omega)]
 
 end ServingQueueTheory

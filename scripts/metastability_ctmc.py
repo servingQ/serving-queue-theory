@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spl
+from scipy.sparse.csgraph import connected_components
 from scipy.linalg import eigh_tridiagonal
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,15 +93,19 @@ def exp_closed_scaling():
 
 def exp_closed_hysteresis(N=40):
     """Fluid crossings (N-n) s(n+1) = Z as Z varies: the load at which the good
-    mode disappears differs from the load at which the bad one does."""
-    rows = []
+    mode disappears differs from the load at which the bad one does. A 5 s
+    grid for the record and a 0.05 s grid for the two thresholds."""
     s = lambda n: logistic_s(n, 0.25 * N, 0.05 * N)
+    rows = []
     for Z in np.arange(10, 141, 5):
         up, dn = closed_bd(N, Z, s)
         pi, lw = bd(up, dn)
         rows.append(dict(Z=float(Z), modes=modes(pi), gap=bd_gap(up, dn),
                          mean_q=float(np.arange(N + 1) @ pi)))
-    return rows
+    two = [float(Z) for Z in np.arange(10, 140, 0.05)
+           if len(modes(bd(*closed_bd(N, Z, s))[0])) >= 2]
+    return dict(grid=rows, two_modes_Z_min=min(two), two_modes_Z_max=max(two),
+                ratio=max(two) / min(two))
 
 
 def exp_open(M=400):
@@ -147,13 +152,16 @@ def exp_ranking_flip():
 
 
 # ------------------------------------------------------- three-dimensional chain
-def build3(N, Z, C, a, sh=SH, sm=SM, phi=0.0):
+def build3(N, Z, C, a, sh=SH, sm=SM, phi=0.0, qcap=None, miss_mem=False):
     """States (h, m, c); w = N - h - m - c warm thinkers, q = h + m queued.
     Warm returns are hits, cold returns misses; processor sharing over the
     queue; a completion leaves a warm thinker. After every transition, while
     the idle prefixes w + h exceed C - a q, one is evicted: a queued hit with
     probability 1 - phi (LRU: its last use is oldest), else a warm thinker
-    (phi = 1 protects waiting prefixes)."""
+    (phi = 1 protects waiting prefixes). With `qcap`, only the first `qcap`
+    queued turns take memory (an engine that allocates at admission, with a
+    batch cap). With `miss_mem`, an admitted miss also holds one prefix of
+    memory, the blocks it is recomputing, as in vLLM."""
     idx, states = {}, []
     for h in range(N + 1):
         for m in range(N + 1 - h):
@@ -166,7 +174,9 @@ def build3(N, Z, C, a, sh=SH, sm=SM, phi=0.0):
         while out:
             p, (h, m, c) = out.pop()
             w, q = N - h - m - c, h + m
-            if w + h <= C - a * q or w + h == 0:
+            adm = q if qcap is None else min(q, qcap)
+            used = w + h + (min(m, adm) if miss_mem else 0)
+            if used <= C - a * adm or w + h == 0:
                 done.append((p, (h, m, c)))
             elif h > 0 and w > 0:
                 out += [x for x in [(p * (1 - phi), (h - 1, m + 1, c)),
@@ -191,6 +201,144 @@ def build3(N, Z, C, a, sh=SH, sm=SM, phi=0.0):
         if c > 0: add(i, c / Z, (h, m + 1, c - 1))
         if h > 0: add(i, h / (q * sh), (h - 1, m, c))
         if m > 0: add(i, m / (q * sm), (h, m - 1, c))
+    n = len(states)
+    Q = sp.csr_matrix((vals, (rows, cols)), shape=(n, n))
+    Q = (Q - sp.diags(np.asarray(Q.sum(1)).ravel())).tocsc()
+    return np.array(states), idx, Q
+
+
+def recurrent_class(Q):
+    """The closed communicating class (the support of the stationary law):
+    the strongly connected component with no transition leaving it."""
+    n, lab = connected_components(Q, directed=True, connection='strong')
+    A = Q.tocoo()
+    leaves = np.zeros(n, bool)
+    off = A.row != A.col
+    leaves[lab[A.row[off]][lab[A.row[off]] != lab[A.col[off]]]] = True
+    closed = [k for k in range(n) if not leaves[k]]
+    assert len(closed) == 1
+    return lab == closed[0]
+
+
+def build3_ordered(N, Z, C, a, sh=SH, sm=SM, phi=0.0, qcap=16):
+    """The queue-and-cache chain with one turn in service at a time, picked
+    uniformly from the queue when the server frees (a stand-in for FIFO that
+    does not let short hits overtake), instead of processor sharing. States
+    (h, m, c, k): k = 0 idle, 1 serving a hit, 2 serving a miss (counted in h
+    or m). The turn in service holds its prefix and cannot be evicted; the
+    idle prefixes w + h plus a served miss's recomputed prefix must fit in
+    C - a min(q, qcap)."""
+    idx, states = {}, []
+    for h in range(N + 1):
+        for m in range(N + 1 - h):
+            for c in range(N + 1 - h - m):
+                for k in ([0] if h + m == 0 else [k for k in (1, 2) if (k == 1 and h) or (k == 2 and m)]):
+                    idx[(h, m, c, k)] = len(states)
+                    states.append((h, m, c, k))
+
+    def evict(st):
+        out, done = [(1.0, st)], []
+        while out:
+            p, (h, m, c, k) = out.pop()
+            w, q = N - h - m - c, h + m
+            used = w + h + (k == 2)
+            hw = h - (k == 1)                      # waiting hits, evictable
+            if used <= C - a * min(q, qcap) or w + hw == 0:
+                done.append((p, (h, m, c, k)))
+            elif hw > 0 and w > 0:
+                out += [x for x in [(p * (1 - phi), (h - 1, m + 1, c, k)),
+                                    (p * phi, (h, m, c + 1, k))] if x[0] > 0]
+            elif hw > 0:
+                out.append((p, (h - 1, m + 1, c, k)))
+            else:
+                out.append((p, (h, m, c + 1, k)))
+        return done
+
+    def start(h, m, c):
+        q = h + m
+        if q == 0:
+            return [(1.0, (0, 0, c, 0))]
+        return [x for x in [(h / q, (h, m, c, 1)), (m / q, (h, m, c, 2))] if x[0] > 0]
+
+    rows, cols, vals = [], [], []
+
+    def add(i, rate, targets):
+        for p0, t0 in targets:
+            for p, t in evict(t0):
+                j = idx[t]
+                if j != i:
+                    rows.append(i); cols.append(j); vals.append(rate * p0 * p)
+
+    for i, (h, m, c, k) in enumerate(states):
+        w = N - h - m - c
+        if w > 0: add(i, w / Z, [(1.0, (h + 1, m, c, k if k else 1))])
+        if c > 0: add(i, c / Z, [(1.0, (h, m + 1, c - 1, k if k else 2))])
+        if k == 1: add(i, 1 / sh, start(h - 1, m, c))
+        if k == 2: add(i, 1 / sm, start(h, m - 1, c))
+    n = len(states)
+    Q = sp.csr_matrix((vals, (rows, cols)), shape=(n, n))
+    Q = (Q - sp.diags(np.asarray(Q.sum(1)).ravel())).tocsc()
+    return np.array(states), idx, Q
+
+
+def build3_fifo(N, Z, C, a, sh=SH, sm=SM, qcap=16, beta=1.0):
+    """Like `build3_ordered`, but LRU picks its victim where FIFO serves next:
+    the waiting hit evicted is the oldest one, and it is served before the
+    other waiting turns. The victim is a waiting hit with probability
+    beta hw / (beta hw + w) (hw waiting hits, w warm thinkers): beta > 1 says a
+    waiting prefix is stochastically older than a thinking one, not always.
+    States (h, m, c, k, e): e of the m misses are evicted turns at the head
+    of the line. Service starts with a head miss if e > 0,
+    else with a waiting turn picked uniformly. This is what makes LRU under
+    FIFO the cyclic worst case at saturation."""
+    idx, states = {}, []
+    for h in range(N + 1):
+        for m in range(N + 1 - h):
+            for c in range(N + 1 - h - m):
+                ks = [0] if h + m == 0 else [k for k in (1, 2) if (k == 1 and h) or (k == 2 and m)]
+                for k in ks:
+                    for e in range(m - (k == 2) + 1):
+                        idx[(h, m, c, k, e)] = len(states)
+                        states.append((h, m, c, k, e))
+
+    def evict(st):
+        out, done = [(1.0, st)], []
+        while out:
+            p, (h, m, c, k, e) = out.pop()
+            w, q = N - h - m - c, h + m
+            used = w + h + (k == 2)
+            hw = h - (k == 1)
+            if used <= C - a * min(q, qcap) or w + hw == 0:
+                done.append((p, (h, m, c, k, e)))
+            else:
+                ph = beta * hw / (beta * hw + w)
+                out += [x for x in [(p * ph, (h - 1, m + 1, c, k, e + 1)),
+                                    (p * (1 - ph), (h, m, c + 1, k, e))] if x[0] > 0]
+        return done
+
+    def start(h, m, c, e):
+        q = h + m
+        if q == 0:
+            return [(1.0, (0, 0, c, 0, 0))]
+        if e > 0:
+            return [(1.0, (h, m, c, 2, e - 1))]
+        return [x for x in [(h / q, (h, m, c, 1, 0)), (m / q, (h, m, c, 2, 0))] if x[0] > 0]
+
+    rows, cols, vals = [], [], []
+
+    def add(i, rate, targets):
+        for p0, t0 in targets:
+            for p, t in evict(t0):
+                j = idx[t]
+                if j != i:
+                    rows.append(i); cols.append(j); vals.append(rate * p0 * p)
+
+    for i, (h, m, c, k, e) in enumerate(states):
+        w = N - h - m - c
+        if w > 0: add(i, w / Z, [(1.0, (h + 1, m, c, k if k else 1, e))])
+        if c > 0: add(i, c / Z, [(1.0, (h, m + 1, c - 1, k if k else 2, e))])
+        if k == 1: add(i, 1 / sh, start(h - 1, m, c, e))
+        if k == 2: add(i, 1 / sm, start(h, m - 1, c, e))
     n = len(states)
     Q = sp.csr_matrix((vals, (rows, cols)), shape=(n, n))
     Q = (Q - sp.diags(np.asarray(Q.sum(1)).ravel())).tocsc()
@@ -269,7 +417,10 @@ def exp_queue_enough():
         pc = spl.expm_multiply(Q.T * T, cold)
         horizon[T] = dict(p_bad_warm=float(pw[bad].sum()), p_bad_cold=float(pc[bad].sum()),
                           mean_q_warm=float(pw @ q), mean_q_cold=float(pc @ q))
+    rec = recurrent_class(Q)
     return dict(params=BASE | dict(sh=SH, sm=SM), states=len(states), summary=summ,
+                recurrent_states=int(rec.sum()), recurrent_max_h=int(states[rec, 0].max()),
+                recurrent_max_c=int(states[rec, 2].max()),
                 marginal_max_abs_diff=float(np.abs(piL - pq).max()),
                 slow_rates_3d=slow_rates(Q), gap_1d=bd_gap(up, dn),
                 recovery_bad_to_q1_3d_s=float((pi[bad] * t3[bad]).sum() / pi[bad].sum()),
@@ -353,7 +504,13 @@ def tex_tables(res):
     out.append('\\newcommand{\\metaWarmColdTable}{\\begin{tabular}{rrrrr}\\toprule\n'
                '$t$ (s) & $\\Prob(q_t\\ge16)$ warm & cold & $\\E q_t$ warm & cold'
                '\\\\\\midrule\n' + '\n'.join(rows) + '\n\\bottomrule\\end{tabular}}')
+    hy = res['closed_hysteresis']
+    out.append(f"\\newcommand{{\\metaHysZlo}}{{{hy['two_modes_Z_min']:.1f}}}")
+    out.append(f"\\newcommand{{\\metaHysZhi}}{{{hy['two_modes_Z_max']:.1f}}}")
+    out.append(f"\\newcommand{{\\metaHysRatio}}{{{hy['ratio']:.1f}}}")
     out.append(f"\\newcommand{{\\metaStates}}{{{q['states']}}}")
+    out.append(f"\\newcommand{{\\metaRecurrent}}{{{q['recurrent_states']}}}")
+    out.append(f"\\newcommand{{\\metaRecurrentH}}{{{q['recurrent_max_h']}}}")
     out.append(f"\\newcommand{{\\metaMarginalDiff}}{{{q['marginal_max_abs_diff']:.0e}}}")
     out.append(f"\\newcommand{{\\metaSlowThree}}{{{q['slow_rates_3d'][0]:.5f}}}")
     out.append(f"\\newcommand{{\\metaGapOne}}{{{q['gap_1d']:.5f}}}")
