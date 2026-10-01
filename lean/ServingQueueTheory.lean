@@ -21,8 +21,5 @@ import ServingQueueTheory.FiniteSource
 import ServingQueueTheory.MissFeedback
 import ServingQueueTheory.Metastability
 import ServingQueueTheory.CacheOrder
-import ServingQueueTheory.Serq
-import ServingQueueTheory.SerqExec
-import ServingQueueTheory.SerqOracle
-import ServingQueueTheory.SerqServe
+import Serq
 import ServingQueueTheory.Deployments

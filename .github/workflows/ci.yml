@@ -60,6 +60,9 @@ jobs:
         run: lake exe cache get
       - name: Build, sorry check, axiom audit
         run: scripts/check_lean.sh
+      # after the build: the check also reads serQ's Lean package (lean/.lake/packages/Serq)
+      - name: Paper-Lean refs
+        run: scripts/check_lean_refs.sh
       - name: Upload audit log
         if: always()
         uses: actions/upload-artifact@v4
@@ -68,13 +71,6 @@ jobs:
           path: |
             lean/axioms.log
             lean/build.log
-
-  refs:
-    name: Paper-Lean refs
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: scripts/check_lean_refs.sh
 
   paper:
     name: Paper PDF

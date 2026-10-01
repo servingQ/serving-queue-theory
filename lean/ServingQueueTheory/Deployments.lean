@@ -1,8 +1,8 @@
 /-
 # The paper's replicas as serQ programs
 
-The two deployments of the paper written in serQ (`Serq.lean`): the
-disaggregated replica of the lecture (Lecture 1, Example L1:ex:program)
+The two deployments of the paper written in serQ (serQ's `Serq/Core.lean`):
+the disaggregated replica of the lecture notes (`L6:def:path`)
 and the colocated two-resource replica of §2.2, both checked well formed;
 the colocated one also in serQ's surface syntax, equal to the constructor
 form by `rfl`.
@@ -14,24 +14,24 @@ admission).
 Key theorems: `disaggregatedReplica_wf`, `colocatedReplica_wf`,
 `colocatedReplica'_eq`.
 -/
-import ServingQueueTheory.Serq
+import Serq.Core
 
 namespace ServingQueueTheory
 namespace Deployments
 
 open SerqLang
 
-/-- Prefill cost `P(n, K) = a n + b n (K + n/2)` of Definition L1:def:costs. -/
+/-- Prefill cost `P(n, K) = a n + b n (K + n/2)` of the lecture notes (`L5:eq:prefill`). -/
 noncomputable def prefillCost (a b n K : ℝ) : ℝ := a * n + b * n * (K + n / 2)
 
 /-- The prefill work of a turn given the prefix found at admission: the new
 tokens on the cached prefix, plus the missing prefix recomputed
-(Eq. L1:eq:work with the hit indicator `cached ≥ K`). -/
+(Eq. `L6:eq:work` with the hit indicator `cached ≥ K`). -/
 noncomputable def prefillWork (a b : ℝ) (x : Attr) : ℝ :=
   if x 4 ≥ x 0 then prefillCost a b (x 1) (x 0)
   else prefillCost a b (x 0 + x 1) 0
 
-/-- The disaggregated replica of Example L1:ex:program: pools `0 = mem_P`,
+/-- The disaggregated replica of the lecture notes (`L6:def:path`): pools `0 = mem_P`,
 `1 = mem_D`; stages `0 = prefill`, `1 = link`, `2 = decode`, `3 = tool`.
 Memory is `κ T` for a context of `T = K + n` tokens, the link takes
 `x₀ + κ T / B` seconds, decode `o` tokens; the session continues with

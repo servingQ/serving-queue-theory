@@ -14,3 +14,11 @@ rev = "v4.34.0"
 
 [[lean_lib]]
 name = "ServingQueueTheory"
+
+# serQ's Lean model (syntax, pool semantics, executable semantics, the vLLM
+# oracle theorems); research/serq.md says how the pin moves.
+[[require]]
+name = "Serq"
+git = "https://github.com/vrvrv/serQ"
+rev = "f8016b8047a095032a65cd0084a22eee6629ac48"
+subDir = "lean"
