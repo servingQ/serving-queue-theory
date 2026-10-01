@@ -130,7 +130,7 @@ $R_P(t)=\{k:\alpha_k\le t<e_k\}$ be the turns holding prefill memory. Then
 (\cref{L6:ex:paths})
 \begin{align}
   \alpha_k&=\inf\Bigl\{t\ge\max(a_k,\alpha_{k-1}):
-      \textstyle\sum_{l\in R_P(t)}c_l+c_k\le M_P\Bigr\},\label{L6:eq:admitP}\\
+      \textstyle\sum_{l<k,\;l\in R_P(t)}c_l+c_k\le M_P\Bigr\},\label{L6:eq:admitP}\\
   s_k&=\max(\alpha_k,f_{k-1}),\qquad f_k=s_k+S_k,\label{L6:eq:lindley}\\
   a_{k^+}&=d_k+Z_k\quad\text{if the session continues},\label{L6:eq:feedback}
 \end{align}
@@ -303,7 +303,7 @@ context into the prefill instance's pool, which evicts other paused prefixes soo
 own prefix to eviction (\emph{wait channel}). Let $W(h)$ be the mean wait at the prefill
 instance at hit rate $h$, nonincreasing in $h$ (\cref{cor:mixture}), and let $G(s;h)$ be
 the probability that a paused prefix survives an absence $s$ when the instance runs at
-hit rate $h$, nonincreasing in $T$ and nondecreasing in $h$.
+hit rate $h$, nonincreasing in $s$ and nondecreasing in $h$.
 
 \begin{definition}[Feedback map]\label{L6:def:feedback}
 The \term{feedback map} is $H(h)=\E_Z[\,G(Z+W(h);h)\,]$ on $[0,1]$, and an
@@ -380,7 +380,7 @@ cure here.
 
 \begin{example}[Two equilibria and a cap]\label{L6:ex:bistable}
 Take deterministic $S^{\mathrm{hit}}=0.5$\,s, $S^{\mathrm{miss}}=5$\,s, a deterministic think time $Z=7$\,s and the
-wait channel alone, $G(T)=e^{-T/60\,\mathrm{s}}$, with the Pollaczek--Khinchine wait. At
+wait channel alone, $G(s)=e^{-s/60\,\mathrm{s}}$, with the Pollaczek--Khinchine wait. At
 $\lambda=0.25$/s the all-miss load is $1.25$, $H=0$ on $[0,2/9]$, and a grid search finds
 three equilibria: 0 (stable), about 0.250 (unstable, slope $H'\approx12$) and about
 0.882 (stable, slope 0.07). At $\lambda=0.18$/s the all-miss load is $0.9$ and the only

@@ -12,7 +12,7 @@ let MD = 4e5;         // decode-instance pool
 let a = 2e-5;         // prefill (s/token)
 let b = 2e-9;         // prefill (s/token^2)
 let x0 = 0.002;       // link overhead (s)
-let Bw = 2e6;         // link bandwidth (tokens/s)
+let Bw = 2e6;         // link bandwidth (memory units/s)
 let w = 2e-4;         // decode: seconds per token of the batch
 let phi_cap = 16;     // decode batch capacity phi(m) = min(m, phi_cap)
 
@@ -41,8 +41,8 @@ session {
   loop {
     set t0 = now;
     hold memP (kappa * T) {
-      // the hit indicator is decided at admission: H = (cached >= K)
-      set H = cached >= K;
+      // the hit indicator is decided at admission: the cached memory covers the prefix
+      set H = cached >= kappa * K;
       set S = H ? a * n + b * n * (K + n / 2) : a * T + b * T * T / 2;
       observe miss = 1 - H;
       prefill S;
