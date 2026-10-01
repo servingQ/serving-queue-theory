@@ -252,7 +252,8 @@ $T_1,T_2,\dots$ are independent and each is $\mathrm{Exp}(\lambda)$.
 \begin{proof}[Proof ($\Rightarrow$)]
 For $0=t_0<t_1<\dots<t_n$ and small $h>0$ consider the event
 $E_h=\{S_j\in(t_j,t_j+h],\ j=1,\dots,n\}$. Let $F_h$ be the event that there is no
-arrival in $(t_{j-1}+h,t_j]$ and exactly one in each $(t_j,t_j+h]$. Then
+arrival in $(0,t_1]$ or in $(t_{j-1}+h,t_j]$ for $j\ge2$, and exactly one in each
+$(t_j,t_j+h]$. Then
 $F_h\subset E_h$, and $E_h\setminus F_h$ is contained in the event that some interval
 of length $h$ has two or more arrivals, which has probability $O(h^{n+1})$. By
 independent and Poisson increments,
@@ -283,10 +284,9 @@ using that $S_n$ is Gamma distributed together with memorylessness, and we omit 
 \begin{proof}See \cref{L1:exr:superpose}.\end{proof}
 
 \serving{If sessions arrive as a Poisson process of rate $\Lambda$ and each turn is
-routed independently to one of $J$ prefill instances, then by
-\cref{prop:superpose}(ii) each instance also sees Poisson arrivals. The turns within a
-session, however, go around a closed loop (prefill $\to$ link $\to$ decode $\to$
-tool), so the turn arrivals are not exactly Poisson. The closed models of
+routed independently to one of $J$ replicas, then by
+\cref{prop:superpose}(ii) each replica also sees Poisson arrivals. The turns within a
+session, however, go around a closed loop (prefill $\to$ decode $\to$ tool), so the turn arrivals are not exactly Poisson. The closed models of
 \cref{sec:L4} are the tool for this gap.}
 
 \section{PASTA: Poisson arrivals see time averages}
@@ -488,7 +488,7 @@ Suppose $\lambda=2$ turns per second arrive at a prefill instance and the mean p
 work is $\E[S]=0.3$ seconds. By \cref{cor:busy} the prefill server is busy a fraction
 $\rho_P=0.6$ of the time. If the observed mean number of turns waiting for it is
 $L_q=0.9$, then $W_q=L_q/\lambda=0.45$ seconds, the mean TTFT (with no wait for memory)
-is $W_q+\E[S]=0.75$ seconds, and the mean number of turns at the prefill server is
+is $W_q+\E[S]=0.75$ seconds, and the mean number of turns in the prefill stage (waiting or in service) is
 $L=\lambda\cdot0.75=1.5$.
 \end{example}
 

@@ -172,19 +172,16 @@ arrivals wait, although only three quarters of the capacity is used; with $a=2$ 
 share falls to $0.17$. Waiting is a property of the whole distribution of busy
 servers, not of the mean load alone.
 
-\paragraph{Memory slots.} If every turn at an instance needs about $c$ bytes of KV and
-the pool has $M$ bytes, the pool holds $m=\lfloor M/c\rfloor$ slots, and the memory in
-front of the instance can be approximated by a slot queue whose holding time is the time a turn holds
-its slot: the prefill and the transfer on a prefill instance ($m_P$ slots), the decode
-on a decode instance ($m_D$ slots). \Cref{prop:mmm} is exact with independent exponential holding times
-and Poisson slot arrivals. A real prefill/transfer/decode path can correlate
-holding times and make this an approximation (the M/G/$m$ queue has no closed form; a
-common correction multiplies $W_q$ by $(1+\mathrm{CV}^2)/2$ of the holding time). Two
-limits of the reading: with unequal contexts a turn needs several slots, and the
-station becomes a multi-resource queue with no closed form; and the blocks of the
-prefix cache on a prefill instance count as free, so the cache does not remove slots
-but loses entries whenever an admission needs their blocks.
-
+\paragraph{Memory slots.} If every turn needs about $c$ bytes of KV and the pool has
+$M$ bytes, the pool holds $m=\lfloor M/c\rfloor$ slots. In an engine that admits a turn
+only when its context fits, memory is then a slot queue whose holding time runs from
+the start of a turn's prefill to the end of its decode (\cref{fig:projection}).
+\Cref{prop:mmm} is exact for independent exponential holding times and Poisson
+arrivals. Real holding times are neither, so it is an approximation (the M/G/$m$ queue
+has no closed form; a common correction multiplies $W_q$ by $(1+\mathrm{CV}^2)/2$ of the
+holding time). With unequal contexts a turn needs several slots and the queue has no
+closed form. Cached blocks of paused sessions count as free: the cache does not remove
+slots but loses entries when an admission needs their blocks.
 
 \section{Processor sharing and state-dependent capacity}
 
@@ -415,7 +412,7 @@ By \cref{thm:insens} the distribution depends only on $\rho_D=\lambda\E[D]$.
 \end{proof}
 
 \serving{KV-cache hits and misses change only the prefill work; they do not change the
-decode demand $D_i=o_i(\beta K_i+\omega/m)$. So by \cref{L2:cor:decode-hit} a miss costs
+decode demand $D_i=o_i(\beta K_i+\omega/m)$ of \cref{L5:def:replica}. So by \cref{L2:cor:decode-hit} a miss costs
 nothing at the decode stage to first order, and its whole price is paid at the FIFO
 prefill queue (\cref{sec:L3}). Only decisions that add decode demand, such as admitting
 a session, pay the load factor of \cref{prop:decode-price}.

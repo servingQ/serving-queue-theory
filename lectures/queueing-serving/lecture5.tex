@@ -269,11 +269,11 @@ heavy-tailed gaps typically do, part~(ii) gives a program-specific time-to-live.
 If nothing is known about $G$, holding the state is the classical \emph{ski rental}
 problem: pay rent $\theta c$ per second or buy once at price $\Phi$
 \cite{karlin1988}. The rule ``hold for $\Phi/(\theta c)$ seconds'' costs at most twice
-the cost in hindsight for any resume time: if the program resumes at
-$\tau\le\Phi/(\theta c)$ it pays $\theta c\tau$, which is optimal; otherwise it pays
+the cost in hindsight for any resume time: if the program resumes at a time
+$s\le\Phi/(\theta c)$ it pays $\theta c s$, which is optimal; otherwise it pays
 $2\Phi$ against a hindsight optimum of $\Phi$. The hindsight optimum, which knows
 whether and when each program resumes, is called the \term{oracle}; it keeps a state
-exactly when the program resumes and $\theta c\tau<\Phi$. It cannot be run online, but
+exactly when the program resumes and $\theta c s<\Phi$. It cannot be run online, but
 it is the benchmark against which a policy's cost is reported as cost/OPT. The factor
 two needs the program to resume: against a program that never does, the oracle pays
 nothing, and no rule that holds the state for a positive time has a bounded ratio.
@@ -296,7 +296,7 @@ Deployed rules evict by a fixed key: shortest context first, least recently
 used, longest idle, or an expired time-to-live. \Cref{prop:blind} says what
 such a key can and cannot do: a key that ignores $p_i$ has no constant
 approximation ratio (part~(i)), and shortest-first is within a factor two
-only when every program resumes and the price is the recompute work alone
+when every program resumes and the price is the quadratic recompute term alone
 (part~(ii)).
 
 \begin{example}[The load reorders programs]\label{L5:ex:flip}
@@ -321,7 +321,7 @@ takes the least of the three. Two facts follow from this being a minimum.
 
 \begin{proposition}[Offloading as an option]\label{L5:prop:offload}
 Let each state $i$ have a finite set of actions $\mathcal{A}_i$ with
-costs $\gamma_i(a)$, and let the total cost be separable. Then
+costs $\chi_i(a)$, and let the total cost be separable. Then
 \begin{enumerate}[label=(\roman*)]
 \item enlarging each $\mathcal{A}_i$ never raises the optimal cost; in
   particular, making offloading available never hurts;
@@ -383,7 +383,7 @@ price by a constant:
 \toprule
 Rule & What it fixes \\
 \midrule
-shortest-first eviction & $w_i\propto c_i^2$ (every program resumes, own work only) \\
+shortest-first eviction & $w_i\propto c_i^2$ (every program resumes, quadratic term only) \\
 LRU, time-to-live & $p_i$ constant \\
 always offload & priced fetch $=0$ \\
 strict session affinity & $R_j=\infty$ \\

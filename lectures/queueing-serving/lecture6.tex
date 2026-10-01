@@ -78,9 +78,9 @@ recomputed).}
 \begin{definition}[Workload and costs]\label{L6:def:workload}
 Sessions arrive as a Poisson process of rate $\Lambda$ (\cref{def:poisson}). Turn $j$
 of session $i$ has a cached prefix of $K_{ij}$ tokens, $n_{ij}$ new tokens and
-$o_{ij}$ output tokens, with context $T_{ij}=K_{ij}+n_{ij}$ and
+$o_{ij}$ output tokens, with context $\ell_{ij}=K_{ij}+n_{ij}$ and
 \begin{equation}\label{L6:eq:context}
-  K_{i1}=0,\qquad K_{i,j+1}=T_{ij},\qquad n_{i,j+1}\ge o_{ij},
+  K_{i1}=0,\qquad K_{i,j+1}=\ell_{ij},\qquad n_{i,j+1}\ge o_{ij},
 \end{equation}
 since the next turn's new tokens contain the previous output and the tool's output.
 After each turn the session calls a tool for a time with mean $Z$. A replica has
@@ -90,23 +90,23 @@ $M_D$ bytes. With the hit indicator $H_{ij}$ (the prefix is still cached at
 admission), turn $(i,j)$ has
 \begin{equation}\label{L6:eq:work}
   S_{ij}=P(n_{ij},K_{ij})+(1-H_{ij})\,\Delta S(K_{ij}),\qquad
-  X_{ij}=x_0+\frac{\kappa T_{ij}}{B},\qquad D_{ij}=o_{ij},\qquad c_{ij}=\kappa T_{ij},
+  X_{ij}=x_0+\frac{\kappa\ell_{ij}}{B},\qquad D_{ij}=o_{ij},\qquad c_{ij}=\kappa\ell_{ij},
 \end{equation}
 the prefill work in seconds ($P$ and $\Delta S(K)=aK+bK^2/2$ as in
 \cref{L5:def:replica,cor:price-mono}), the link work in seconds, the decode work in
 tokens, and the footprint in bytes on either instance. A batch of $m$ decodes takes
-$\tau(m)$ seconds per step, so $\varphi(m)=m/\tau(m)$ tokens per second.
+$t(m)$ seconds per step, so $\varphi(m)=m/t(m)$ tokens per second.
 \end{definition}
 
 \begin{definition}[Path of a turn]\label{L6:def:path}
 \begin{enumerate}[label=(\roman*)]
-\item A turn waits in arrival order at the prefill pool until $c=\kappa T$ bytes of
+\item A turn waits in arrival order at the prefill pool until $c=\kappa\ell$ bytes of
   running turns' allocations are free. Cached bytes are evicted as needed and never
   block admission. At admission the turn uses its own cached prefix if it survived;
   a hit is all or nothing.
 \item It receives $S$ seconds of FIFO prefill, which produces the first token, and
   $X$ seconds of link work. It then releases its prefill allocation and leaves its
-  $\kappa T$ bytes cached. Ending a session does not erase this prefix.
+  $\kappa\ell$ bytes cached. Ending a session does not erase this prefix.
 \item It waits in the same way for $c$ bytes at the decode pool, receives $D$ tokens of
   processor-sharing decode, and releases the allocation.
 \item With probability $p<1$ the session calls a tool and submits another turn;
@@ -135,7 +135,7 @@ $R_P(t)=\{k:\alpha_k\le t<e_k\}$ be the turns holding prefill memory. Then
   a_{k^+}&=d_k+Z_k\quad\text{if the session continues},\label{L6:eq:feedback}
 \end{align}
 where $k^+$ is the next turn of $\sigma(k)$. \Cref{L6:eq:lindley} is the FIFO recursion
-of \cref{sec:L3,sec:L4}, and \eqref{L6:eq:feedback} is the closed loop. If the system
+of \cref{sec:L3}, and \eqref{L6:eq:feedback} is the closed loop. If the system
 is stable, the turn rate is still fixed by the session rate,
 $\lambda=\Lambda\E[J]=\Lambda/(1-p)$. The link and decode batch are PS stations, the
 tool a delay station, and each pool a slot queue (\cref{L2:sec:mmm}) with
@@ -188,11 +188,13 @@ prefilled waits for all of it.
 the whole context every turn. Suppose now that the decode instance also keeps the KV
 of paused sessions. If it still holds the
 session's KV from its previous turn, the next turn transfers only its new tokens,
-$T_i=n_i$; if not, it transfers the whole context, $T_i=K_i+n_i$. A decode-side miss
+$\ell_i=n_i$ tokens; if not, it transfers the whole context, $\ell_i=K_i+n_i$. A decode-side miss
 therefore adds $\Delta X_i=\kappa K_i/B$ of link work.
 
 \begin{proposition}[The price of a transfer miss]\label{L6:prop:link-price}
-Let the link be a processor-sharing station of capacity 1 with load $\rho_L<1$, and
+Let the link be a processor-sharing station of capacity 1 with Poisson arrivals of rate
+$\lambda$ (an idealisation, since the link is fed by the prefill queue) and load
+$\rho_L<1$, and
 turn a fraction $q_i$ of arrivals into decode-side misses, raising the load to
 $\rho_L'=\rho_L+\lambda\sum_iq_i\Delta X_i<1$. Then the mean number of transfers in
 progress rises exactly by
@@ -264,12 +266,12 @@ This is the threshold rule of \cref{thm:threshold}, once per pool: each instance
 what is worth more per byte-second than its own memory.
 
 \begin{corollary}[Free transfer]\label{L6:cor:free-transfer}
-As the link bandwidth $B\to\infty$, $\Phi^X_i\to0$ for every session, so for any $\theta_D>0$ the decode
+Suppose $\lambda x_0<1$. As the link bandwidth $B\to\infty$, $\Phi^X_i\to0$ for every session, so for any $\theta_D>0$ the decode
 instance keeps nothing for paused sessions, and all of $M_D$ serves running decodes.
 \end{corollary}
 
 \begin{proof}
-$\Delta X_i=\kappa K_i/B\to0$, and $\rho_L\to\lambda x_0$ stays below 1 when $\lambda x_0<1$,
+$\Delta X_i=\kappa K_i/B\to0$, and $\rho_L\to\lambda x_0$ stays below 1,
 so $\Phi^X_i=\Delta X_i/(1-\rho_L)^2\to0$ and $u^X_i\to0<\theta_D$.
 \end{proof}
 
@@ -299,8 +301,8 @@ So far the hit rate was an input. It is also an output. A miss re-inserts a whol
 context into the prefill instance's pool, which evicts other paused prefixes sooner
 (\emph{pool channel}); and a turn that waits longer is absent longer, which exposes its
 own prefix to eviction (\emph{wait channel}). Let $W(h)$ be the mean wait at the prefill
-instance at hit rate $h$, nonincreasing in $h$ (\cref{cor:mixture}), and let $G(T;h)$ be
-the probability that a paused prefix survives an absence $T$ when the instance runs at
+instance at hit rate $h$, nonincreasing in $h$ (\cref{cor:mixture}), and let $G(s;h)$ be
+the probability that a paused prefix survives an absence $s$ when the instance runs at
 hit rate $h$, nonincreasing in $T$ and nondecreasing in $h$.
 
 \begin{definition}[Feedback map]\label{L6:def:feedback}

@@ -154,10 +154,10 @@ $\rho_2/(\mu(1-\rho_2))=3/(2\mu)$, which is $4.5$ times the actual wait.
 \end{example}
 
 \begin{remark}
-For exponential work and at the same utilisation, the open formula
-(\cref{thm:pk}) and the price of a miss built on it (\cref{thm:price})
-overestimate the wait (\cref{prop:finite}(ii)). For general work this comparison
-has not been proved. Moreover, at most $N$ turns exist, so $0\le L_P\le N$, and no
+For exponential work and at the same utilisation, the open formula (\cref{thm:pk})
+overestimates the wait (\cref{prop:finite}(ii)). For general work, and for the price
+of a miss built on the open formula (\cref{thm:price}), this comparison has not been
+proved. Moreover, at most $N$ turns exist, so $0\le L_P\le N$, and no
 policy change can raise the mean number of turns at the server by more than
 $N-L_P$. This cap does not depend on the work law.
 \end{remark}
@@ -241,9 +241,9 @@ $m\to\infty$.
 
 \begin{corollary}[Mean resident KV]\label{cor:resident-kv}
 Let sessions arrive in a Poisson process of rate $\Lambda$, and let session $k$
-have an i.i.d.\ lifetime $T_s^{(k)}$ and KV size $K_k(u)\ge0$ at age $u$ (the
+have an i.i.d.\ lifetime $T_s^{(k)}$ and a context of $K_k(u)\ge0$ tokens at age $u$ (the
 lifetime and the trajectory may be dependent). In steady state (started at time
-$-\infty$), the mean total resident KV at a given instant is
+$-\infty$), the mean number of resident KV tokens at a given instant is
 \[
   \Lambda\,\E\Bigl[\int_0^{T_s}K(u)\dd u\Bigr].
 \]
@@ -422,7 +422,7 @@ without using \cref{L4:prop:mginf}.
 \end{exercise}
 
 \begin{exercise}\label{L4:ex:growing}
-Sessions arrive at rate $\Lambda$ and live for $T_s$. A session's context grows
+Sessions arrive at rate $\Lambda$ and live for $T_s$, with $\kappa$ KV bytes per token. A session's context grows
 linearly, $K(u)=k_0+gu$ at age $u$. Use \cref{cor:resident-kv} to show that the mean
 resident KV is $\kappa\Lambda\bigl(k_0\E[T_s]+g\E[T_s^2]/2\bigr)$. For exponential $T_s$,
 compare it with the naive estimate $\kappa\Lambda\E[T_s]\,(k_0+g\E[T_s]/2)$, which uses
