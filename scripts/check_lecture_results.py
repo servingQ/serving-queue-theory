@@ -6,6 +6,7 @@ optional: compare with the repository's previous release without requiring
 that its numerical results stay identical. No serving measurements are made.
 """
 import argparse
+import re
 import json
 import math
 import subprocess
@@ -26,6 +27,27 @@ def close(value, expected, tolerance, label):
     assert abs(value - expected) <= tolerance * max(abs(expected), 1e-6), (
         f'{label}: {value} versus {expected} (relative tolerance {tolerance})')
 
+
+
+def release_identity(binary):
+    """The release a serq binary was built from, verified where possible.
+
+    fetch_serq.sh writes the checked-out ref to <root>/tag next to <root>/bin/serq;
+    it must equal the pin in validation/pyproject.toml. The commit is recorded
+    only when the source checkout is a git repository.
+    """
+    pin = re.search(r'^\[tool\.serq\][^\[]*?^(?:tag|rev) = "([^"]+)"',
+                    (ROOT / 'validation/pyproject.toml').read_text(), re.M | re.S)
+    root = Path(binary).resolve().parent.parent
+    tag_file = root / 'tag'
+    ref = tag_file.read_text().strip() if tag_file.exists() else None
+    commit = None
+    if (root / 'src/.git').exists():
+        commit = subprocess.check_output(['git', '-C', str(root / 'src'), 'rev-parse', 'HEAD'],
+                                         text=True).strip()
+    return dict(binary=str(binary), release=ref, pinned=pin.group(1) if pin else None,
+                release_verified=ref is not None and pin is not None and ref == pin.group(1),
+                commit=commit)
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -141,8 +163,12 @@ def main():
     for value, expected in zip(roots['0.25'], [0, .250, .882]):
         close(value, expected, .01, 'feedback roots .25')
     close(roots['0.18'][0], .885, .01, 'feedback roots .18')
-    result = dict(release='serQ v0.1.0', commit='f9fe9f2cad9e7d88e585860572c3757c295d58c6',
-                  ir_version=9, checks=checks, baseline_comparison=comparisons, feedback_roots=roots)
+    current = release_identity(args.serq)
+    assert current['release'] is None or current['release_verified'], \
+        f"serq at {args.serq} is {current['release']}, pinned {current['pinned']}"
+    result = dict(**current, ir_version=ir['version'], checks=checks,
+                  baseline=release_identity(args.baseline) if args.baseline else None,
+                  baseline_comparison=comparisons, feedback_roots=roots)
     args.out.write_text(json.dumps(result, indent=2)+'\n')
     if args.tex:
         rows = [r'\begin{center}\small', r'\begin{tabular}{@{}lrr@{}}',

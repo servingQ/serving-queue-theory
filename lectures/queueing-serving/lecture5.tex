@@ -286,18 +286,16 @@ with the policy; the joint optimum is a Markov decision problem with no closed f
 
 Every decision now compares a program's $u_i$ with the replica's $\theta$.
 
-\paragraph{Eviction.} When $\Delta C$ bytes must be freed now, the problem
-is the covering knapsack of \cref{L4:def:knapsack} with $w_i=p_i\Phi_i$.
-For whole programs, evict in increasing price per byte $v_i$ (\cref{thm:threshold});
-for retention over time, use the price per byte-second $u_i$. Neither order is
-proved optimal for tail blocks, whose cost is concave (\cref{L4:sec:knapsack}); there
-the scheduler compares the lost work $r_K$ of each candidate tail.
-Deployed rules evict by a fixed key: shortest context first, least recently
-used, longest idle, or an expired time-to-live. \Cref{prop:blind} says what
-such a key can and cannot do: a key that ignores $p_i$ has no constant
-approximation ratio (part~(i)), and shortest-first is within a factor two
-when every program resumes and the price is the quadratic recompute term alone
-(part~(ii)).
+\paragraph{Eviction.} Freeing $\Delta C$ bytes now is the covering knapsack of
+\cref{L4:def:knapsack} with $w_i=p_i\Phi_i$. Price-per-byte order solves its fractional
+relaxation (\cref{thm:threshold}); for whole programs the guarded greedy of
+\cref{L4:sec:knapsack} stays within a factor $2$. Retention over time uses $u_i$
+instead. For tail blocks, whose cost is concave, neither order is proved optimal, and
+the scheduler compares the lost work $r_K$ of each candidate tail. Deployed rules evict
+by a fixed key (shortest context, least recently used, longest idle, time-to-live).
+By \cref{prop:blind} a key that ignores $p_i$ has no constant approximation ratio, and
+shortest-first is within a factor two when every program resumes and the price is the
+quadratic recompute term alone.
 
 \begin{example}[The load reorders programs]\label{L5:ex:flip}
 Take $a=0.2$\,ms/token and $b=a/K_c$ with $K_c=50{,}000$ tokens, and an

@@ -134,11 +134,12 @@ $R_P(t)=\{k:\alpha_k\le t<e_k\}$ be the turns holding prefill memory. Then
   s_k&=\max(\alpha_k,f_{k-1}),\qquad f_k=s_k+S_k,\label{L6:eq:lindley}\\
   a_{k^+}&=d_k+Z_k\quad\text{if the session continues},\label{L6:eq:feedback}
 \end{align}
-where $k^+$ is the next turn of $\sigma(k)$. \Cref{L6:eq:lindley} is the FIFO recursion
+where $k^+$ is the next turn of $\sigma(k)$, and $\alpha_0=f_0=0$ for a path that starts empty at time $0$. \Cref{L6:eq:lindley} is the FIFO recursion
 of \cref{sec:L3}, and \eqref{L6:eq:feedback} is the closed loop. If the system
 is stable, the turn rate is still fixed by the session rate,
 $\lambda=\Lambda\E[J]=\Lambda/(1-p)$. The link and decode batch are PS stations, the
-tool a delay station, and each pool a slot queue (\cref{L2:sec:mmm}) with
+tool a delay station. If every context needs about $c$ bytes, the equal-footprint
+approximation of \cref{L2:sec:mmm}, each pool is a slot queue with
 $m_j=\lfloor M_j/c\rfloor$ slots; a prefill slot is held through the transfer, until
 $e_k$.
 
