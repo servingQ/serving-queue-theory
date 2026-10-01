@@ -91,6 +91,26 @@ open ServingQueueTheory
 #print axioms psPrice_lower
 #print axioms psPrice_upper
 #print axioms psPrice_unbounded
+-- issue #28: decode sojourn under a shared capacity (DecodeScaling.lean). §2.2 cites
+-- psMeanNumber_anti_share, psNum_anti_capacity and decode_share_loss; the rest is the PD follow-up
+#print axioms psWeight_scale
+#print axioms psWeight_summable_scale_iff
+#print axioms psLaw_scale
+#print axioms psMeanNumber_eq_stationaryMean
+#print axioms psMeanNumber_scale
+#print axioms sojourn_scale
+#print axioms decode_sojourn_scale
+#print axioms dedicated_is_scaled_unified
+#print axioms dedicated_mean_number_eq
+#print axioms dedicated_sojourn
+#print axioms tpot_fixed_output_scale
+#print axioms tpot_token_weighted_scale
+#print axioms tpot_pos
+#print axioms request_weighted_tpot_not_from_means
+#print axioms psMeanNumber_share_eq_stationaryMean
+#print axioms psMeanNumber_anti_share
+#print axioms psNum_anti_capacity
+#print axioms decode_share_loss
 -- prop:footprint (§2.2): KV footprint and batch size
 #print axioms footprint_variance_hurts
 #print axioms footprint_variance_helps
