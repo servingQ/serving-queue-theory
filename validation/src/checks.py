@@ -30,7 +30,7 @@ from pyserq import Rng
 
 from constants import TRACE_CAP_FACTORS, TRACE_POOLS, TRACE_RATES
 from fmt import disp, fixed, fmax, fmin, fold_max, sci_fixed, ssum
-from sim import agentic, batch, pd, price_vllm, queue, replay_vllm, routing
+from sim import agentic, batch, pd, pd_batching, price_vllm, queue, replay_vllm, routing, serq
 from sim.agentic import (
     AgenticConfig,
     EvictionPolicy,
@@ -41,6 +41,7 @@ from sim.agentic import (
 )
 from sim.batch import BatchConfig, BatchReport, Fifo, Ps
 from sim.pd import Aggregated, Disaggregated, PdConfig, Poisson, Saturated
+from sim.pd_batching import PsConfig, StepConfig
 from sim.queue import QueueConfig
 from sim.replay_vllm import TraceRow, trace_cap
 from sim.routing import RoutePolicy, RoutingConfig
@@ -77,7 +78,7 @@ from theory.dist import (
     hyperexp_balanced,
 )
 from theory.eviction import Item, varied
-from theory.pd import split_capacity
+from theory.pd import floor_exp_mean, ps_decode_load, split_capacity
 
 
 class Kind(Enum):
@@ -941,6 +942,213 @@ def pd_no_gain() -> Check:
     )  # fmt: skip
 
 
+# ------------------------- issue #28: colocated vs split decode engines --
+
+PD_SEEDS = (1, 2, 3)
+PD_MS = 1e3
+PD_FIXED_PROMPT = "2000"  # the sweep's `fixed` prompt case of the serQ #208 baseline
+H2_PROMPT = "max(1, floor(~h2(2000, 9)))"
+
+
+def _ms(e: Estimate) -> str:
+    return f"{fixed(e.mean * PD_MS, 3)} ± {fixed(e.half_width * PD_MS, 3)} ms"
+
+
+def _finite_below(xs, bound: float) -> bool:
+    return all(math.isfinite(x) and x < bound for x in xs)
+
+
+def pd_ps_scaling_identity() -> Check:
+    """DecodeScaling: at `pd_ps.sq` (N = 4, f = 1/4) the pooled decode station
+    is the colocated one with arrivals and capacity multiplied by 4. Same
+    number decoding per station, the M/G/1-PS closed form ρ/(1-ρ); decode
+    time and token-weighted TPOT divided by 4."""
+    ok, obs = True, []
+    rates = (5.0, 10.0, 15.0, 20.0)
+    cfgs = [
+        PsConfig(split, rate, s) for rate in rates for s in range(1, 6) for split in (False, True)
+    ]
+    reports = dict(zip(cfgs, serq.parallel(pd_batching.simulate_ps, cfgs), strict=True))
+    for rate in rates:
+        pairs = [
+            (reports[PsConfig(False, rate, s)], reports[PsConfig(True, rate, s)])
+            for s in range(1, 6)
+        ]
+        ok &= all(c.stable and d.stable for c, d in pairs)
+        cfg = PsConfig(False, rate, 1)
+        gaps = floor_exp_mean(cfg.output_mean) + 1.0  # E[o - 1] for o = floor(exp) + 2
+        load = ps_decode_load(rate, gaps, cfg.tok, pd_batching.ENGINES * cfg.share)
+        want = ps_num(1.0, load)
+        colo = replications([c.decoding_per_station for c, _ in pairs])
+        split = replications([d.decoding_per_station for _, d in pairs])
+        time_ratio = replications([c.decode_time / d.decode_time for c, d in pairs])
+        tpot_ratio = replications([c.tpot_token / d.tpot_token for c, d in pairs])
+        n = float(pd_batching.ENGINES)
+        ok &= colo.agrees_with(want, 0.05) and split.agrees_with(want, 0.05)
+        ok &= time_ratio.agrees_with(n, 0.05) and tpot_ratio.agrees_with(n, 0.05)
+        obs.append(
+            f"λ={disp(rate)} (ρ={fixed(load, 2)}): decoding {colo} colocated, {split} split vs {fixed(want, 3)}; "
+            f"decode time ratio {time_ratio}, TPOT ratio {tpot_ratio}"
+        )
+    return Check(
+        "pd_ps_scaling_identity", "issue #28 (DecodeScaling)",
+        ["psMeanNumber_scale", "dedicated_mean_number_eq", "dedicated_sojourn", "tpot_token_weighted_scale"],
+        Kind.InModel,
+        "a PS decode station with arrivals and capacity scaled by N keeps its occupancy law and divides the sojourn by N",
+        "number decoding per station within 5 % of ρ/(1-ρ) in both modes; decode-time and token-weighted TPOT ratios within 5 % of N = 4 (5 seeds, 300 s)",
+        "; ".join(obs), ok,
+    )  # fmt: skip
+
+
+def _step_pairs(
+    rates, **kw
+) -> dict[float, list[tuple[pd_batching.StepReport, pd_batching.StepReport]]]:
+    """Colocated and split reports of the fixed-prompt baseline, with `kw`
+    on top, for every rate and seed, run concurrently."""
+    kw = {"prompt_len": PD_FIXED_PROMPT, **kw}
+    cfgs = [
+        StepConfig(split, rate, s, **kw)
+        for rate in rates
+        for s in PD_SEEDS
+        for split in (False, True)
+    ]
+    reports = dict(
+        zip([c.key() for c in cfgs], serq.parallel(pd_batching.simulate_step, cfgs), strict=True)
+    )
+    return {
+        rate: [
+            (
+                reports[StepConfig(False, rate, s, **kw).key()],
+                reports[StepConfig(True, rate, s, **kw).key()],
+            )
+            for s in PD_SEEDS
+        ]
+        for rate in rates
+    }
+
+
+def pd_step_split_tpot_at_equal_throughput() -> Check:
+    """Beyond the PS model: `pd_batching.sq`'s step engines, 4 colocated vs
+    3 prefill + 1 decode, the baseline of serQ #208 on its `fixed` prompt
+    case (2000-token prompts; exclusive prefill steps, a 0.2 ms decode
+    step, memory that never binds, a free transfer). The same requests, so
+    the same output throughput; the split's token-weighted TPOT is below
+    the colocated one at every load and the gap grows with load, and the
+    split's TTFT is above (three prefill engines carry what four did)."""
+    ok, obs, ratios = True, [], []
+    for rate, pairs in _step_pairs((20.0, 40.0, 60.0, 70.0)).items():
+        ok &= all(c.stable and d.stable for c, d in pairs)
+        thr = replications([c.output_tokens_per_s / d.output_tokens_per_s for c, d in pairs])
+        c_tpot = replications([c.tpot_token for c, _ in pairs])
+        d_tpot = replications([d.tpot_token for _, d in pairs])
+        c_ttft = replications([c.ttft for c, _ in pairs])
+        d_ttft = replications([d.ttft for _, d in pairs])
+        ok &= thr.agrees_with(1.0, 0.01)
+        ok &= d_tpot.hi() < c_tpot.lo() and c_ttft.hi() < d_ttft.lo()
+        ratios.append(c_tpot.mean / d_tpot.mean)
+        c, d = pairs[0]
+        obs.append(
+            f"λ={disp(rate)}: {fixed(c.requests_per_s, 1)} req/s, out tok/s ratio {thr}; "
+            f"TPOT {_ms(c_tpot)} colocated vs {_ms(d_tpot)} split (×{fixed(ratios[-1], 2)}); "
+            f"TTFT {_ms(c_ttft)} vs {_ms(d_ttft)}; "
+            f"decodes per engine {fixed(c.decoding, 2)} vs {fixed(d.decoding, 2)}, per step {fixed(c.batch, 2)} vs {fixed(d.batch, 2)}, "
+            f"decode step {fixed(c.decode_step * PD_MS, 3)} vs {fixed(d.decode_step * PD_MS, 3)} ms; "
+            f"colocated shares prefill {fixed(c.prefill_share, 2)}, decode {fixed(c.decode_share, 2)}, idle {fixed(c.idle_share, 2)}; "
+            f"prefill capacity busy {fixed(c.prefill_busy, 2)} vs {fixed(d.prefill_busy, 2)} (seed 1)"
+        )
+    ok &= all(a < b for a, b in zip(ratios, ratios[1:], strict=False))
+    return Check(
+        "pd_step_split_tpot_at_equal_throughput", "issue #28 (serQ #208 baseline, `fixed` prompts)",
+        ["dedicated_sojourn", "decode_share_loss"], Kind.BeyondModel,
+        "at equal output throughput the split shortens the time per output token and lengthens the TTFT; the decode share of a colocated engine is not the constant the PS identity assumes",
+        "runs stable (kept up, prefill capacity below 99 % busy); output tok/s ratio within 1 % of 1; split TPOT below colocated and colocated TTFT below split (95 % intervals disjoint) at λ ∈ {20, 40, 60, 70}; TPOT ratio increasing in λ (3 seeds, 300 s)",
+        "; ".join(obs), ok,
+    )  # fmt: skip
+
+
+def pd_step_long_step_matches_ps_share() -> Check:
+    """With a 10 ms decode step (`omega = 0.01`) a colocated engine's decodes
+    no longer drain between prefills: it is never idle, its decode share is
+    `1 - p` for a prefill share `p`, and the TPOT ratio is the PS identity's
+    `1 / (1 - p)` (`dedicated_sojourn` with `f = 1 - p`)."""
+    ok, obs = True, []
+    for rate, pairs in _step_pairs((40.0, 60.0, 70.0), sets={"omega": 0.01}).items():
+        ok &= all(c.stable and d.stable for c, d in pairs)
+        ratio = replications([c.tpot_token / d.tpot_token for c, d in pairs])
+        want = replications([1.0 / (1.0 - c.prefill_share) for c, _ in pairs])
+        idles = [c.idle_share for c, _ in pairs]
+        d_ttft = replications([d.ttft for _, d in pairs])
+        c_ttft = replications([c.ttft for c, _ in pairs])
+        ok &= _finite_below(idles, 0.01) and ratio.relative_error(want.mean) < 0.05
+        ok &= c_ttft.hi() < d_ttft.lo()
+        obs.append(
+            f"λ={disp(rate)}: TPOT ratio {ratio} vs 1/(1-p) {want}; colocated idle {fixed(fold_max(idles), 3)}; "
+            f"TTFT {_ms(c_ttft)} colocated vs {_ms(d_ttft)} split"
+        )
+    return Check(
+        "pd_step_long_step_matches_ps_share", "issue #28 (serQ #208, `omega = 0.01`)",
+        ["dedicated_sojourn", "psMeanNumber_anti_share"], Kind.BeyondModel,
+        "when the decodes never drain, the step engines' TPOT ratio is the PS identity's 1/(1-p) at the measured prefill share",
+        "colocated idle measured and < 1 %; TPOT ratio within 5 % of 1/(1-p) at λ ∈ {40, 60, 70}; split TTFT above colocated (3 seeds, 300 s)",
+        "; ".join(obs), ok,
+    )  # fmt: skip
+
+
+def pd_step_interruption_pattern() -> Check:
+    """The mean prefill share alone does not set the colocated TPOT. At
+    λ = 60 with exclusive steps, mixed batches and 512-token chunks the
+    engines spend the same share of their time on prefills. At a 0.2 ms
+    decode step the pattern changes little (a decode gains a token per
+    prefill step) and every pattern is far above the split; at a 10 ms step
+    the TPOT falls from exclusive, where it is the PS identity's 1/(1-p), to
+    mixed to chunked, where it is below 0.6 of that."""
+    ok, obs = True, []
+    patterns = (("exclusive", {}), ("mixed", {"exclusive": False}),
+                ("chunk 512", {"exclusive": False, "sets": {"chunk_cap": 512.0}}))  # fmt: skip
+    for omega in (2e-4, 0.01):
+        cfgs = [
+            StepConfig(False, 60.0, s, prompt_len=PD_FIXED_PROMPT,
+                       sets={"omega": omega, **kw.get("sets", {})},
+                       **{k: v for k, v in kw.items() if k != "sets"})
+            for _, kw in patterns for s in PD_SEEDS
+        ] + [StepConfig(True, 60.0, s, prompt_len=PD_FIXED_PROMPT, sets={"omega": omega}) for s in PD_SEEDS]  # fmt: skip
+        reports = serq.parallel(pd_batching.simulate_step, cfgs)
+        ok &= all(r.stable for r in reports)
+        rows = []
+        for i, (name, _) in enumerate(patterns):
+            rs = reports[i * len(PD_SEEDS) : (i + 1) * len(PD_SEEDS)]
+            rows.append((name, replications([r.tpot_token for r in rs]),
+                         replications([r.prefill_share + r.mixed_share for r in rs]),
+                         fold_max(r.itl_p99 for r in rs)))  # fmt: skip
+        d_tpot = replications([r.tpot_token for r in reports[-len(PD_SEEDS) :]])
+        shares = [p.mean for _, _, p, _ in rows]
+        ok &= max(shares) - min(shares) < 0.05
+        tpots = [t.mean for _, t, _, _ in rows]
+        ps_ratio = 1.0 / (
+            1.0 - rows[0][2].mean
+        )  # the identity at the exclusive run's prefill share
+        if omega == 0.01:
+            ok &= rows[1][1].hi() < rows[0][1].lo() and rows[2][1].hi() < rows[1][1].lo()
+            ok &= abs(tpots[0] / d_tpot.mean - ps_ratio) / ps_ratio < 0.05
+            ok &= tpots[2] / d_tpot.mean < 0.6 * ps_ratio
+        else:
+            ok &= max(tpots) / min(tpots) < 1.15 and min(tpots) > 2.0 * d_tpot.mean
+        cells = [
+            f"{name} TPOT {_ms(t)} (×{fixed(t.mean / d_tpot.mean, 2)}), prefill share {fixed(p.mean, 3)}, ITL p99 {fixed(itl * PD_MS, 1)} ms"
+            for name, t, p, itl in rows
+        ]
+        obs.append(
+            f"step {disp(omega * PD_MS)} ms: split TPOT {_ms(d_tpot)}, 1/(1-p) {fixed(ps_ratio, 2)}; "
+            + ", ".join(cells)
+        )
+    return Check(
+        "pd_step_interruption_pattern", "issue #28 (serQ #208 variations)", [], Kind.BeyondModel,
+        "engines with the same mean prefill share but different interruption patterns have different TPOTs, so the mean share is not enough to predict the split's gain",
+        "prefill shares within 0.05 of each other; at the 0.2 ms step the three TPOTs within 15 % of each other (chunking gains 9 %) and above 2× the split's; at the 10 ms step exclusive > mixed > chunked with disjoint intervals, exclusive within 5 % of 1/(1-p) times the split's and chunked below 0.6 of it (λ = 60, 3 seeds, 300 s)",
+        "; ".join(obs), ok,
+    )  # fmt: skip
+
+
 @cache
 def pd_win_condition_decisions() -> Check:
     """Prop. pd (iii) as a decision: does the simulated winner (best integer
@@ -1262,6 +1470,64 @@ def mixed_workload(n: int, seed: int, ev: EvictionPolicy) -> AgenticConfig:
     return cfg
 
 
+def pd_step_limits() -> Observation:
+    """What the split pays for beyond the baseline (serQ #208 variations):
+    a transfer in the TTFT, a decode engine short of KV, colocated engines
+    short of KV, and prompts of squared coefficient of variation 9."""
+    lines = []
+    bw = serq.parallel(
+        lambda s: pd_batching.simulate_step(
+            StepConfig(True, 60.0, s, prompt_len=PD_FIXED_PROMPT, sets={"Bw": 2e5, "x0": 0.002})
+        ),
+        PD_SEEDS,
+    )
+    lines.append(
+        f"NICs of 2e5 tokens/s after 2 ms, λ=60 split: read {_ms(replications([r.transfer for r in bw]))} "
+        f"inside TTFT {_ms(replications([r.ttft for r in bw]))}, TPOT {_ms(replications([r.tpot_token for r in bw]))}"
+    )
+    kvd = serq.parallel(
+        lambda s: pd_batching.simulate_step(
+            StepConfig(True, 40.0, s, prompt_len=PD_FIXED_PROMPT, sets={"blocksD": 512.0})
+        ),
+        PD_SEEDS,
+    )
+    lines.append(
+        f"decode engine of 8192 KV tokens, λ=40 split: admission wait {_ms(replications([r.admit_wait for r in kvd]))}, "
+        f"{replications([r.preemptions_per_s for r in kvd])} preemptions/s, "
+        f"{fixed(replications([r.prefill_kv_used for r in kvd]).mean, 0)} KV tokens held on the prefill engines (running prefills and leases awaiting the read), "
+        f"TTFT {_ms(replications([r.ttft for r in kvd]))}"
+    )
+    kve = serq.parallel(
+        lambda s: pd_batching.simulate_step(
+            StepConfig(False, 60.0, s, prompt_len=PD_FIXED_PROMPT, sets={"blocksE": 512.0})
+        ),
+        PD_SEEDS,
+    )
+    lines.append(
+        f"colocated engines of 8192 KV tokens each, λ=60: {replications([r.preemptions_per_s for r in kve])} preemptions/s, "
+        f"TTFT {_ms(replications([r.ttft for r in kve]))}"
+    )
+    for rate in (40.0, 60.0):
+        pairs = serq.parallel(
+            lambda s, rate=rate: (
+                pd_batching.simulate_step(StepConfig(False, rate, s, prompt_len=H2_PROMPT)),
+                pd_batching.simulate_step(StepConfig(True, rate, s, prompt_len=H2_PROMPT)),
+            ),
+            PD_SEEDS,
+        )
+        lines.append(
+            f"prompts of CV² 9, λ={disp(rate)}: TTFT {_ms(replications([c.ttft for c, _ in pairs]))} colocated vs "
+            f"{_ms(replications([d.ttft for _, d in pairs]))} split, response "
+            f"{_ms(replications([c.response for c, _ in pairs]))} vs {_ms(replications([d.response for _, d in pairs]))} "
+            f"(300 s runs; the split's prefill engines are near saturation at λ=60, so these are not steady-state means)"
+        )
+    return Observation(
+        "pd_step_limits", "issue #28 (serQ #208 variations)",
+        "what the split pays for beyond the baseline: the transfer, a bounded KV, prompt variance",
+        "; ".join(lines),
+    )  # fmt: skip
+
+
 def observations() -> list[Observation]:
     """Results that bear on the paper's open questions (§7) but test no
     proposition."""
@@ -1312,6 +1578,7 @@ def observations() -> list[Observation]:
             "; ".join(lines),
         )
     )  # fmt: skip
+    out.append(pd_step_limits())
     return out
 
 
@@ -1357,6 +1624,10 @@ ALL = (
     pd_capacity_matches,
     pd_no_gain,
     pd_win_condition_decisions,
+    pd_ps_scaling_identity,
+    pd_step_split_tpot_at_equal_throughput,
+    pd_step_long_step_matches_ps_share,
+    pd_step_interruption_pattern,
     affinity_breaks_at_high_load,
     lookahead_not_worse_than_affinity,
     trace_replay_variance_sources,
