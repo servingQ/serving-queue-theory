@@ -12,6 +12,20 @@ if grep -rn --include='*.lean' -E '\bsorry\b' ServingQueueTheory ServingQueueThe
   echo "FAIL: literal 'sorry' found in sources"; exit 1
 fi
 
+echo "== serQ: the Lean pin runs the pinned release's IR and semantics =="
+# lean/lakefile.toml pins serQ's Lean package at a commit; the validation
+# package and fetch_serq.sh run the release in validation/pyproject.toml.
+# Between the two, the interpreter (src/) and the IR the oracle theorems are
+# generated from (tools/oracle/) may not differ.
+TAG=$(sed -n '/^\[tool\.serq\]/,/^\[/ s/^tag = "\([^"]*\)".*/\1/p' ../validation/pyproject.toml)
+PKG=.lake/packages/Serq
+git -C "$PKG" rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git -C "$PKG" fetch -q origin tag "$TAG"
+if ! git -C "$PKG" diff --quiet "$TAG" HEAD -- src tools/oracle; then
+  echo "FAIL: serQ's Lean pin ($(git -C "$PKG" rev-parse --short HEAD)) and the release $TAG differ in src/ or tools/oracle/:"
+  git -C "$PKG" diff --stat "$TAG" HEAD -- src tools/oracle; exit 1
+fi
+echo "OK: the Lean pin and $TAG have the same interpreter and oracle IR"
+
 echo "== axiom audit =="
 lake env lean scripts/AxiomAudit.lean 2>&1 | perl -0pe 's/\n[ \t]+/ /g' | tee axioms.log
 # Every line looks like: 'ServingQueueTheory.foo' depends on axioms: [propext, Classical.choice, Quot.sound]

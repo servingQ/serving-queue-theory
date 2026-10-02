@@ -29,7 +29,7 @@ Keep this section current at the end of every work block.
   `SerqExec.lean`'s `admit` consumes the own prefix only with a `cache`
   clause, `SerqOracle.lean` regenerates to the same file (no oracle
   program holds a pool with entries without `cache`, so the theorems are
-  unchanged). Also from the release: `serq --version` and `serq_version` in
+  unchanged). (These three files are now in serQ's `lean/`, PR #34.) Also from the release: `serq --version` and `serq_version` in
   the report, a note on a test observe that never held, and the linker
   rejecting a `set present` (serQ #231, the course's old `n` accident).
 - **Metastability, Lecture 7 (2026-10-01, serQ #120; lecture note only, not

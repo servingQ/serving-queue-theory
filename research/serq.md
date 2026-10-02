@@ -48,7 +48,7 @@ leaves the entry where it is, so a reservation written around the
 request's hold on the same pool no longer costs it its hit; `cache (0)` is
 the old meaning); the Lean `admit` follows, and no program here
 holds a pool with entries without `cache`, so the oracle theorems and the
-validation numbers are unchanged (the semantics, now `Serq/Exec.lean` in serQ, follows). IR 9 orders a
+validation numbers are unchanged. IR 9 orders a
 pool's waiting queue when a request is selected; no program here uses
 `queue by`, so their FIFO queues keep their meaning. IR 6 added renewal
 arrivals and requires finite runs to finish within their horizon; the queue
@@ -74,11 +74,15 @@ Rust (the CLI, for `scripts/exp`, still does).
    meanwhile), `uv lock`, then `make check` (`make serq` checks out and
    builds the new release). Move the Lean pin with it: set `rev` of the
    `Serq` requirement in `lean/lakefile.toml` to the release's commit and
-   run `cd lean && lake update Serq`. The oracle theorems are regenerated
-   in serQ (`scripts/gen_lean_oracle.py`, checked by its `make lean`), not
-   here.
+   run `cd lean && lake update Serq`. The Lean pin may run ahead of the
+   release only in `lean/` and docs: `scripts/check_lean.sh` fails if the
+   pinned commit's `src/` or `tools/oracle/` differs from the release tag.
+   Today it is `79c6add` (v0.1.1 plus serQ#245, the Lean package, no change
+   to the interpreter or the IR), until v0.1.2. The oracle theorems are
+   regenerated in serQ (`scripts/gen_lean_oracle.py`, checked by its
+   `make lean`), not here.
 
-The multi-turn prefix-cache theorem is generated the same way: its IR
+In serQ, the multi-turn prefix-cache theorem is generated the same way: its IR
 (`tools/oracle/cache_trace.ir.json`) is `examples/replay/vllm_replay.sq` on a
 unit step clock with the trace inlined as the sessions' turns, and the
 Lean executable semantics reads those turns at every `turn` statement
