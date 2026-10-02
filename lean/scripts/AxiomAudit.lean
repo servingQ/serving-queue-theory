@@ -151,32 +151,11 @@ open ServingQueueTheory
 #print axioms lruRun_eq_take
 #print axioms recency_split
 #print axioms mattson_lru_hit_iff
--- serQ, the serving-deployment language (Serq*.lean; research/serq.md)
--- syntax and pool semantics (Serq.lean)
-#print axioms SerqLang.Step.invariant
-#print axioms SerqLang.Step.nonneg
-#print axioms SerqLang.total_evictUntil_le
-#print axioms SerqLang.sharedRate_sum
-#print axioms SerqLang.serialRate_sum
-#print axioms SerqLang.admit_guard_units_only
-
--- executable semantics and the vLLM scheduler scenarios (SerqOracle.lean, generated)
-#print axioms SerqLang.Exec.makeRoom_used
-#print axioms SerqLang.Exec.makeRoom_room
-#print axioms SerqLang.Exec.evictOne_lt
-#print axioms SerqLang.Oracle.vllmRequest_wf
-#print axioms SerqLang.Oracle.vllm_chunked
-#print axioms SerqLang.Oracle.vllm_hol
-#print axioms SerqLang.Oracle.vllm_longchunk
-#print axioms SerqLang.Oracle.vllm_mixed
-#print axioms SerqLang.Oracle.vllm_preempt
-#print axioms SerqLang.Oracle.vllm_seqcap
-#print axioms SerqLang.Oracle.vllmTurn_wf
-#print axioms SerqLang.Oracle.vllm_cache_trace
--- serving order of a step engine (admission order is decode-first without a chunk cap)
+-- serQ's own theorems (syntax, pool semantics, executable semantics, the vLLM
+-- oracle) are audited in serQ (`make lean`, lean/scripts/AxiomAudit.lean there).
+-- The ones the paper cites (§2.2) are audited here too:
 #print axioms SerqLang.Serve.serve_preserves_shape
 #print axioms SerqLang.Serve.serve_eq_decode_first
-#print axioms SerqLang.Serve.shape_append_prefill
 #print axioms SerqLang.Serve.chunk_cap_breaks_shape
 -- the paper's replicas as serQ programs (Deployments.lean)
 #print axioms Deployments.disaggregatedReplica_wf

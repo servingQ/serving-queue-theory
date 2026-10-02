@@ -29,7 +29,7 @@ Keep this section current at the end of every work block.
   `SerqExec.lean`'s `admit` consumes the own prefix only with a `cache`
   clause, `SerqOracle.lean` regenerates to the same file (no oracle
   program holds a pool with entries without `cache`, so the theorems are
-  unchanged). Also from the release: `serq --version` and `serq_version` in
+  unchanged). (These three files are now in serQ's `lean/`, PR #34.) Also from the release: `serq --version` and `serq_version` in
   the report, a note on a test observe that never held, and the linker
   rejecting a `set present` (serQ #231, the course's old `n` accident).
 - **Metastability, Lecture 7 (2026-10-01, serQ #120; lecture note only, not
@@ -91,9 +91,10 @@ Keep this section current at the end of every work block.
   https://github.com/vrvrv/serQ. This repository runs its pinned v0.1.1
   release (IR 10) through pyserq and `.serq/bin/serq`, not a Cargo git
   dependency. `research/serq.md` documents the pin, upgrade procedure and CI
-  access. The Lean modules are `Serq{,Exec,Oracle,Serve}.lean`;
-  `scripts/gen_serq_oracle.py` generates the oracle statements from the
-  release's IR, and `scripts/test_serq_oracle.py` checks the translator's
+  access. The Lean model is serQ's `lean/` package (since 2026-10-01; it
+  was `Serq{,Exec,Oracle,Serve}.lean` here), required by `lean/lakefile.toml`;
+  serQ's `scripts/gen_lean_oracle.py` generates the oracle statements from
+  its IR, and its `scripts/test_lean_oracle.py` checks the translator's
   accepted fragment. This proves the named fragment, not every IR-v10 feature.
 - **vLLM-rule paper simulations (ported 2026-09-27).** The price,
   eviction/admission and WEKA replay experiments run

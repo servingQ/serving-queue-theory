@@ -6,7 +6,7 @@ whose paper ↔ proof correspondence is enforced by CI.
 
 ```
 paper/   ICML-2026-format LaTeX draft (main.tex, refs.bib, icml2026.sty); proofs in Appendix A
-lean/    Lean 4 project `ServingQueueTheory` (Mathlib v4.34.0)
+lean/    Lean 4 project `ServingQueueTheory` (Mathlib v4.34.0); requires serQ's Lean package `Serq`
 validation/  Python validation and report generation; serQ runs every simulation
 scripts/ CI checks (see below)
 ```
@@ -67,11 +67,11 @@ scripts/check_lean_refs.sh
 1. **lean** — `lake build`; fails on any `declaration uses 'sorry'` or literal
    `sorry`; runs `lean/scripts/AxiomAudit.lean` (`#print axioms` on every
    paper-facing theorem) and fails if anything other than `propext`,
-   `Classical.choice`, `Quot.sound` appears.
-2. **refs** — every `\leanref{Name}` in `paper/main.tex` names an existing
-   Lean declaration, and every referenced theorem is in the axiom audit.
-3. **paper** — the ICML PDF compiles; uploaded as an artifact.
-4. **sim** — `scripts/check_sim.sh`: every Lean theorem cited by a simulation
+   `Classical.choice`, `Quot.sound` appears; then every `\leanref{Name}` in
+   `paper/main.tex` names an existing Lean declaration (here or in serQ's
+   package), and every referenced theorem is in the axiom audit.
+2. **paper** — the ICML PDF compiles; uploaded as an artifact.
+3. **sim** — `scripts/check_sim.sh`: every Lean theorem cited by a simulation
    check exists; `ruff format --check`, `ruff check`, `pytest`, and the
    validation report, which runs every named check;
    the validation report (`validation/validation-report.md`) is uploaded
