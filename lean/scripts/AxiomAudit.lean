@@ -173,3 +173,4 @@ open ServingQueueTheory
 #print axioms StepEngine.amountOf_le_want
 #print axioms StepEngine.amountOf_fifo
 #print axioms StepEngine.serq_engine_lower
+#print axioms StepEngine.serq_machines_lower

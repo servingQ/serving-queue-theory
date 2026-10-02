@@ -43,6 +43,7 @@ and sizes, two FIFO single-server (Lindley) recursions per request:
 | 100 | 64 only | 0.33 | 0.004 / 0.012 / 0.021 | 0 / 0 |
 | 200 | 64 only | 0.66 | 0.007 / 0.025 / 837 (unstable) | 0 / 0 |
 | 300 | 64 only | 0.99 | 0.16 / 184 / 1760 | 0 / 0 |
+| 150 | 32 / 4096 (0.05) | 2.07 | 677 / 853 / 1236 (overloaded) | 0 / 0 |
 
 Every request of every run (up to 788 227) lies inside the bracket and
 completes in arrival order. The bracket is wide where it matters: with
@@ -52,7 +53,11 @@ running iteration. A FIFO server with per-token work `a + c_it/B` plus one
 iteration (`c_it`) is within 0.5–3 % of the engine when long prefills are
 present, but 45 % low for 64-token prefills at λ = 200 (iterations run
 below the budget, so the per-iteration cost is not shared by B tokens).
-Simulator output, not a measurement (AGENTS.md rule 7).
+Simulator output, not a measurement (AGENTS.md rule 7). The program it runs
+(`admit via engine`, `growing kv`) is wider than the fragment
+`serq_engine_lower` covers (nobody waiting for the engine, no growth past an
+allocation): the check is evidence that the bracket holds beyond the
+theorem, not an instance of it.
 
 ## Status (2026-10-02)
 
@@ -65,18 +70,29 @@ waiting for the engine) is the greedy fill of the budget in serving order
 (`assign_eq_fillIter`, `fillAmounts_fifo`).
 
 `lean/ServingQueueTheory/StepEngine.lean` now starts from that engine:
-`serq_engine_lower` takes serQ's iteration (`fillIter`, a request's tokens as
-`Exec.endIteration` subtracts them) and proves every request completes no
-earlier than the FIFO prefill server with work `a m + b m (K + m/2)`. What it
-still assumes about a run (`hres`, `hjob`): the residents of each iteration
-are the arrived unfinished requests in arrival order, each a prefill job
-wanting what it has left. Proving those as invariants of `Exec.step` on the
-prefill-only fragment is the next step; then the upper bound and the
-bulk-service analysis below.
+`serq_machines_lower` reads each iteration's tokens off serQ's machine (the
+`assign` that `startIteration` calls, which is `fillIter` by serQ's
+`assign_iter_eq_fillIter`; a request's tokens as `Exec.endIteration`
+subtracts them) and proves every request completes no earlier than the FIFO
+prefill server with work `a m + b m (K + m/2)`. What is derived from serQ is
+one iteration's fill and its token accounting. What it still assumes about a
+run:
+
+- nobody waits for the engine during an iteration and no growth passes an
+  allocation (serQ #253 is the admission case);
+- the residents are the arrived unfinished requests in arrival order, as
+  prefill jobs wanting what they have left (`hres`, `hjob`), so that serving
+  order (`admSeq`), request index and arrival order agree;
+- each iteration lasts at least its chunks' cost (`hdur`), which `D.cost`
+  must dominate on serQ's ℕ clock.
+
+Proving those as invariants of `Exec.step` on the prefill-only fragment is
+the next step; then the upper bound and the bulk-service analysis below.
 
 ## Theorem plan
 
-1. **Core engine** (done: serQ's `Exec` itself, see Status): the serQ fragment
+1. **Core engine** (the iteration is done: serQ's `Exec` itself, see Status;
+   the duration and the run invariants are not): the serQ fragment
    "one `hold` on an engine-admitted pool with unbounded memory, `prefill m`
    (then `decode o`)", no chunk cap, admission order; iterations fill the
    budget greedily in arrival order; duration `τ = c + a P + b attn`.

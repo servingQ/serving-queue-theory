@@ -1,4 +1,4 @@
-import csv, sys, subprocess, os, statistics as st
+import csv, sys, subprocess, os, statistics as st, tempfile
 import pathlib
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 SERQ=str(ROOT/'.serq/bin/serq')
@@ -7,7 +7,7 @@ c_it=0.004; a=5.1527e-5; b=4.0196e-9; B=512
 def load(d,n):
     return {int(r['session']):float(r['value']) for r in csv.DictReader(open(f'{d}/{n}.csv'))}
 def run(lam, p_long, n_short, n_long, horizon=3000, seed=1):
-    d=f'd_{lam}_{p_long}_{n_short}_{n_long}'
+    d=os.path.join(tempfile.mkdtemp(prefix='sandwich-'), f'd_{lam}_{p_long}_{n_short}_{n_long}')
     subprocess.run([SERQ,'run',PROG,'--dump',d,'--seed',str(seed),'--horizon',str(horizon),
         '--set',f'Lambda={lam}','--set',f'p_long={p_long}','--set',f'n_short={n_short}','--set',f'n_long={n_long}'],
         check=True,capture_output=True)

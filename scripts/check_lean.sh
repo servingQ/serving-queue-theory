@@ -23,7 +23,7 @@ git -C "$PKG" rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git -C "$PKG"
 # (a change of comments only, `//` lines, does not count)
 if ! git -C "$PKG" diff --quiet -I'^[[:space:]]*//' "$TAG" HEAD -- src tools/oracle; then
   echo "FAIL: serQ's Lean pin ($(git -C "$PKG" rev-parse --short HEAD)) and the release $TAG differ in src/ or tools/oracle/:"
-  git -C "$PKG" diff --stat "$TAG" HEAD -- src tools/oracle; exit 1
+  git -C "$PKG" diff --stat -I'^[[:space:]]*//' "$TAG" HEAD -- src tools/oracle; exit 1
 fi
 echo "OK: the Lean pin and $TAG have the same interpreter and oracle IR"
 

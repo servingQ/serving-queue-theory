@@ -23,10 +23,17 @@ proof starts from serQ's definition of an iteration.
   (`SerqLang.Exec.fillIter`, which `Exec.assign` builds,
   `SerqLang.Exec.assign_eq_fillIter`) gives each request its job's amount of
   the greedy fill, no more than it wants, in serving order.
-* `serq_engine_lower` : hence serQ's engine without a chunk cap, whose
-  residents are the arrived unfinished requests in arrival order, completes
+* `serq_engine_lower`, `serq_machines_lower` : hence serQ's engine without a
+  chunk cap, read off its machines (`startIteration`'s `assign`), completes
   every request no earlier than the FIFO prefill server with work
-  `a m + b m (K + m/2)`.
+  `a m + b m (K + m/2)`, given what is still assumed about the run: nobody
+  waits for the engine, no growth past an allocation, the residents are the
+  arrived unfinished requests in arrival order (`hres`, `hjob`), and each
+  iteration lasts at least its chunks' cost (`hdur`, which `D.cost` must
+  dominate). Those are invariants of `Exec.step` to prove next.
+
+The paper does not cite this module yet; its `prop:price` assumes the FIFO
+queue this module derives.
 -/
 import Mathlib.Tactic
 import Serq.Fill
@@ -424,7 +431,7 @@ theorem serq_engine_lower (D : Deployment) (hchunk : D.chunk = 0) (n J : ℕ) (A
     (hA : Monotone A) (a b : ℝ) (ha : 0 ≤ a) (hb : 0 ≤ b) (K : ℕ → ℝ) (hK : ∀ l, 0 ≤ K l)
     (m : ℕ → ℕ) (js : ℕ → List Job) (s e : ℕ → ℝ)
     (hse : ∀ j, s j ≤ e j) (hes : ∀ j, e j ≤ s (j + 1))
-    (x : ℕ → ℕ → ℕ) (hx : ∀ j l, x j l = tokensIn (fillIter D (js j) D.budget) l)
+    (x : ℕ → ℕ → ℕ) (hx : ∀ j ∈ range J, ∀ l, x j l = tokensIn (fillIter D (js j) D.budget) l)
     (hres : ∀ j ∈ range J, (js j).map (·.owner) =
       (List.range n).filter fun l => decide (A l ≤ s j) && decide (∑ i ∈ range j, x i l < m l))
     (hjob : ∀ j ∈ range J, ∀ job ∈ js j, job.mode = .prefill ∧
@@ -439,7 +446,7 @@ theorem serq_engine_lower (D : Deployment) (hchunk : D.chunk = 0) (n J : ℕ) (A
   have hnodup : ∀ j ∈ range J, ((js j).map (·.owner)).Nodup := fun j hj =>
     (hsorted j hj).imp (fun h => ne_of_lt h)
   have hxa : ∀ j ∈ range J, ∀ l, x j l = amountOf D (js j) D.budget l := fun j hj l => by
-    rw [hx, tokensIn_fillIter D _ _ _ (hnodup j hj)]
+    rw [hx j hj, tokensIn_fillIter D _ _ _ (hnodup j hj)]
   have hmemres : ∀ j ∈ range J, ∀ l, l ∈ (js j).map (·.owner) ↔
       l < n ∧ A l ≤ s j ∧ ∑ i ∈ range j, x i l < m l := fun j hj l => by
     rw [hres j hj, List.mem_filter, List.mem_range]; simp
@@ -507,6 +514,50 @@ theorem serq_engine_lower (D : Deployment) (hchunk : D.chunk = 0) (n J : ℕ) (A
         rw [hxa j hj]
         exact amountOf_not_mem D (js j) D.budget l (fun hmem => hdone ((hmemres j hj l).mp hmem).2.2)
       omega
+
+open SerqLang.Exec in
+/-- **The same, read off serQ's machines.** Iteration `j` starts from the
+machine `ms j`, and its tokens are those of the iteration `startIteration`
+builds, `assign D 100000 {ms j with iter := []} 0 D.budget`. If nobody waits
+for the engine, the jobs' owners are distinct and every growing job's
+allocation covers the position it will reach, that iteration is `fillIter`
+of the machine's jobs (`SerqLang.Exec.assign_iter_eq_fillIter`), so
+`serq_engine_lower` applies with the machine's job list as the residents.
+What is still assumed about the run: `hres`, `hjob` (the residents are the
+arrived unfinished requests in arrival order, as prefill jobs wanting what
+they have left; arrival order is the jobs' serving order) and `hdur` (the
+iteration lasts at least the cost of its chunks, which `D.cost` must
+dominate). -/
+theorem serq_machines_lower (D : Deployment) (hchunk : D.chunk = 0) (n J : ℕ) (A : ℕ → ℝ)
+    (hA : Monotone A) (a b : ℝ) (ha : 0 ≤ a) (hb : 0 ≤ b) (K : ℕ → ℝ) (hK : ∀ l, 0 ≤ K l)
+    (m : ℕ → ℕ) (ms : ℕ → Machine) (s e : ℕ → ℝ)
+    (hse : ∀ j, s j ≤ e j) (hes : ∀ j, e j ≤ s (j + 1))
+    (hq : ∀ j ∈ range J, engineQueuesEmpty D (ms j))
+    (hown : ∀ j ∈ range J, ((ms j).jobs.map (·.owner)).Nodup)
+    (hcov : ∀ j ∈ range J, ∀ jb ∈ (ms j).jobs, ∀ p, jb.growing = some p →
+      ∃ a x, holdOn (getS (ms j) jb.owner) p = some (a, x) ∧ x + wantOf D jb ≤ a)
+    (hfuel : ∀ j ∈ range J, (ms j).jobs.length < 100000)
+    (x : ℕ → ℕ → ℕ)
+    (hx : ∀ j ∈ range J, ∀ l,
+      x j l = tokensIn (assign D 100000 { ms j with iter := [] } 0 D.budget (ms j).preempts).iter l)
+    (hres : ∀ j ∈ range J, (ms j).jobs.map (·.owner) =
+      (List.range n).filter fun l => decide (A l ≤ s j) && decide (∑ i ∈ range j, x i l < m l))
+    (hjob : ∀ j ∈ range J, ∀ job ∈ (ms j).jobs, job.mode = .prefill ∧
+      job.left = m job.owner - ∑ i ∈ range j, x i job.owner)
+    (hdur : ∀ j ∈ range J, ∑ l ∈ range n,
+      (a * x j l + b * x j l * (K l + (∑ i ∈ range j, (x i l : ℝ)) + x j l / 2)) ≤ e j - s j)
+    (k : ℕ) (hk : k < n) (jk : ℕ) (hjk : jk < J) (hlast : 0 < x jk k)
+    (hcomp : ∑ i ∈ range (jk + 1), x i k = m k) :
+    lindley A (fun l => cumCost a b (K l) (m l)) k ≤ e jk := by
+  refine serq_engine_lower D hchunk n J A hA a b ha hb K hK m (fun j => (ms j).jobs) s e hse hes x
+    ?_ hres hjob hdur k hk jk hjk hlast hcomp
+  intro j hj l
+  rw [hx j hj l]
+  congr 1
+  have := assign_iter_eq_fillIter D (ms j).preempts 100000 { ms j with iter := [] } 0 D.budget
+    (fun q hv => hq j hj q hv) (hown j hj) (fun jb hjb => hcov j hj jb (by simpa using hjb))
+    (by have := hfuel j hj; simp; omega)
+  simpa using this
 
 end StepEngine
 end ServingQueueTheory
