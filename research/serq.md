@@ -2,7 +2,8 @@
 
 serQ is the language in which a serving deployment is a program: memory
 pools and stages, a workload, and the program every session runs. Since
-2026-09-27 it is its own project, https://github.com/vrvrv/serQ (private).
+2026-09-27 it is its own project, https://github.com/servingQ/serQ (public, in
+the `servingQ` organization, since 2026-10-02; it was the private `vrvrv/serQ`).
 serQ holds the Rust interpreter and CLI (crate `serq`, library `serq`,
 binary `serq`), the example programs (`examples/*/*.sq`, incl. the vLLM
 v1 engine and its A100 replay), the vLLM scheduler oracle with its test
@@ -26,8 +27,8 @@ proves its queueing results from it, and uses one pinned serQ release:
 | `programs/replay_vllm.sq`, `validation/src/sim/replay_vllm.py` | §4.2's vLLM-rule replay; `scripts/exp/serq_replay42.py` runs LRU and finished-session ablations (`research/serq-replay42.md`) | pyserq; `.serq/bin/serq` for the ablations |
 | `scripts/exp/*serq*`, `diff_serq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.serq/bin/serq`, `.serq/src/examples`, `.serq/src/tools` |
 
-The pin is `v0.1.1` under `[tool.serq]` in `validation/pyproject.toml`, IR 10, and its
-pyserq, `pyserq==0.1.1` from PyPI, is the validation package's engine:
+The pin is `v0.1.2` under `[tool.serq]` in `validation/pyproject.toml`, IR 10, and its
+pyserq, `pyserq==0.1.2` from PyPI, is the validation package's engine:
 `tests/test_units.py` holds pyserq's version equal to the checkout's
 `[workspace.package] version` in `.serq/src/Cargo.toml` and to the
 `pyserq==` dependency, and, when a tag is pinned, the tag to `v{version}`.
@@ -77,8 +78,7 @@ Rust (the CLI, for `scripts/exp`, still does).
    run `cd lean && lake update Serq`. The Lean pin may run ahead of the
    release only in `lean/` and docs: `scripts/check_lean.sh` fails if the
    pinned commit's `src/` or `tools/oracle/` differs from the release tag.
-   Today it is `79c6add` (v0.1.1 plus serQ#245, the Lean package, no change
-   to the interpreter or the IR), until v0.1.2. The oracle theorems are
+   Today all three pins are the release v0.1.2 (`rev = "v0.1.2"`). The oracle theorems are
    regenerated in serQ (`scripts/gen_lean_oracle.py`, checked by its
    `make lean`), not here.
 
@@ -90,20 +90,11 @@ Lean executable semantics reads those turns at every `turn` statement
 
 ## Access
 
-serQ is private. Locally, git authenticates through the `gh` credential
-helper of an account that can read serQ. CI uses a read-only deploy key: the public
-half on vrvrv/serQ, the private half in `SERQ_DEPLOY_KEY` of this
-repository (`.github/actions/serq-access`). The workflow falls back to the
-existing `SEQ_DEPLOY_KEY` secret until the new secret is provisioned; GitHub
-does not expose a secret's value for renaming. New installations use only
-`SERQ_DEPLOY_KEY`. To create it:
-
-```bash
-ssh-keygen -t ed25519 -N "" -C "serving-queue-theory CI (read serQ)" -f /tmp/serq_deploy
-gh repo deploy-key add /tmp/serq_deploy.pub -R vrvrv/serQ -t "serving-queue-theory CI"
-gh secret set SERQ_DEPLOY_KEY -R vrvrv/serving-queue-theory < /tmp/serq_deploy
-rm /tmp/serq_deploy /tmp/serq_deploy.pub
-```
+serQ is public (since 2026-10-02): Lake (`lean/lakefile.toml`) and
+`scripts/fetch_serq.sh` fetch it over https without credentials, and CI needs
+no key. The read-only deploy key and `.github/actions/serq-access` that the
+private repository needed were removed; the secrets `SERQ_DEPLOY_KEY` and
+`SEQ_DEPLOY_KEY` can be deleted from this repository's settings.
 
 ## Historical evidence
 

@@ -115,7 +115,7 @@ def test_pd_tandem_capacity():
 
 def test_lecture_pd_program_runs():
     # the lecture's figure, kept here since serQ took it out of its examples
-    # (vrvrv/serQ#121): a KV transfer as a store-and-forward link
+    # (servingQ/serQ#121): a KV transfer as a store-and-forward link
     r = serq.run(serq.PROGRAMS / "lecture_pd.sq", sets={}, seed=1)
     assert r.turns > 500
     p = r.stage("prefill")

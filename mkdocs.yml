@@ -1,12 +1,12 @@
-# The public page (https://vrvrv.github.io/serving-queue-theory/): the paper
+# The public page (https://servingq.github.io/serving-queue-theory/): the paper
 # and the lecture notes as PDFs, built and deployed by
 # .github/workflows/publish.yml. The pages are docs/; the internal working
 # notes are research/ and are not published.
 site_name: Serving Queue Theory
 site_description: Decision-faithful queueing models for agentic LLM serving, machine-checked in Lean 4
-site_url: https://vrvrv.github.io/serving-queue-theory/
-repo_url: https://github.com/vrvrv/serving-queue-theory
-repo_name: vrvrv/serving-queue-theory
+site_url: https://servingq.github.io/serving-queue-theory/
+repo_url: https://github.com/servingQ/serving-queue-theory
+repo_name: servingQ/serving-queue-theory
 docs_dir: docs
 site_dir: site
 exclude_docs: |

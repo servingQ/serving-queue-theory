@@ -15,11 +15,11 @@ and eviction, program-aware routing). The deliverables are:
 |------|-------------|
 | `paper/main.tex` | ICML-2026-format paper draft (tectonic, two-column) |
 | `lectures/queueing-serving/notes.tex` | unified lecture-note course on the paper's theory (tectonic); the PDFs are built by CD, never committed |
-| `docs/`, `mkdocs.yml`, `.github/workflows/publish.yml` | the **public** page https://vrvrv.github.io/serving-queue-theory/ with the paper and lecture-note PDFs (README, "What CD publishes") |
+| `docs/`, `mkdocs.yml`, `.github/workflows/publish.yml` | the **public** page https://servingq.github.io/serving-queue-theory/ with the paper and lecture-note PDFs (README, "What CD publishes") |
 | `research/` | internal working notes: plan, testbed, serQ pin, design notes, review rounds; not published |
 | `lean/ServingQueueTheory/` | Lean 4 + Mathlib proofs of every proposition in the paper |
 | `validation/` | Python validation and report package; seeded checks of each proposition, every simulated system a serQ program run in process by pyserq, built from the pinned release |
-| serQ (separate repo, pinned release) | the language in which a serving deployment is a program: interpreter and CLI `serq`, example programs, the vLLM oracle and its A100 test vectors; https://github.com/vrvrv/serQ, used here through pyserq from PyPI and a checkout in `.serq/` (`research/serq.md`). Its Lean model is serQ's own `lean/` package `Serq` (syntax and pool semantics, executable semantics, the vLLM scenarios as theorems generated from serQ's vectors, serving order), which `lean/lakefile.toml` requires at a pinned commit; every proof about a serving system starts from it. Here: `Deployments.lean` (the paper's replicas as serQ programs) |
+| serQ (separate repo, pinned release) | the language in which a serving deployment is a program: interpreter and CLI `serq`, example programs, the vLLM oracle and its A100 test vectors; https://github.com/servingQ/serQ, used here through pyserq from PyPI and a checkout in `.serq/` (`research/serq.md`). Its Lean model is serQ's own `lean/` package `Serq` (syntax and pool semantics, executable semantics, the vLLM scenarios as theorems generated from serQ's vectors, serving order), which `lean/lakefile.toml` requires at a pinned commit; every proof about a serving system starts from it. Here: `Deployments.lean` (the paper's replicas as serQ programs) |
 | `scripts/` | CI checks that bind the two together |
 | `.github/workflows/ci.yml` | Runs the checks on push/PR |
 
@@ -80,8 +80,8 @@ latency reproduction is secondary.
    measurements, not serving measurements: they may describe the
    workload (§2, §4.1) but never fill a serving-measurement cell, and the proxy TTFT in them is observational.
 8. **Do not commit or push unless asked.** Never commit `lean/.lake/`,
-   `*.log`, or `paper/main.pdf` (all gitignored). Server-side branch
-   protection is unavailable on this private Free-plan repo; the
+   `*.log`, or `paper/main.pdf` (all gitignored). No server-side branch
+   protection is configured on this (public) repo; the
    `.githooks/pre-push` hook (enable with `git config core.hooksPath
    .githooks`) refuses non-fast-forward pushes to `main` and runs
    `make check` first. Do not bypass it with `--no-verify`.
