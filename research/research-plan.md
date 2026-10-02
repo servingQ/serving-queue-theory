@@ -22,6 +22,16 @@ record the runs made at that time; they do not imply a server is still running.
 Keep this section current at the end of every work block.
 
 **Done.**
+- **serQ v0.1.2, both repositories public (2026-10-02).** serQ and this
+  repository moved to the `servingQ` organization and are public. serQ
+  v0.1.2 (IR 10, interpreter unchanged) carries the Lean model (`lean/`),
+  event-driven `Exec` with iteration costs, three Lean/interpreter
+  differences fixed by differential testing (`make drt`, in serQ's CI), and
+  `Serq/Fill.lean`; this repository requires it (`lean/lakefile.toml`) and
+  `StepEngine.lean` derives a FIFO lower bound from serQ's iteration fill
+  (`serq_machines_lower`; run invariants still assumed,
+  `research/step-engine-theory.md`). All pins are v0.1.2; the deploy key is
+  gone.
 - **serQ v0.1.1 pinned, IR 10 (2026-10-01).** The pin moved to the release
   that fixes the overlapping-hold bug Lecture 7 ran into (serQ #230: a hold
   without `cache` now leaves the session's prefix where it is; IR 10, same
@@ -88,7 +98,7 @@ Keep this section current at the end of every work block.
   regenerates `paper/sim/` (~7 min); `make sim` runs ruff, pytest and the
   report (~5 min).
 - **serQ integration (current).** The language is a separate project,
-  https://github.com/vrvrv/serQ. This repository runs its pinned v0.1.1
+  https://github.com/servingQ/serQ. This repository runs its pinned v0.1.2
   release (IR 10) through pyserq and `.serq/bin/serq`, not a Cargo git
   dependency. `research/serq.md` documents the pin, upgrade procedure and CI
   access. The Lean model is serQ's `lean/` package (since 2026-10-01; it

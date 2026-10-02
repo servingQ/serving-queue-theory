@@ -1,7 +1,7 @@
 name: Publish
 
 # The paper and the unified lecture notes as PDFs, and the public page that
-# links to them (https://vrvrv.github.io/serving-queue-theory/).
+# links to them (https://servingq.github.io/serving-queue-theory/).
 #
 # No PDF is committed: every run compiles them from the sources with
 # tectonic, uploads them as workflow artifacts (paper-pdf, lecture-notes),

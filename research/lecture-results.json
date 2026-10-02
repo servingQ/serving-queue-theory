@@ -1,9 +1,9 @@
 {
   "binary": ".serq/bin/serq",
-  "release": "v0.1.1",
-  "pinned": "v0.1.1",
+  "release": "v0.1.2",
+  "pinned": "v0.1.2",
   "release_verified": true,
-  "commit": "16fd7dde9414be497c85a3614e5feb7ab14cca48",
+  "commit": "075e122360cda835dab23b5a30b8ed7ac2f84722",
   "ir_version": 10,
   "checks": [
     {

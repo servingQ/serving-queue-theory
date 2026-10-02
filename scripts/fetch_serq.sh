@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# serQ (https://github.com/vrvrv/serQ), the serving-deployment language: the
+# serQ (https://github.com/servingQ/serQ), the serving-deployment language: the
 # example programs the validation package runs with pyserq (from PyPI, the
 # same release), the vLLM oracle with its
 # test vectors (serQ's lean/Serq/Oracle.lean is generated from
@@ -20,10 +20,10 @@ if [ "$(cat .serq/tag 2>/dev/null)" != "$REF" ]; then
   if [ -n "$REV" ]; then
     mkdir -p .serq/src
     git -C .serq/src init -q
-    git -C .serq/src -c advice.detachedHead=false fetch -q --depth 1 https://github.com/vrvrv/serQ "$REV"
+    git -C .serq/src -c advice.detachedHead=false fetch -q --depth 1 https://github.com/servingQ/serQ "$REV"
     git -C .serq/src -c advice.detachedHead=false checkout -q FETCH_HEAD
   else
-    git -c advice.detachedHead=false clone -q --depth 1 --branch "$TAG" https://github.com/vrvrv/serQ .serq/src
+    git -c advice.detachedHead=false clone -q --depth 1 --branch "$TAG" https://github.com/servingQ/serQ .serq/src
   fi
   echo "$REF" > .serq/tag
 fi

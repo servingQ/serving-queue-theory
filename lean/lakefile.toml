@@ -19,6 +19,6 @@ name = "ServingQueueTheory"
 # oracle theorems); research/serq.md says how the pin moves.
 [[require]]
 name = "Serq"
-git = "https://github.com/vrvrv/serQ"
-rev = "5b3480b06efa958654fbd070890867128965ecaf"
+git = "https://github.com/servingQ/serQ"
+rev = "v0.1.2"
 subDir = "lean"

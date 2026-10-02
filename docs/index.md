@@ -4,7 +4,7 @@ Decision-faithful queueing models for agentic LLM serving. The paper's
 analytical propositions are machine-checked in Lean 4 with Mathlib, the
 paper-to-proof correspondence is enforced by CI, and the serving deployments
 the paper reasons about are written as programs in
-[serQ](https://vrvrv.github.io/serQ/), where the same program is simulated and
+[serQ](https://servingq.github.io/serQ/), where the same program is simulated and
 checked against the real system.
 
 The PDFs below are built from the sources at every change to `main`
@@ -31,10 +31,10 @@ offloading, placement and admission.
 
 ## Sources
 
-- [vrvrv/serving-queue-theory](https://github.com/vrvrv/serving-queue-theory):
+- [servingQ/serving-queue-theory](https://github.com/servingQ/serving-queue-theory):
   the paper (`paper/`), the lecture notes (`lectures/`), the Lean development
   (`lean/`) and the validation reports (`validation/`), executed with serQ.
   The repository is private;
   the page and the PDFs are public.
-- [serQ](https://github.com/vrvrv/serQ), the serving-deployment language, with
-  its [tutorial site](https://vrvrv.github.io/serQ/).
+- [serQ](https://github.com/servingQ/serQ), the serving-deployment language, with
+  its [tutorial site](https://servingq.github.io/serQ/).

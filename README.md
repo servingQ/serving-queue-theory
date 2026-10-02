@@ -25,8 +25,9 @@ scripts/ CI checks (see below)
 
 ## Branch policy
 
-GitHub branch protection/rulesets are not available for this private repo on
-the Free plan. Enable the local guard once per clone:
+The repository is public (organization `servingQ`, since 2026-10-02); no
+server-side branch protection is configured. Enable the local guard once per
+clone:
 
 ```bash
 git config core.hooksPath .githooks   # pre-push: fast-forward only + make check
@@ -91,11 +92,11 @@ close to the prose to make it tractable.
 [Queueing Theory for LLM Serving](lectures/queueing-serving/notes.tex) combines
 the former primer and PD course. Chapters 1–4 develop the shared foundations;
 chapters 5–6 apply them to colocated and disaggregated serving. Executable
-examples use **serQ v0.1.1 (IR v10)**, using the repository’s existing release pin.
+examples use **serQ v0.1.2 (IR v10)**, using the repository’s existing release pin.
 
 ```bash
 make lectures         # compile the unified notes
-make lecture-results  # fetch/build serQ v0.1.1 and check the course's results
+make lecture-results  # fetch/build serQ v0.1.2 and check the course's results
 ```
 
 The [verification record](research/lecture-integration.md) explains the changed
@@ -104,10 +105,10 @@ PD decode result and how to reproduce the old/new comparison.
 ## What CD publishes (`.github/workflows/publish.yml`)
 
 The paper and the unified lecture notes are compiled from their sources and
-served from the **public** page <https://vrvrv.github.io/serving-queue-theory/>,
+served from the **public** page <https://servingq.github.io/serving-queue-theory/>,
 built with mkdocs from `docs/` (`mkdocs.yml`). Anyone can read the page and
-download the PDFs, and search engines index them, although the repository
-is private: treat everything reachable from the page as published.
+download the PDFs, and search engines index them; the repository is public
+too, so treat everything in it as published.
 
 Every push to `main` that touches `paper/`, `lectures/`, `docs/` or
 `mkdocs.yml` (and `workflow_dispatch`) runs:
@@ -126,7 +127,7 @@ reviewer downloads the artifacts from the run. No PDF is committed:
 (the figures under `paper/sim/` and `paper/exp/` are generated data the
 paper `\input`s, and stay tracked). Locally, `make site` builds the same
 page into `site/`. To unpublish:
-`gh api -X DELETE repos/vrvrv/serving-queue-theory/pages` (caches and search
+`gh api -X DELETE repos/servingQ/serving-queue-theory/pages` (caches and search
 results keep what they have for a while).
 
 The internal working notes live in `research/` (plan, testbed, the serQ pin,

@@ -7,13 +7,13 @@ metastability (chapter 7; its tables, figures and macros, `metastability-*.tex` 
 do not edit them; `programs/metastable.sq` is its serQ program),
 and the executable examples (appendix A, `release-check.tex`). `notes.tex` is the sole lecture PDF entry point.
 
-The executable examples target **serQ v0.1.1**, IR v10,
+The executable examples target **serQ v0.1.2**, IR v10,
 commit `16fd7dde9414be497c85a3614e5feb7ab14cca48` (the release pinned in
 `validation/pyproject.toml`; `make lecture-results` runs them with its CLI).
 `vllm.sq`, `vllm-library.sq`, `mg1.sq`, `ps.sq`, `closed.sq`, and
 `pd_tandem.sq` were copied from v0.1.0's examples/library, with the
-vLLM import adjusted locally; v0.1.1's own examples name their laws as
-`def`s (serQ #192), the copies keep them inlined, and both run on v0.1.1. `lecture_pd.sq` implements the analytical
+vLLM import adjusted locally; v0.1.2's own examples name their laws as
+`def`s (serQ #192), the copies keep them inlined, and both run on v0.1.2. `lecture_pd.sq` implements the analytical
 continuous tandem. Its link uses `run link`, which only takes time;
 a production KV transfer has different pool lifetimes.
 `price.sq` checks the mean-availability miss-price approximation on a

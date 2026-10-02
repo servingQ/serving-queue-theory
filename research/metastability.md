@@ -84,11 +84,11 @@ Numerical (exact chain or serQ):
 
 ## serQ issues filed (2026-10-01)
 
-- vrvrv/serQ#230: a hold nested in a hold on the same pool loses the session's
+- servingQ/serQ#230: a hold nested in a hold on the same pool loses the session's
   cached prefix (blocked the reservation-on-arrival experiment in serQ).
-- vrvrv/serQ#231: a session attribute silently shadows a context variable
+- servingQ/serQ#231: a session attribute silently shadows a context variable
   (`present`), PS capacity 8× off; same class as the old PD lecture bug.
-- vrvrv/serQ#232: diagnostics umbrella (lints, degenerate-observe note, state
+- servingQ/serQ#232: diagnostics umbrella (lints, degenerate-observe note, state
   sampling, `--version`).
 
 ## Next
