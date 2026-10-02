@@ -1,0 +1,36 @@
+// Sandwich check: vLLM v1 step engine (A100 cost fit), prefill only (o = 1),
+// Poisson arrivals, no prefix cache, no memory limit.
+let Lambda = 10;
+let p_long = 0.2;
+let n_short = 64;
+let n_long = 2048;
+let B = 512;
+let max_seqs = 100000;
+let bs = 16;
+let c_it = 0.004;
+let a = 5.1527e-5;
+let b = 4.0196e-9;
+
+pool reqs { cap max_seqs; admit via engine; }
+pool kv { cap 1e12; block bs; evict lru; preempt lifo; }
+stage engine : step { budget B; cost c_it + a * prefilled + b * attention; memory kv; }
+
+workload {
+  arrive poisson(Lambda);
+  init { set u = ~uniform(0, 1); }
+}
+
+session {
+    set t0 = now;
+    set m = u < p_long ? n_long : n_short;
+    observe arr = t0;
+    observe size = m;
+    hold reqs (1), kv (min(m, budget_left(engine))) reserve (m) {
+      prefill (m) growing kv;
+      observe ttft = now - t0;
+    }
+    drop kv;
+    end;
+}
+
+run { horizon 3000; seed 1; }

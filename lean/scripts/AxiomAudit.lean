@@ -161,3 +161,16 @@ open ServingQueueTheory
 #print axioms Deployments.disaggregatedReplica_wf
 #print axioms Deployments.colocatedReplica_wf
 #print axioms Deployments.colocatedReplica'_eq
+-- the step engine and the FIFO prefill queue (StepEngine.lean), from serQ's engine
+#print axioms StepEngine.chunks_cost_sum
+#print axioms StepEngine.packed_le
+#print axioms StepEngine.window_work_le
+#print axioms StepEngine.lindley_attained
+#print axioms StepEngine.lindley_ge
+#print axioms StepEngine.fifo_lower
+#print axioms StepEngine.engine_lower
+#print axioms StepEngine.tokensIn_fillIter
+#print axioms StepEngine.amountOf_le_want
+#print axioms StepEngine.amountOf_fifo
+#print axioms StepEngine.serq_engine_lower
+#print axioms StepEngine.serq_machines_lower
