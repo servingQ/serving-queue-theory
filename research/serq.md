@@ -107,7 +107,14 @@ the higher load. The paper now describes those observations rather than
 the old synthetic thrashing claim. The trace replay's open-price
 lower bound overstates the observed rise by about 3–13 times (formerly
 4–10); those numbers remain generated macros. The current lecture checks are recorded in
-`research/serq-0.1.3-lecture-results.json`. The older
+`research/serq-0.1.3-lecture-results.json`. Lecture 7's five-seed cold/warm sweep and burst experiment are also
+rerun with this release (`scripts/metastability_serq.py`); the JSON now
+records the binary's actual version instead of a hard-coded v0.1.0 label.
+The cold/warm gap is at most 0.020 and recovery after a 60-second burst is
+65 seconds (formerly 40), while the 300-second burst still recovers in
+50 seconds. Its dependent calibration and figures are regenerated from
+that record. The scientific Python environment is numpy 2.5.3, scipy
+1.18.1 and matplotlib 3.11.2. The older
 `research/lecture-results.json` and appendix comparison table retain the
 releases they actually measured; the appendix labels that comparison as
 historical.

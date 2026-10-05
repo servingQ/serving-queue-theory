@@ -22,6 +22,17 @@ record the runs made at that time; they do not imply a server is still running.
 Keep this section current at the end of every work block.
 
 **Done.**
+- **serQ v0.1.3, IR 11 (2026-10-05).** Python, CLI and Lean pin the
+  published release `d91ffa5`. Lindley's independent check follows the
+  session-local init stream; `serq_machines_lower` exposes the fill
+  theorem's no-filter assumption. A real zero-output trace row now has
+  explicit zero decode work and a regression. PS checks run longer with
+  their error bounds unchanged. Paper tables/figures and the current
+  lecture checks use the release; the paper drops the synthetic
+  thrashing claim that the new samples no longer support. The older
+  lecture comparison remains historical. Validation: `make check`, 145
+  audited theorems, 50 unit/adapter tests, 35 model checks and 21 lecture
+  checks. Details and numerical changes: `research/serq.md`.
 - **serQ v0.1.2, both repositories public (2026-10-02).** serQ and this
   repository moved to the `servingQ` organization and are public. serQ
   v0.1.2 (IR 10, interpreter unchanged) carries the Lean model (`lean/`),
