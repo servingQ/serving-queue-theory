@@ -61,7 +61,15 @@ def test_ps_mean_number_is_insensitive():
     lam = 0.7
     want = lam / (1.0 - lam)
     for law in [0, 1, 3]:
-        r = program("ps", {"law": law}, 5)
+        # IR 11 changes seeded samples. At CV²=9, run ten times the example's
+        # horizon and warmup; keep the same 3% bound from PS insensitivity.
+        r = serq.run(
+            serq.program_path("ps"),
+            sets={"law": law},
+            seed=5,
+            horizon=2_500_000,
+            warmup=250_000,
+        )
         assert abs(r.stage("svc").mean_number - want) / want < 0.03
         assert ci(r.observe("sojourn")).agrees_with(want / lam, 0.03)
 
@@ -243,3 +251,21 @@ def test_agentic_programs_agree_statistically():
         assert abs(mean(ours, 0) - mean(theirs, 0)) / mean(theirs, 0) < 0.05
         assert abs(mean(ours, 1) - mean(theirs, 1)) < 0.05
         assert abs(mean(ours, 2) - mean(theirs, 2)) / mean(theirs, 2) < 0.10
+
+
+def test_trace_replay_with_zero_output_needs_no_decode(tmp_path):
+    # WEKA's first zero-output row (session 20, turn 77). IR 11 rejects
+    # the old `out - 1` amount of -1 instead of silently clamping it.
+    # With no decode work, completion is at the end of prefill (TTFT).
+    trace = tmp_path / "zero-output.csv"
+    trace.write_text("session,turn,new,out,think\n20,77,1280,0,4.848\n")
+    r = serq.run(
+        serq.PROGRAMS / "replay_vllm.sq",
+        trace=trace,
+        arrivals=1,
+        horizon=1000,
+        warmup=0,
+        seed=1,
+    )
+    assert r.observe("done").count == 1
+    assert r.observe("done").mean == r.observe("ttft").mean

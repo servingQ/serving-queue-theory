@@ -4,8 +4,8 @@ Design and status of the simulation checks. Read
 `research/research-plan.md` first: the simulator is the first validation
 phase, and the empirical programme (E1–E6) follows it.
 
-Status (2026-10-02): `validation/` is a Python package using pyserq 0.1.2
-in process, with serQ v0.1.2 (IR 10) pinned in `validation/pyproject.toml`.
+Status (2026-10-05): `validation/` is a Python package using pyserq 0.1.3
+in process, with serQ v0.1.3 (IR 11) pinned in `validation/pyproject.toml`.
 The CLI is needed for the experiment scripts and lecture verifier; the
 validation package reads pyserq report objects, not CLI JSON/dump files.
 `research/serq.md` documents the runtime and source checkout.

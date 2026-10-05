@@ -169,9 +169,9 @@ separates programs.
 \item \textbf{Results} (\S\ref{sec:exp}). Production traces give the
 workload side: the append alone has a prefill-work $\mathrm{CV}^2$ of
 \wkCvN, resume probabilities vary little and pause times vary
-widely. In simulation the admission cap, not the eviction order,
-decides whether a replica thrashes (the priced order beats
-shortest-first only within seed noise), and on replayed sessions under
+widely. In the synthetic simulation, the admission cap changes hit rate
+and latency much more than the choice between priced and shortest-first
+eviction, whose differences stay within seed noise. On replayed sessions under
 vLLM's engine rules the open price overstates the rise from forced
 misses by \simPriceOverMin{}
 to \simPriceOverMax{} times. On an NPU testbed
@@ -708,8 +708,8 @@ which exceeds the naive $\Lambda\,\E[T_s]\,\E[K]$ whenever
 long contexts belong to long sessions (by $\wkKvRatio\times$ in the
 production traces and $\trKvRatio\times$ in our SWE-bench Pro runs).
 The admission step caps live sessions where this estimate fills the
-pool; \S\ref{sec:sim} shows that the cap, not the eviction key, decides
-whether the replica thrashes. The cap has a price of its own, the wait at the entry queue, and a
+pool; \S\ref{sec:sim} shows that at higher load the cap changes hit rate
+and latency much more than the choice between priced and shortest-first eviction. The cap has a price of its own, the wait at the entry queue, and a
 session is worth admitting while the memory it will hold, at $\theta$
 per byte-second, costs less than that wait.
 
