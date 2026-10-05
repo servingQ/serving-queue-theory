@@ -37,11 +37,11 @@ Proposition~\ref{prop:price} and change the number in the decode batch
 by at most \simDecodeShiftPct\,\%: a miss's prefill lengthens the
 iterations the decoding turns share. On open sessions at the vLLM-rule replica with
 the testbed's cost model (Table~\ref{tab:sim-evict-dyn}), the priced
-eviction orders beat shortest-first only within seed noise, least
-recently used, the order vLLM uses, pays
-\simEvictLruRatioMin--\simEvictLruRatioMax{} times their time to first
-token, and the admission cap decides whether the replica thrashes
-(Table~\ref{tab:sim-admission}). The price needs the end of a session:
+and shortest-first eviction orders are indistinguishable within seed noise.
+Least recently used matches them at the lower load and pays
+\simEvictLruRatioMax{} times their time to first token at the higher load.
+At the higher load, increasing the admission cap reduces the hit rate and
+raises time to first token (Table~\ref{tab:sim-admission}). The price needs the end of a session:
 when a finished session's blocks stay, as vLLM's engine keeps them, the
 byte-second order cannot tell them from a paused session's, and at the
 lower load its hit rate falls from \simEndKnownHit{} to

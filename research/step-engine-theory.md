@@ -78,6 +78,8 @@ prefill server with work `a m + b m (K + m/2)`. What is derived from serQ is
 one iteration's fill and its token accounting. What it still assumes about a
 run:
 
+- every resident is eligible (`D.only = none`, explicit since the v0.1.3
+  migration);
 - nobody waits for the engine during an iteration and no growth passes an
   allocation (serQ #253 is the admission case);
 - the residents are the arrived unfinished requests in arrival order, as

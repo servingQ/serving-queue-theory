@@ -16,8 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PROGRAMS = ROOT / 'lectures/queueing-serving/programs'
 
 
-def run(binary, path, seed, settings=()):
+def run(binary, path, seed, settings=(), *, horizon=None, warmup=None):
     cmd = [str(binary), 'run', str(path), '--seed', str(seed), '--json']
+    if horizon is not None:
+        cmd += ['--horizon', str(horizon)]
+    if warmup is not None:
+        cmd += ['--warmup', str(warmup)]
     for setting in settings:
         cmd += ['--set', setting]
     return json.loads(subprocess.check_output(cmd, text=True))
@@ -63,7 +67,7 @@ def main():
     args = ap.parse_args()
     assert bool(args.baseline) == bool(args.baseline_source)
     ir = json.loads(subprocess.check_output([str(args.serq), 'ir', str(PROGRAMS / 'mg1.sq')], text=True))
-    assert ir['version'] == 10, f"expected IR v10, got {ir['version']}"
+    assert ir['version'] == 11, f"expected IR v11, got {ir['version']}"
     checks, comparisons = [], []
     for path in PROGRAMS.glob('*.sq'):
         if path.name.endswith('library.sq'):
@@ -76,9 +80,11 @@ def main():
         expected = .8 * m2 / (2 * (1 - .8))
         close(observed, expected, .08, f'PK law {law}')
         checks.append(dict(check=f'PK law {law}', observed=observed, expected=expected))
-    # PS: three laws, same load, time-average number.
+    # PS: three laws, same load, time-average number. IR 11 changes the
+    # samples; at CV²=9 use 10x the horizon/warmup, keeping the 6% bound.
     for law in [0, 1, 3]:
-        r = run(args.serq, PROGRAMS / 'ps.sq', 5, [f'law={law}'])
+        r = run(args.serq, PROGRAMS / 'ps.sq', 5, [f'law={law}'],
+                horizon=2_500_000, warmup=250_000)
         observed = r['stages'][0]['mean_number']; expected = .7 / .3
         close(observed, expected, .06, f'PS law {law}')
         checks.append(dict(check=f'PS law {law}', observed=observed, expected=expected))

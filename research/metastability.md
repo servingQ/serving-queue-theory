@@ -1,6 +1,6 @@
 # Metastability of a prefix cache under load (serQ issue #120)
 
-Status: 2026-10-01, **lecture note only** (Lecture 7 of
+Status: 2026-10-05, **lecture note only** (Lecture 7 of
 `lectures/queueing-serving/notes.tex`, at the user's request), not in the paper.
 Lean: `lean/ServingQueueTheory/CacheOrder.lean` (what LRU keeps under FCFS) and
 `Metastability.lean` (birth–death tools, open stability, admit-then-hold), all in
@@ -9,7 +9,7 @@ the axiom audit. Numerics and simulation, all generated:
 | script | output |
 |---|---|
 | `scripts/metastability_ctmc.py` | exact CTMC tables → `metastability-tables.tex`, `research/metastability-results.json` |
-| `scripts/metastability_serq.py` | serQ v0.1.0 runs of `lectures/queueing-serving/programs/metastable.sq` → `research/metastability-serq.json` |
+| `scripts/metastability_serq.py` | serQ v0.1.3 runs of `lectures/queueing-serving/programs/metastable.sq` → `research/metastability-serq.json` |
 | `scripts/metastability_figs.py` | figures `fig-meta-{drift,recovery,region,burst,sweep}.pdf`, `metastability-figs.tex` |
 | `scripts/metastability_failure.py` | Gillespie sample paths of a burst → `fig-meta-failure.pdf`, `metastability-failure.tex`, `research/metastability-failure.json` |
 | `scripts/metastability_calibration.py` | calibration against serQ → `fig-meta-calibration.pdf`, `metastability-exp.tex`, `research/metastability-calibration.json` |
@@ -46,7 +46,7 @@ Proved (Lean names):
    above the cache, and `N ≤ C + Z/S_miss` admitted sessions leave no congested
    mode: an admission rule. For serQ's replica it binds at
    `Z* = (N − C) S_miss ≈ 2.5 s` with C the whole pool (32.6 contexts), inside
-   the simulated cliff (full-reuse hit rate 0.67, 0.31, 0.03 at Z = 3, 2.5, 2 s):
+   the simulated cliff (full-reuse hit rate 0.65, 0.31, 0.04 at Z = 3, 2.5, 2 s):
    it marks the collapse, not the onset, and the fitted C = 38 would put it
    below 1 s. An order-of-magnitude check, not a fit. Open limit (remark only): stable iff `λ S_miss < 1` for
    every `C` (`fcfs_lru_open_stable_iff`).
@@ -72,7 +72,7 @@ Numerical (exact chain or serQ):
   marginal, optimistic ×3 for recovery; warm vs flushed start 0.005 vs 0.96.
 - Region: bimodal only for a ≥ 1 (memory per waiting turn ≈ one context).
 - serQ (vLLM rules, admission-time allocation): cliff without hysteresis;
-  recovery 40–50 s after bursts.
+  recovery 65 s after a 60 s burst and 50 s after a 300 s burst.
 - serQ hits are now full-reuse hits (`full_hit`; the library's `hit` counts any
   reuse): 0.77 at Z=4 s, 0.00 at Z=1.5 s.
 - Calibration (round-2 fixes: same 25 s windows for both, two-parameter grids
@@ -80,7 +80,7 @@ Numerical (exact chain or serQ):
   chain cannot fit (RMSE 0.36); the one-at-a-time chain (random order among
   the waiting turns, evicted turn at the head) fits partly (C=38 above the
   physical 32.6, β=12 at the grid edge, RMSE 0.12, 0.16 vs 0.00 at the highest
-  load) and recovers from the held-out bursts in 65/75 s vs serQ 40/50 s.
+  load) and recovers from the held-out bursts in 65/75 s vs serQ 65/50 s.
 
 ## serQ issues filed (2026-10-01)
 
@@ -95,7 +95,7 @@ Numerical (exact chain or serQ):
 
 1. The positive prediction: an engine that holds a prompt's blocks while the
    turn waits (PD decoder waiting for a KV transfer) should be metastable.
-   serQ #230 is fixed in v0.1.1 (IR 10, serQ #234), now pinned; or the PD program `llmd_nixl_pull.sq`.
+   serQ #230 was fixed in v0.1.1 (IR 10, serQ #234); v0.1.3 is now pinned; or the PD program `llmd_nixl_pull.sq`.
 2. Measure the loss onset, `C − N` and memory per waiting turn on the testbed
    with the burst protocol, predictions registered first.
 3. A concurrency cost of pinning (Exercise 7.3).

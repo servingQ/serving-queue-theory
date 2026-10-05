@@ -6,7 +6,7 @@ should happen: simulation first, then empirical measurement (§4). Update it whe
 changes. The paper (`paper/main.tex`) is the public statement. This file is
 the internal plan and may be blunter.
 
-Last updated: 2026-10-01.
+Last updated: 2026-10-05.
 
 ## 0. Where we are / next steps (read this first in a new session)
 
@@ -17,11 +17,22 @@ replay** (E4), **placement test** (E5), **faithfulness scoring** (E6).
 The codes survive in directory names (`data/exp/e1`, `e2`, `e2b`),
 macros (`\eOne*`, `\eTwo*`, `\eTwob*`) and older review files.
 
-Current integration state as of 2026-10-01. Dated measurement entries below
+Current integration state as of 2026-10-05. Dated measurement entries below
 record the runs made at that time; they do not imply a server is still running.
 Keep this section current at the end of every work block.
 
 **Done.**
+- **serQ v0.1.3, IR 11 (2026-10-05).** Python, CLI and Lean pin the
+  published release `d91ffa5`. Lindley's independent check follows the
+  session-local init stream; `serq_machines_lower` exposes the fill
+  theorem's no-filter assumption. A real zero-output trace row now has
+  explicit zero decode work and a regression. PS checks run longer with
+  their error bounds unchanged. Paper tables/figures and the current
+  lecture checks use the release; the paper drops the synthetic
+  thrashing claim that the new samples no longer support. The older
+  lecture comparison remains historical. Validation: `make check`, 145
+  audited theorems, 50 unit/adapter tests, 35 model checks and 21 lecture
+  checks. Details and numerical changes: `research/serq.md`.
 - **serQ v0.1.2, both repositories public (2026-10-02).** serQ and this
   repository moved to the `servingQ` organization and are public. serQ
   v0.1.2 (IR 10, interpreter unchanged) carries the Lean model (`lean/`),
@@ -30,7 +41,7 @@ Keep this section current at the end of every work block.
   `Serq/Fill.lean`; this repository requires it (`lean/lakefile.toml`) and
   `StepEngine.lean` derives a FIFO lower bound from serQ's iteration fill
   (`serq_machines_lower`; run invariants still assumed,
-  `research/step-engine-theory.md`). All pins are v0.1.2; the deploy key is
+  `research/step-engine-theory.md`). All pins moved to v0.1.2 then; the deploy key is
   gone.
 - **serQ v0.1.1 pinned, IR 10 (2026-10-01).** The pin moved to the release
   that fixes the overlapping-hold bug Lecture 7 ran into (serQ #230: a hold
@@ -98,14 +109,14 @@ Keep this section current at the end of every work block.
   regenerates `paper/sim/` (~7 min); `make sim` runs ruff, pytest and the
   report (~5 min).
 - **serQ integration (current).** The language is a separate project,
-  https://github.com/servingQ/serQ. This repository runs its pinned v0.1.2
-  release (IR 10) through pyserq and `.serq/bin/serq`, not a Cargo git
+  https://github.com/servingQ/serQ. This repository runs its pinned v0.1.3
+  release (IR 11) through pyserq and `.serq/bin/serq`, not a Cargo git
   dependency. `research/serq.md` documents the pin, upgrade procedure and CI
   access. The Lean model is serQ's `lean/` package (since 2026-10-01; it
   was `Serq{,Exec,Oracle,Serve}.lean` here), required by `lean/lakefile.toml`;
   serQ's `scripts/gen_lean_oracle.py` generates the oracle statements from
   its IR, and its `scripts/test_lean_oracle.py` checks the translator's
-  accepted fragment. This proves the named fragment, not every IR-v10 feature.
+  accepted fragment. This proves the named fragment, not every IR-v11 feature.
 - **vLLM-rule paper simulations (ported 2026-09-27).** The price,
   eviction/admission and WEKA replay experiments run
   `programs/{price,open,replay}_vllm.sq` through

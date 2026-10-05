@@ -55,8 +55,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--serq', type=Path, default=ROOT / '.serq/bin/serq')
     args = ap.parse_args()
-    out = dict(note='serQ v0.1.0 simulation of metastable.sq; not measurements',
-                seeds=SEEDS, sweep=[], burst=[])
+    runtime = subprocess.check_output([str(args.serq), '--version'], text=True).strip()
+    out = dict(note='serQ simulation of metastable.sq; not measurements',
+                runtime=runtime, seeds=SEEDS, sweep=[], burst=[])
     # engine seconds per hit and per miss turn, from two loads: utilisation /
     # turn rate = h S_hit + (1 - h) S_miss at each, h the full-reuse rate
     rows = []

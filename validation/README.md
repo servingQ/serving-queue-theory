@@ -56,14 +56,16 @@ printed precision with ties all bold. After changing a model or scenario,
 rerun `make tables` and `make figs`, and reread the prose in
 `simulation.tex` against the new tables.
 
-The package reproduces the Rust crate it replaced bit for bit:
+The initial Python port reproduced the Rust crate it replaced bit for bit:
 the generator is rand 0.9's `StdRng` (ChaCha12) with its range samplers,
 which pyserq exposes as `Rng` (the one name `theory` takes from pyserq),
 `fmt` is Rust's float formatting and `f64::round`, and sums run
 left to right (`fmt.ssum`), so the offline eviction instances, the
-footprint Monte Carlo and every generated file are unchanged. serQ's
-trajectories depend on the platform's libm; the CI job runs on
-`ubuntu-22.04` so that libm matches the machine that generated the tables.
+footprint Monte Carlo retained their inputs and results. The v0.1.3
+migration regenerates the serQ-derived tables on macOS arm64 with the
+published wheel; IR 11 changes seeded workloads (`research/serq.md`).
+Trajectories also depend on the platform's libm. CI validates on
+`ubuntu-22.04`; cross-platform trajectories need not be bit-identical.
 
 ## Layout
 

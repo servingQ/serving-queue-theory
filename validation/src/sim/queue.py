@@ -6,7 +6,7 @@ the PK formula; with exponential service it is M/M/1. Non-Poisson arrivals
 regime of Kingman's bound. serQ's `mg1.sq` draws interarrival and service
 times from separate streams, so two runs that differ only in the service law
 see the same arrivals (common random numbers); `theory.queue` reproduces
-those streams by Lindley's recursion.
+the arrival stream and each session's init stream in Lindley's recursion.
 """
 
 from __future__ import annotations

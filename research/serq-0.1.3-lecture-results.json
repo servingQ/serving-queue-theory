@@ -1,0 +1,129 @@
+{
+  "binary": ".serq/bin/serq",
+  "release": "v0.1.3",
+  "pinned": "v0.1.3",
+  "release_verified": true,
+  "commit": "d91ffa5608f2ecb4b9ef92b3a0083fe9d70c8612",
+  "ir_version": 11,
+  "checks": [
+    {
+      "check": "PK law 0",
+      "observed": 2.060522774855633,
+      "expected": 2.0000000000000004
+    },
+    {
+      "check": "PK law 1",
+      "observed": 4.008435389203136,
+      "expected": 4.000000000000001
+    },
+    {
+      "check": "PK law 2",
+      "observed": 2.5651867669559794,
+      "expected": 2.5000000000000004
+    },
+    {
+      "check": "PK law 3",
+      "observed": 10.363420194503178,
+      "expected": 10.000000000000002
+    },
+    {
+      "check": "PS law 0",
+      "observed": 2.3398942305367365,
+      "expected": 2.3333333333333335
+    },
+    {
+      "check": "PS law 1",
+      "observed": 2.3528821898220245,
+      "expected": 2.3333333333333335
+    },
+    {
+      "check": "PS law 3",
+      "observed": 2.351754128958272,
+      "expected": 2.3333333333333335
+    },
+    {
+      "check": "MVA N=2",
+      "observed": 0.45988311901610984,
+      "expected": 0.46153846153846145
+    },
+    {
+      "check": "MVA N=8",
+      "observed": 4.103617796929347,
+      "expected": 4.121680232903571
+    },
+    {
+      "check": "MVA N=32",
+      "observed": 28.01386495433443,
+      "expected": 28.0
+    },
+    {
+      "check": "PD split 10 link 1000",
+      "observed": 20.029444444444444,
+      "expected": 20
+    },
+    {
+      "check": "PD split 11 link 1000",
+      "observed": 20.95288888888889,
+      "expected": 21
+    },
+    {
+      "check": "PD split 12 link 1000",
+      "observed": 19.951,
+      "expected": 20
+    },
+    {
+      "check": "PD split 11 link 10",
+      "observed": 9.984555555555556,
+      "expected": 10
+    },
+    {
+      "check": "PD decode service seed 1",
+      "observed": 0.039420863829362475,
+      "expected": 0.04
+    },
+    {
+      "check": "PD TTFT seed 1",
+      "observed": 0.0426802012369862,
+      "expected": 0.0426802012369863
+    },
+    {
+      "check": "PD decode service seed 2",
+      "observed": 0.03939903357541863,
+      "expected": 0.04
+    },
+    {
+      "check": "PD TTFT seed 2",
+      "observed": 0.04314479706418421,
+      "expected": 0.04314479706418415
+    },
+    {
+      "check": "PD decode service seed 3",
+      "observed": 0.03939203486764544,
+      "expected": 0.04
+    },
+    {
+      "check": "PD TTFT seed 3",
+      "observed": 0.04320665413010931,
+      "expected": 0.043206654130109066
+    },
+    {
+      "check": "step-engine miss-price approximation",
+      "observed": 0.1486970983760872,
+      "lower": 0.14218874591816735,
+      "upper": 0.14966488651003834,
+      "decode_relative_change": 0.0005660861404955468
+    }
+  ],
+  "baseline": null,
+  "baseline_comparison": [],
+  "feedback_roots": {
+    "0.25": [
+      0.0,
+      0.24964379676887194,
+      0.8819977699269654
+    ],
+    "0.18": [
+      0.8848287734538585
+    ]
+  }
+}

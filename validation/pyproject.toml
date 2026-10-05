@@ -3,7 +3,7 @@ name = "validation"
 version = "0.1.0"
 description = "Paper validation and report generation using the serQ simulation engine"
 requires-python = ">=3.12"
-dependencies = ["numpy>=2.2", "pyserq==0.1.2"]
+dependencies = ["numpy>=2.2", "pyserq==0.1.3"]
 
 [dependency-groups]
 dev = ["pytest>=8.3", "ruff>=0.11"]
@@ -23,7 +23,7 @@ sources = ["src"]
 # example programs, the oracle IR files and the CLI. `tests/test_units.py`
 # holds the two to one version (pyserq's and the checkout's Cargo.toml).
 [tool.serq]
-tag = "v0.1.2"
+tag = "v0.1.3"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

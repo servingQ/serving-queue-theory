@@ -518,7 +518,8 @@ theorem serq_engine_lower (D : Deployment) (hchunk : D.chunk = 0) (n J : ℕ) (A
 open SerqLang.Exec in
 /-- **The same, read off serQ's machines.** Iteration `j` starts from the
 machine `ms j`, and its tokens are those of the iteration `startIteration`
-builds, `assign D 100000 {ms j with iter := []} 0 D.budget`. If nobody waits
+builds, `assign D 100000 {ms j with iter := []} 0 D.budget`. With no
+`serve only` filter (`honly`), if nobody waits
 for the engine, the jobs' owners are distinct and every growing job's
 allocation covers the position it will reach, that iteration is `fillIter`
 of the machine's jobs (`SerqLang.Exec.assign_iter_eq_fillIter`), so
@@ -528,7 +529,7 @@ arrived unfinished requests in arrival order, as prefill jobs wanting what
 they have left; arrival order is the jobs' serving order) and `hdur` (the
 iteration lasts at least the cost of its chunks, which `D.cost` must
 dominate). -/
-theorem serq_machines_lower (D : Deployment) (hchunk : D.chunk = 0) (n J : ℕ) (A : ℕ → ℝ)
+theorem serq_machines_lower (D : Deployment) (honly : D.only = none) (hchunk : D.chunk = 0) (n J : ℕ) (A : ℕ → ℝ)
     (hA : Monotone A) (a b : ℝ) (ha : 0 ≤ a) (hb : 0 ≤ b) (K : ℕ → ℝ) (hK : ∀ l, 0 ≤ K l)
     (m : ℕ → ℕ) (ms : ℕ → Machine) (s e : ℕ → ℝ)
     (hse : ∀ j, s j ≤ e j) (hes : ∀ j, e j ≤ s (j + 1))
@@ -554,7 +555,7 @@ theorem serq_machines_lower (D : Deployment) (hchunk : D.chunk = 0) (n J : ℕ) 
   intro j hj l
   rw [hx j hj l]
   congr 1
-  have := assign_iter_eq_fillIter D (ms j).preempts 100000 { ms j with iter := [] } 0 D.budget
+  have := assign_iter_eq_fillIter D honly (ms j).preempts 100000 { ms j with iter := [] } 0 D.budget
     (fun q hv => hq j hj q hv) (hown j hj) (fun jb hjb => hcov j hj jb (by simpa using hjb))
     (by have := hfuel j hj; simp; omega)
   simpa using this
