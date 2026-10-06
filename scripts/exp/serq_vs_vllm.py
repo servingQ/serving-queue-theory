@@ -82,7 +82,7 @@ def run_serq(serq_dir, trace, spacing, dump):
     os.makedirs(dump, exist_ok=True)
     csv = os.path.abspath(os.path.join(serq_dir, "examples", "replay", "data", trace + ".csv"))
     serq = os.path.join(ROOT_BIN, "serq")
-    args = [prog, "--trace", csv, "--set", f"spacing={spacing}"]
+    args = [prog, "--horizon", "6000", "--warmup", "0", "--seed", "1", "--trace", csv, "--set", f"spacing={spacing}"]
     # what ran, as IR (the program with its constants folded and the trace)
     subprocess.run([serq, "ir", *args], check=True, stdout=open(os.path.join(dump, "program.ir.json"), "w"))
     subprocess.run([serq, "run", *args, "--dump", dump], check=True,

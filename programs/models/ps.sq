@@ -1,5 +1,7 @@
+// Adapted from serQ v0.1.4 (a99dd649): explicit SQT experiment inputs.
 // M/G/1 processor sharing (paper `prop:decode`, insensitivity): the mean
 // number in the station is rho/(1-rho) whatever the service law.
+
 use "std/args";
 
 fn main() {
@@ -19,10 +21,11 @@ fn main() {
       : law == 2 ? ~erlang(4, mean_s)
       : ~h2(mean_s, cv2);
     }
+
   }
 
   server {
     run svc (cost(svc, s));
-    observe sojourn = now - t0;
+    observe response = now - t0;
   }
 }

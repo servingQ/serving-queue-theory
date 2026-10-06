@@ -1,0 +1,111 @@
+{
+  "programs/lecture_pd.sq": {
+    "horizon": 4000,
+    "warmup": 400,
+    "seed": 1
+  },
+  "programs/price_vllm.sq": {
+    "horizon": 200000,
+    "warmup": 2000,
+    "seed": 1
+  },
+  "programs/open_vllm.sq": {
+    "horizon": 21000,
+    "warmup": 1000,
+    "seed": 1
+  },
+  "programs/batch_sampled.sq": {
+    "horizon": 100000,
+    "warmup": 5000,
+    "seed": 1
+  },
+  "programs/agentic.sq": {
+    "horizon": 5500,
+    "warmup": 500,
+    "seed": 1
+  },
+  "programs/agentic_model.sq": {
+    "horizon": 5500,
+    "warmup": 500,
+    "seed": 1
+  },
+  "programs/replay_vllm.sq": {
+    "horizon": 66000,
+    "warmup": 6000,
+    "seed": 1
+  },
+  "lectures/queueing-serving/programs/lecture_pd.sq": {
+    "horizon": 4000,
+    "warmup": 400,
+    "seed": 1
+  },
+  "lectures/queueing-serving/programs/vllm.sq": {
+    "horizon": 2000,
+    "warmup": 200,
+    "seed": 1
+  },
+  "lectures/queueing-serving/programs/metastable.sq": {
+    "horizon": 3000,
+    "warmup": 0,
+    "seed": 1
+  },
+  "lectures/queueing-serving/programs/ps.sq": {
+    "horizon": 250000,
+    "warmup": 25000,
+    "seed": 1
+  },
+  "lectures/queueing-serving/programs/closed.sq": {
+    "horizon": 200000,
+    "warmup": 20000,
+    "seed": 1
+  },
+  "lectures/queueing-serving/programs/pd_tandem.sq": {
+    "horizon": 20000,
+    "warmup": 2000,
+    "seed": 1
+  },
+  "lectures/queueing-serving/programs/price.sq": {
+    "horizon": 200000,
+    "warmup": 2000,
+    "seed": 1
+  },
+  "lectures/queueing-serving/programs/mg1.sq": {
+    "horizon": 250000,
+    "warmup": 25000,
+    "seed": 1
+  },
+  "scripts/step_engine/prefill_only.sq": {
+    "horizon": 3000,
+    "seed": 1
+  },
+  "programs/models/mg1.sq": {
+    "horizon": 250000,
+    "warmup": 25000,
+    "seed": 1
+  },
+  "programs/models/ps.sq": {
+    "horizon": 250000,
+    "warmup": 25000,
+    "seed": 1
+  },
+  "programs/models/closed.sq": {
+    "horizon": 200000,
+    "warmup": 20000,
+    "seed": 1
+  },
+  "programs/models/pd_tandem.sq": {
+    "horizon": 20000,
+    "warmup": 2000,
+    "seed": 1
+  },
+  "programs/models/pd_open.sq": {
+    "horizon": 20000,
+    "warmup": 2000,
+    "seed": 1
+  },
+  "programs/models/routing.sq": {
+    "horizon": 10500,
+    "warmup": 500,
+    "seed": 1
+  }
+}

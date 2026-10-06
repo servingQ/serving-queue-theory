@@ -1,7 +1,9 @@
+// Adapted from serQ v0.1.4 (a99dd649): explicit SQT experiment inputs.
 // Aggregated pool vs prefill -> KV link -> decode tandem
-// (the bottleneck check of the lecture notes, appendix A). `jobs` requests
+// (`libqueuingsim::models::pd`, paper App. B, `prop:pd`). `jobs` requests
 // circulate (saturated load): the throughput is the capacity
 // N/(s_P + s_D + I) aggregated, min(N_P g_P/s_P, N_D g_D/s_D, B/K) split.
+
 use "std/args";
 
 fn main() {
@@ -17,6 +19,11 @@ fn main() {
   let jobs = args.number("jobs", 320);
   let mode = args.number("mode", 1);   // 0 aggregated, 1 disaggregated
 
+  // the laws, by name (`--def prefill_work='~erlang(4, sP)'`)
+  def prefill_work() { ~exp(sP) }
+  def decode_work() { ~exp(sD) }
+  def kv_tokens() { ~exp(K) }
+
   stage agg : fifo(max(N, 1));
   stage prefill : fifo(max(NP, 1));
   stage link : fifo;
@@ -29,9 +36,9 @@ fn main() {
   server {
     loop {
       set t0 = now;
-      set sp = ~exp(sP);
-      set sd = ~exp(sD);
-      set kv = ~exp(K);
+      set sp = prefill_work();
+      set sd = decode_work();
+      set kv = kv_tokens();
       branch (mode == 0) {
         run agg (cost(agg, sp + sd + I));
       } else {
@@ -39,7 +46,7 @@ fn main() {
         run link (cost(link, kv / bnet));
         run decode (cost(decode, sd / gD));
       }
-      observe latency = now - t0;
+      observe response = now - t0;
     }
   }
 }

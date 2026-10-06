@@ -24,7 +24,7 @@ mkdir -p "$D"
 timeout 1200 ~/vllm-rbln-dynkv/.venv/bin/python .serq/src/tools/vllm_replay_oracle.py \
   --trace data/exp/traces/$TRACE.jsonl $FORCED --spacing "$SP" --max-sessions "$N" --blocks "$BLOCKS" \
   $OARGS --out "$D/oracle.csv" 2>&1 | grep -v "^INFO\|WARNING\|Triton\|Model Runner\|SSM" | tail -2
-P=(.serq/src/examples/replay/vllm_replay.sq --set N="$N" --set blocks="$BLOCKS" "${RARGS[@]}"
+P=(.serq/src/examples/replay/vllm_replay.sq --horizon 6000 --warmup 0 --seed 1 --set N="$N" --set blocks="$BLOCKS" "${RARGS[@]}"
    --set spacing="$SP" "$@" --trace .serq/src/examples/replay/data/$TRACE.csv)
 .serq/bin/serq ir "${P[@]}" > "$D/program.ir.json"      # what ran, as IR
 .serq/bin/serq run "${P[@]}" --dump "$D/serq" > "$D/serq.txt"

@@ -84,7 +84,6 @@ def simulate(cfg: RoutingConfig) -> RoutingReport:
     }
     c = cfg.cost
     sets = {
-        "J": str(cfg.replicas),
         "rate": number(cfg.program_rate),
         "hot": number(cfg.hot_fraction),
         "policy": str(cfg.policy.value),
@@ -104,7 +103,7 @@ def simulate(cfg: RoutingConfig) -> RoutingReport:
         warmup=cfg.warmup,
         horizon=cfg.horizon,
     )
-    response, hitrate = r.observe("response"), r.observe("hitrate")
+    response, hitrate = r.observe("response"), r.observe("hit")
     migration = r.observe("migration")
     hits = int(rround(hitrate.mean * hitrate.count))
     service = r.observe("service")

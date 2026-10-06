@@ -1,6 +1,8 @@
+// Adapted from serQ v0.1.4 (a99dd649): explicit SQT experiment inputs.
 // Closed loop of N sessions over one FIFO server with exponential work
 // (mean 1/mu) and an exponential think time (mean Z): the M/M/1//N
 // finite-source queue of paper `prop:finite` (mean value analysis).
+
 use "std/args";
 
 fn main() {

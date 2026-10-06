@@ -48,7 +48,7 @@ def model(run, spacing, hi, c_it, c0, tmp):
     d = os.path.join(tmp, "d")
     subprocess.run([os.path.join(ROOT, ".serq", "bin", "serq"), "run", prog, "--trace", csv,
                     "--set", f"spacing={spacing}", "--set", f"c_it={c_it}", "--set", f"c0={c0}",
-                    "--dump", d], check=True, stdout=subprocess.DEVNULL)
+                    "--horizon", "6000", "--warmup", "0", "--seed", "1", "--dump", d], check=True, stdout=subprocess.DEVNULL)
 
     def rd(n):
         out = {}

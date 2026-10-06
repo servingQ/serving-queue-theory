@@ -24,91 +24,96 @@
 // the context, P(c) = a c + b c^2 / 2, as the added work. The priced keys
 // read p and τ of the generating class (an oracle); the fixed keys do not.
 
-let Lambda = 0.02;     // sessions per second
-let cap = 24;          // live sessions (entry queue beyond)
-let B = 8;             // batch cap
-let C = 6e5;           // KV pool, tokens
-let maxctx = 0.5 * C;  // a session whose context passes this ends
-let bs = 16;           // block size (tokens)
-let c0 = 0.044;        // s per request (prefill overhead)
-let a = 1.94e-4;       // s per prefill token
-let b = 6.51e-9;       // s per prefill token per context token
-let omega = 0.057;     // s per decode iteration
-let policy = 3;
-let keep_cache = 1;          // 0: drop a finished session's blocks
+use "std/args";
 
-pool live { cap cap; }
-pool slots { cap B; admit via engine; }
-pool kv {
-  cap C;
-  block bs;
-  preempt lifo;
-  evict by (policy == 5 ? 0 : waiting,
-            policy == 0 ? size
-            : policy == 1 ? (waiting ? 1 : p) * (a * size + b * size * size / 2) / size
-            : policy == 2 ? (waiting ? 1 : p)
-                * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2) / size
-            : policy == 3 ? (waiting ? 1 : p)
-                * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2)
-                / (size * (waiting ? 1 : Z))
-            : policy == 4 ? (waiting ? 1 : p)
-                * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * bs + b * bs * (size - bs / 2))
-                / (bs * (waiting ? 1 : Z))
-            : last);
-}
-stage engine : step {
-  budget max(decoders, floor(omega / a));   // whole tokens
-  cost max(omega, tokens * a + b * attention);
-  memory kv;
-}
-stage tool : delay;
+fn main() {
+  let Lambda = args.number("Lambda", 0.02);     // sessions per second
+  let cap = args.number("cap", 24);          // live sessions (entry queue beyond)
+  let B = args.number("B", 8);             // batch cap
+  let C = args.number("C", 6e5);           // KV pool, tokens
+  let maxctx = args.number("maxctx", 0.5 * C);  // a session whose context passes this ends
+  let bs = args.number("bs", 16);           // block size (tokens)
+  let c0 = args.number("c0", 0.044);        // s per request (prefill overhead)
+  let a = args.number("a", 1.94e-4);       // s per prefill token
+  let b = args.number("b", 6.51e-9);       // s per prefill token per context token
+  let omega = args.number("omega", 0.057);     // s per decode iteration
+  let policy = args.number("policy", 3);
+  let keep_cache = args.number("keep_cache", 1);          // 0: drop a finished session's blocks
 
-workload {
-  arrive poisson(Lambda);
-  init {
-    set doc = ~bernoulli(0.5);          // class: 0 agent, 1 document
-    set p = doc ? 0.3 : 0.95;
-    set Z = doc ? 2 : 6;
-    set nm = doc ? 500 : 800;           // mean append (the price's S^hit)
+  pool live { cap cap; }
+  pool slots { cap B; admit via engine; }
+  pool kv {
+    cap C;
+    block bs;
+    preempt lifo;
+    evict by (policy == 5 ? 0 : waiting,
+    policy == 0 ? size
+    : policy == 1 ? (waiting ? 1 : p) * (a * size + b * size * size / 2) / size
+    : policy == 2 ? (waiting ? 1 : p)
+    * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2) / size
+    : policy == 3 ? (waiting ? 1 : p)
+    * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2)
+    / (size * (waiting ? 1 : Z))
+    : policy == 4 ? (waiting ? 1 : p)
+    * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * bs + b * bs * (size - bs / 2))
+    / (bs * (waiting ? 1 : Z))
+    : last);
   }
-}
+  stage engine : step {
+    budget max(decoders, floor(omega / a));   // whole tokens
+    cost max(omega, tokens * a + b * attention);
+    memory kv;
+  }
+  stage tool : delay;
 
-session {
-  set t_arr = now;
-  hold live (1) {
-    observe entry_wait = now - t_arr;
-    set K = 0;
-    set cold = 1;
-    loop {
-      set n = cold ? ceil(doc ? ~uniform(15000, 30000) : ~uniform(4000, 8000))
-                   : ceil(doc ? ~exp(500) : ~exp(800));
-      set o = ceil(~exp(300));
-      set t0 = now;
-      set prompt = K + n;
-      set hm0 = cold ? 0 : floor(min(K - 1, prompt - 1) / bs) * bs;
-      hold slots (1), kv (min(cachedin(kv), hm0)
-                          + min(prompt - min(cachedin(kv), hm0), budget_left(engine)))
-                      reserve (prompt)
-           reuse (hm0) {
-        set c = cached;
-        set m = prompt - c;
-        run engine prefill (ceil(c0 / a));
-        run engine prefill (m) growing kv;
-        observe ttft = now - t0;
-        branch (!cold) {
-          observe hit = c >= hm0;
-          observe reused = hm0 > 0 ? c / hm0 : 1;
+  workload {
+    arrive poisson(Lambda);
+    init {
+      set doc = ~bernoulli(0.5);          // class: 0 agent, 1 document
+      set p = doc ? 0.3 : 0.95;
+      set Z = doc ? 2 : 6;
+      set nm = doc ? 500 : 800;           // mean append (the price's S^hit)
+    }
+    session {
+      set t_arr = now;
+      hold live (cost(live, 1)) {
+        observe entry_wait = now - t_arr;
+        set K = 0;
+        set cold = 1;
+        loop {
+          set n = cold ? ceil(doc ? ~uniform(15000, 30000) : ~uniform(4000, 8000))
+          : ceil(doc ? ~exp(500) : ~exp(800));
+          set o = ceil(~exp(300));
+          turn;
+          set K = prompt + o;
+          set cold = 0;
+          branch (K > maxctx) { branch (keep_cache) { end; } else { drop kv; end; } }
+          run tool (cost(tool, ~exp(Z)));
+          branch with (p) { } else { branch (keep_cache) { end; } else { drop kv; end; } }
         }
-        run engine decode (o - 1) growing kv;
-      } cache (prompt + o - 1);
-      observe response = now - t0;
-      set K = prompt + o;
-      set cold = 0;
-      branch (K > maxctx) { branch (keep_cache) { end; } else { drop kv; end; } }
-      run tool (~exp(Z));
-      branch with (p) { } else { branch (keep_cache) { end; } else { drop kv; end; } }
+      }
     }
   }
-}
 
-run { horizon 21000; warmup 1000; seed 1; }
+  server {
+    set t0 = now;
+    set prompt = K + n;
+    set hm0 = cold ? 0 : floor(min(K - 1, prompt - 1) / bs) * bs;
+    hold slots (cost(slots, 1)), kv (cost(kv, min(cachedin(kv), hm0)
+    + min(prompt - min(cachedin(kv), hm0), budget_left(engine))))
+    reserve (cost(kv, prompt))
+    reuse (cost(slots, kv, hm0)) {
+      set c = cached;
+      set m = prompt - c;
+      prefill on engine (ceil(c0 / a));
+      prefill on engine (m) growing kv;
+      observe ttft = now - t0;
+      branch (!cold) {
+        observe hit = c >= hm0;
+        observe reused = hm0 > 0 ? c / hm0 : 1;
+      }
+      decode on engine (o - 1) growing kv;
+    } cache (cost(slots, kv, prompt + o - 1));
+    observe response = now - t0;
+  }
+}

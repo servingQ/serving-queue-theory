@@ -17,6 +17,10 @@ PROGRAMS = ROOT / 'lectures/queueing-serving/programs'
 
 
 def run(binary, path, seed, settings=(), *, horizon=None, warmup=None):
+    if path.suffix == '.sq':
+        execution = json.loads((ROOT / 'programs/executions.json').read_text())[str(path.relative_to(ROOT))]
+        horizon = execution['horizon'] if horizon is None else horizon
+        warmup = execution.get('warmup', 0) if warmup is None else warmup
     cmd = [str(binary), 'run', str(path), '--seed', str(seed), '--json']
     if horizon is not None:
         cmd += ['--horizon', str(horizon)]
@@ -66,8 +70,8 @@ def main():
     ap.add_argument('--out', type=Path, default=ROOT / 'research/lecture-results.json')
     args = ap.parse_args()
     assert bool(args.baseline) == bool(args.baseline_source)
-    ir = json.loads(subprocess.check_output([str(args.serq), 'ir', str(PROGRAMS / 'mg1.sq')], text=True))
-    assert ir['version'] == 11, f"expected IR v11, got {ir['version']}"
+    ir = json.loads(subprocess.check_output([str(args.serq), 'ir', str(PROGRAMS / 'mg1.sq'), '--horizon', '250000', '--warmup', '25000'], text=True))
+    assert ir['version'] == 12, f"expected IR v12, got {ir['version']}"
     checks, comparisons = [], []
     for path in PROGRAMS.glob('*.sq'):
         if path.name.endswith('library.sq'):

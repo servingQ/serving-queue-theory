@@ -167,3 +167,11 @@ leaves every layer may use. `tests/test_layers.py` enforces the directions.
    third argument of `Check`. `check_sim.sh` verifies that they exist.
 3. Keep seeds fixed and tolerances explicit in `expected`. If a check
    needs a wide tolerance to pass, report it as an `Observation` instead.
+
+The current pin is **serQ v0.1.4, IR 12**, for Python, CLI and Lean.
+`programs/models/` holds SQT's configurable release models: external inputs
+are declared with `args.number`, workloads own sizes, and resource operations
+convert those sizes with `cost`. `programs/executions.json` records named
+execution conditions extracted from the previous sources. Callers select them
+explicitly with `sim.serq.execution(path)`; `sim.serq.run` does not load defaults.
+The init-stream derivation introduced in IR 11 is unchanged.
