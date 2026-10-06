@@ -1,6 +1,8 @@
 """Colocated vs split engines on the same requests (serQ #208, issue #28).
 
-Two programs of the pinned serQ release, `examples/pd-disaggregation/`:
+Two programs in `programs/models/`, adapted from the pinned serQ
+release's `examples/pd-disaggregation/` (`f` and `tok` of `pd_ps.sq`
+made inputs):
 
 * `pd_ps.sq`, the processor-sharing idealisation: each of `N = 4`
   colocated engines gives its decodes the fraction `f` of its time and
@@ -39,7 +41,7 @@ import numpy as np
 from fmt import fold_max
 from sim import serq
 
-EXCLUSIVE_LINE = "    serve exclusive prefill;\n"
+EXCLUSIVE_LINE = "      serve exclusive prefill;\n"
 NP_LINE = "let NP = 3;"
 ENGINES = 4  # `N` of both programs: the size of their station arrays, which a `--set` cannot change
 SATURATED = 0.99  # a prefill capacity busy more than this share of the time is at saturation

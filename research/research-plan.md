@@ -62,8 +62,10 @@ Keep this section current at the end of every work block.
   at the decode station, split-independent work law) are in the module's
   doc comment.
 - **Colocated vs split in the validation checks, issue #28 execution
-  (2026-10-01).** `validation/src/sim/pd_batching.py` runs the pinned
-  release's `pd_ps.sq` and `pd_batching.sq` (serQ #208) through pyserq;
+  (2026-10-01).** `validation/src/sim/pd_batching.py` runs
+  `programs/models/pd_ps.sq` and `pd_batching.sq`, adapted from the
+  pinned release's examples (serQ #208; ported to v0.1.4 on 2026-10-06,
+  the PS identity's runs lengthened to 3000 s) through pyserq;
   four checks and one observation in `checks.py`: the PS identity in model
   (occupancy ρ/(1−ρ) kept, decode time and token-weighted TPOT ÷ 4 at
   N = 4, f = 1/4); the step engines beyond it (same requests, same output

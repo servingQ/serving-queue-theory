@@ -76,7 +76,7 @@ The modules are layers (`validation/README.md`, enforced by
 | `sim.queue` | serQ's `mg1.sq` as an open G/G/c FIFO queue; separate streams for arrivals and service |
 | `sim.agentic` | `programs/agentic_model.sq`: closed or open agent programs on one replica with a finite KV pool; eviction, offload and fetch-mode policies |
 | `sim.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem |
-| `sim.pd_batching` | serQ's `pd_ps.sq`, `pd_batching.sq` (serQ #208): the PS idealisation of the decode stage and the step engines, 4 colocated vs 3P/1D on the same requests |
+| `sim.pd_batching` | `programs/models/pd_ps.sq`, `pd_batching.sq`, adapted from serQ's examples (serQ #208): the PS idealisation of the decode stage and the step engines, 4 colocated vs 3P/1D on the same requests |
 | `sim.routing` | serQ's `routing.sq`: affinity, least-loaded, least-loaded with fetch, KV-aware myopic, lookahead with migration |
 | `sim.workload` | replayed real sessions (`TraceCorpus`, bundled `validation/data/weka-sessions.csv` from the cc-traces-weka corpus) |
 | `sim.price_vllm`, `sim.open_vllm`, `sim.replay_vllm` | the vLLM-rule replica: `programs/{price,open,replay}_vllm.sq` |

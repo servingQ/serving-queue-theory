@@ -962,16 +962,23 @@ def pd_ps_scaling_identity() -> Check:
     """DecodeScaling: at `pd_ps.sq` (N = 4, f = 1/4) the pooled decode station
     is the colocated one with arrivals and capacity multiplied by 4. Same
     number decoding per station, the M/G/1-PS closed form ρ/(1-ρ); decode
-    time and token-weighted TPOT divided by 4."""
+    time and token-weighted TPOT divided by 4. The runs are 3000 s: on
+    serQ v0.1.3's random streams, 300 s runs put the colocated number at
+    ρ = 0.6 just outside the interval widened by 5 %, while 10 runs of
+    3000 s at ρ = 0.2 match ρ/(1-ρ) to 0.1 %; the gap was sampling error."""
     ok, obs = True, []
     rates = (5.0, 10.0, 15.0, 20.0)
+    span = {"horizon": 3000.0, "warmup": 300.0}
     cfgs = [
-        PsConfig(split, rate, s) for rate in rates for s in range(1, 6) for split in (False, True)
+        PsConfig(split, rate, s, **span)
+        for rate in rates
+        for s in range(1, 6)
+        for split in (False, True)
     ]
     reports = dict(zip(cfgs, serq.parallel(pd_batching.simulate_ps, cfgs), strict=True))
     for rate in rates:
         pairs = [
-            (reports[PsConfig(False, rate, s)], reports[PsConfig(True, rate, s)])
+            (reports[PsConfig(False, rate, s, **span)], reports[PsConfig(True, rate, s, **span)])
             for s in range(1, 6)
         ]
         ok &= all(c.stable and d.stable for c, d in pairs)
@@ -995,7 +1002,7 @@ def pd_ps_scaling_identity() -> Check:
         ["psMeanNumber_scale", "dedicated_mean_number_eq", "dedicated_sojourn", "tpot_token_weighted_scale"],
         Kind.InModel,
         "a PS decode station with arrivals and capacity scaled by N keeps its occupancy law and divides the sojourn by N",
-        "number decoding per station within 5 % of ρ/(1-ρ) in both modes; decode-time and token-weighted TPOT ratios within 5 % of N = 4 (5 seeds, 300 s)",
+        "number decoding per station within 5 % of ρ/(1-ρ) in both modes; decode-time and token-weighted TPOT ratios within 5 % of N = 4 (5 seeds, 3000 s)",
         "; ".join(obs), ok,
     )  # fmt: skip
 
