@@ -7,47 +7,55 @@
 // fills the cache with hits), Zb inside the burst [t1, t1 + B), Z otherwise.
 use "vllm-library.sq";
 
-let N = 40;            // sessions
-let K0 = 16000;        // context per session (tokens)
-let blocks = 34000;    // num_gpu_blocks
-let bs = 16;
-let Bt = 8192;         // max_num_batched_tokens
-let max_seqs = 16;
-let a = 2e-5;          // s per scheduled token
-let omega = 2e-4;      // s per iteration
-let beta = 2e-9;       // s per iteration per resident context token
-let Z = 4.0;           // normal think time (s)
-let Zwarm = 1e9;       // preconditioning think time (s); 1e9: none
-let twarm = 0;
-let Zb = 10.0;         // burst think time (s)
-let t1 = 1e9;          // burst start (s)
-let B = 0;             // burst length (s)
-let napp = 500;        // new tokens per turn
-let nout = 200;        // output tokens per turn
+use "std/args";
 
-pool kv { cap blocks * bs; block bs; evict lru; preempt lifo; }
-pool reqs { cap max_seqs; }
+fn main() {
+  let N = args.number("N", 40);            // sessions
+  let K0 = args.number("K0", 16000);        // context per session (tokens)
+  let blocks = args.number("blocks", 34000);    // num_gpu_blocks
+  let bs = args.number("bs", 16);
+  let Bt = args.number("Bt", 8192);         // max_num_batched_tokens
+  let max_seqs = args.number("max_seqs", 16);
+  let a = args.number("a", 2e-5);          // s per scheduled token
+  let omega = args.number("omega", 2e-4);      // s per iteration
+  let beta = args.number("beta", 2e-9);       // s per iteration per resident context token
+  let Z = args.number("Z", 4.0);           // normal think time (s)
+  let Zwarm = args.number("Zwarm", 1e9);       // preconditioning think time (s); 1e9: none
+  let twarm = args.number("twarm", 0);
+  let Zb = args.number("Zb", 10.0);         // burst think time (s)
+  let t1 = args.number("t1", 1e9);          // burst start (s)
+  let B = args.number("B", 0);             // burst length (s)
+  let napp = args.number("napp", 500);        // new tokens per turn
+  let nout = args.number("nout", 200);        // output tokens per turn
 
-stage engine : step {
-  budget Bt;
-  cost max(omega + beta * (kv_decode + kv_prefill), tokens * a);
-  memory kv;
-}
-stage think : delay;
+  pool kv { cap blocks * bs; block bs; evict lru; preempt lifo; }
+  pool reqs { cap max_seqs; }
 
-workload { arrive closed(N); }
+  stage engine : step {
+    budget Bt;
+    cost max(omega + beta * (kv_decode + kv_prefill), tokens * a);
+    memory kv;
+  }
+  stage think : delay;
 
-session {
-  loop {
-    run think (~exp(now < twarm ? Zwarm : (now >= t1 && now < t1 + B ? Zb : Z)));
-    set t0 = now;
-    set K = K0;
-    set prompt = K0 + ceil(~exp(napp));
-    set o = ceil(~exp(nout)) + 1;
+  workload {
+    arrive closed(N);
+    session {
+      loop {
+
+        run think (cost(think, ~exp(now < twarm ? Zwarm : (now >= t1 && now < t1 + B ? Zb : Z))));
+        set t0 = now;
+        set K = K0;
+        set prompt = K0 + ceil(~exp(napp));
+        set o = ceil(~exp(nout)) + 1;
+        turn;
+      }
+    }
+  }
+
+  server {
     vllm_request(reqs, kv, engine, prompt, o, t0);
     observe response = now - t0;
     observe full_hit = c >= K0;   // the whole context reused (the library's `hit` counts any reuse)
   }
 }
-
-run { horizon 3000; warmup 0; seed 1; }

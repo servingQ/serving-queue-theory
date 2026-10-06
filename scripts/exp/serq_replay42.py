@@ -26,7 +26,7 @@ SERQ = os.path.join(ROOT, ".serq", "bin", "serq")
 VARIANTS = [
     ("vllm", "programs/replay_vllm.sq", ["lru=0"]),
     ("vllm-lru", "programs/replay_vllm.sq", ["lru=1"]),
-    ("vllm-drop", "programs/replay_vllm.sq", ["lru=0", "keep=0"]),
+    ("vllm-drop", "programs/replay_vllm.sq", ["lru=0", "keep_cache=0"]),
 ]
 T975 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262}
 
@@ -53,7 +53,7 @@ def one(job):
     pool = float("inf") if cell["pool"] == "inf" else float(cell["pool"])
     sets = [f"Lambda={cell['rate']}", f"cap={cell['cap']}", f"C={1e15 if math.isinf(pool) else pool}"] + extra
     with tempfile.TemporaryDirectory() as d:
-        args = [SERQ, "run", os.path.join(ROOT, prog), "--seed", str(seed), "--json", "--dump", d]
+        args = [SERQ, "run", os.path.join(ROOT, prog), "--seed", str(seed), "--horizon", "66000", "--warmup", "6000", "--json", "--dump", d]
         for s in sets:
             args += ["--set", s]
         rep = json.loads(subprocess.run(args, check=True, capture_output=True, text=True).stdout)

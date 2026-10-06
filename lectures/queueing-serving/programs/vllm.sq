@@ -15,60 +15,61 @@
 // §"vLLM" for the line-by-line correspondence.
 use "vllm-library.sq";
 
-let B = 8192;          // max_num_batched_tokens
-let max_seqs = 16;     // max_num_seqs
-let blocks = 10000;    // num_gpu_blocks (less the null block)
-let bs = 16;           // block_size
-let chunk_cap = 0;     // long_prefill_token_threshold (0: none)
-let a = 2e-5;          // compute per scheduled token (s)
-let omega = 2e-4;      // weights read per iteration (s)
-let beta = 2e-9;       // KV read per iteration per resident context token (s)
-let c0 = 0;            // fixed cost per iteration (s)
-let Lambda = 0.3;      // sessions per second
-let p = 0.9;           // continue after a turn
-let Z = 3.0;           // tool time (s)
+use "std/args";
 
-pool kv { cap blocks * bs; block bs; evict lru; preempt lifo; }
-pool reqs { cap max_seqs; }
+fn main() {
+  let B = args.number("B", 8192);          // max_num_batched_tokens
+  let max_seqs = args.number("max_seqs", 16);     // max_num_seqs
+  let blocks = args.number("blocks", 10000);    // num_gpu_blocks (less the null block)
+  let bs = args.number("bs", 16);           // block_size
+  let chunk_cap = args.number("chunk_cap", 0);     // long_prefill_token_threshold (0: none)
+  let a = args.number("a", 2e-5);          // compute per scheduled token (s)
+  let omega = args.number("omega", 2e-4);      // weights read per iteration (s)
+  let beta = args.number("beta", 2e-9);       // KV read per iteration per resident context token (s)
+  let c0 = args.number("c0", 0);            // fixed cost per iteration (s)
+  let Lambda = args.number("Lambda", 0.3);      // sessions per second
+  let p = args.number("p", 0.9);           // continue after a turn
+  let Z = args.number("Z", 3.0);           // tool time (s)
 
-stage engine : step {
-  budget B;
-  chunk chunk_cap;
-  cost c0 + max(omega + beta * (kv_decode + kv_prefill), tokens * a);
-  memory kv;
-}
-stage tool : delay;
+  pool kv { cap blocks * bs; block bs; evict lru; preempt lifo; }
+  pool reqs { cap max_seqs; }
 
-// --8<-- [start:workload]
-// The client: sessions arrive, each turn brings a prompt of n new tokens
-// on a context of K and wants o tokens back, and after a turn the session
-// calls a tool and comes back with probability p. Nothing here is vLLM.
-workload {
-  arrive poisson(Lambda);
-  hidden o;              // the scheduler knows max_tokens, not the length (sched/utils.py:98-119)
-  init { set K = 0; }
-  turn {
-    set n = K == 0 ? ~uniform(1000, 3000) : ~exp(500);
-    set o = ~exp(200) + 1;
-    set more = ~bernoulli(p);
+  stage engine : step {
+    budget B;
+    chunk chunk_cap;
+    cost c0 + max(omega + beta * (kv_decode + kv_prefill), tokens * a);
+    memory kv;
   }
-  session {
-    turn;
-    loop {
-      request;
-      set K = prompt + o;
-      branch (more) { tool (~exp(Z)); turn; } else { end; }
+  stage tool : delay;
+
+  // --8<-- [start:workload]
+  // The client: sessions arrive, each turn brings a prompt of n new tokens
+  // on a context of K and wants o tokens back, and after a turn the session
+  // calls a tool and comes back with probability p. Nothing here is vLLM.
+  workload {
+    arrive poisson(Lambda);
+    hidden o;              // the scheduler knows max_tokens, not the length (sched/utils.py:98-119)
+    init { set K = 0; }
+    turn {
+      set n = K == 0 ? ~uniform(1000, 3000) : ~exp(500);
+      set o = ~exp(200) + 1;
+      set more = ~bernoulli(p);
+    }
+    session {
+      loop {
+        turn;
+        set K = prompt + o;
+        branch (more) { tool (~exp(Z)); } else { end; }
+      }
     }
   }
-}
-// --8<-- [end:workload]
+  // --8<-- [end:workload]
 
-// The engine: what vLLM does with one request.
-server {
-  set t0 = now;
-  set prompt = K + n;
-  vllm_request(reqs, kv, engine, prompt, o, t0);
-  observe response = now - t0;
+  // The engine: what vLLM does with one request.
+  server {
+    set t0 = now;
+    set prompt = K + n;
+    vllm_request(reqs, kv, engine, prompt, o, t0);
+    observe response = now - t0;
+  }
 }
-
-run { horizon 2000; warmup 200; seed 1; }

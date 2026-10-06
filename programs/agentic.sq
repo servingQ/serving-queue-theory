@@ -4,54 +4,60 @@
 // service starts (the `slot` pool is the replica's queue), evicting
 // suspended programs shortest-first, tool calls before queued programs.
 // A follow-up turn is a hit iff its whole context is still resident.
-let N = 16;
-let C = 4e5;
-let maxctx = C / 2;
-let s0 = 0.005;   // per-turn overhead (s)
-let a = 2e-5;     // prefill, linear (s/token)
-let b = 2e-9;     // prefill, quadratic (s/token^2)
-let d = 2e-4;     // decode (s/token)
-let p = 0.9;      // resume probability
-let Z = 3.0;      // mean tool time (s)
+use "std/args";
 
-pool slot { cap 1; }
-pool kv { cap C; evict by (waiting, size); }
+fn main() {
+  let N = args.number("N", 16);
+  let C = args.number("C", 4e5);
+  let maxctx = args.number("maxctx", C / 2);
+  let s0 = args.number("s0", 0.005);   // per-turn overhead (s)
+  let a = args.number("a", 2e-5);     // prefill, linear (s/token)
+  let b = args.number("b", 2e-9);     // prefill, quadratic (s/token^2)
+  let d = args.number("d", 2e-4);     // decode (s/token)
+  let p = args.number("p", 0.9);      // resume probability
+  let Z = args.number("Z", 3.0);      // mean tool time (s)
 
-stage svc : fifo;
-stage tool : delay;
+  pool slot { cap 1; }
+  pool kv { cap C; evict by (waiting, size); }
 
-workload {
-  arrive closed(N);
-  init { set K = 0; set cold = 1; }
-  turn {
-    set n = cold ? ~uniform(1e4, 3e4) : ~exp(1000);
-    set o = ~exp(300);
+  stage svc : fifo;
+  stage tool : delay;
+
+  workload {
+    arrive closed(N);
+    init { set K = 0; set cold = 1; }
+    turn {
+      set n = cold ? ~uniform(1e4, 3e4) : ~exp(1000);
+      set o = ~exp(300);
+    }
+    session {
+      loop {
+
+        turn;
+        set K = K + n + o;
+        set cold = 0;
+        branch (K > maxctx) { drop kv; end; }
+        run tool (cost(tool, ~exp(Z)));
+        branch with (p) { } else { drop kv; end; }
+      }
+    }
   }
-}
 
-// the validation package frees a finished session's KV: `drop kv;` before every `end;`
-session {
-  loop {
-    turn;
+  // the validation package frees a finished session's KV: `drop kv;` before every `end;`
+
+  server {
     set t0 = now;
-    hold slot (1) {
-      hold kv (K + n + o) {
+    hold slot (cost(slot, 1)) {
+      hold kv (cost(kv, K + n + o)) {
         set hit = !cold && cached >= K;
         set S = s0 + o * d
-              + (hit ? a * n + b * n * (K + n / 2)
-                     : a * (K + n) + b * (K + n) * (K + n) / 2);
-        run svc (S);
-      } cache (K + n + o);
+        + (hit ? a * n + b * n * (K + n / 2)
+        : a * (K + n) + b * (K + n) * (K + n) / 2);
+        run svc (cost(svc, S));
+      } cache (cost(kv, K + n + o));
     }
     observe response = now - t0;
     observe service = S;
     branch (!cold) { observe hit = hit; }
-    set K = K + n + o;
-    set cold = 0;
-    branch (K > maxctx) { drop kv; end; }
-    run tool (~exp(Z));
-    branch with (p) { } else { drop kv; end; }
   }
 }
-
-run { horizon 5500; warmup 500; seed 1; }

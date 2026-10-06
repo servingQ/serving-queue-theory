@@ -2,117 +2,120 @@
 // their bodies (`defs=`): the class of a new program and its laws, the eviction
 // key, the spill and fetch conditions; serQ owns the event loop, queues, cache
 // and transfer stages.
-let N = 16;
-let Lambda = 0.05;
-let C = 4e5;
-let maxctx = C / 2;
-let s0 = 0.005;
-let a = 2e-5;
-let b = 2e-9;
-let d = 2e-4;
-let dv = 0;
-let bw = 1e6;
-let blocking = 0;
+use "std/args";
 
-// a new program's class, and each class's resume probability and mean work
-def program_class() = 0;
-def resume_prob() = 0.9;
-def mean_new_tokens() = 1000;
-def mean_output_tokens() = 300;
-def mean_tool_time() = 3;
-// a class's laws (they may read `cls`)
-def initial_tokens() = ~uniform(1e4, 3e4);
-def new_tokens() = ~exp(1000);
-def output_tokens() = ~exp(300);
-def tool_time() = ~exp(3);
-// the policies: the eviction key after `waiting`, when a victim spills to the
-// tier, when a turn fetches its spilled KV
-def evict_key() = size;
-def spills() = 0;
-def fetches() = 1;
+fn main() {
+  let N = args.number("N", 16);
+  let Lambda = args.number("Lambda", 0.05);
+  let C = args.number("C", 4e5);
+  let maxctx = args.number("maxctx", C / 2);
+  let s0 = args.number("s0", 0.005);
+  let a = args.number("a", 2e-5);
+  let b = args.number("b", 2e-9);
+  let d = args.number("d", 2e-4);
+  let dv = args.number("dv", 0);
+  let bw = args.number("bw", 1e6);
+  let blocking = args.number("blocking", 0);
 
-pool slot { cap 1; }
-pool tier { cap inf; }
-pool kv {
-  cap C;
-  evict by (waiting, evict_key());
-  spill tier via link (size / bw) when (spills());
-}
+  // a new program's class, and each class's resume probability and mean work
+  def program_class() { 0 }
+  def resume_prob() { 0.9 }
+  def mean_new_tokens() { 1000 }
+  def mean_output_tokens() { 300 }
+  def mean_tool_time() { 3 }
+  // a class's laws (they may read `cls`)
+  def initial_tokens() { ~uniform(1e4, 3e4) }
+  def new_tokens() { ~exp(1000) }
+  def output_tokens() { ~exp(300) }
+  def tool_time() { ~exp(3) }
+  // the policies: the eviction key after `waiting`, when a victim spills to the
+  // tier, when a turn fetches its spilled KV
+  def evict_key() { size }
+  def spills() { 0 }
+  def fetches() { 1 }
 
-stage svc : fifo;
-stage tool : delay;
-stage link : fifo;
-
-workload {
-  arrive closed(N);
-  init {
-    set K = 0; set cold = 1; set cls = program_class(); set p = resume_prob();
-    set mean_new = mean_new_tokens(); set mean_out = mean_output_tokens();
-    set tau = mean_tool_time();
+  pool slot { cap 1; }
+  pool tier { cap inf; }
+  pool kv {
+    cap C;
+    evict by (waiting, evict_key());
+    spill tier via link (size / bw) when (spills());
   }
-  turn {
-    set n = cold ? initial_tokens() : new_tokens();
-    set o = output_tokens();
-  }
-}
 
-session {
-  loop {
-    set t0 = now;
-    turn;
-    branch (K + n + o > C) {
-      observe truncated = 1;
-      drop kv;
-      drop tier;
-      end;
+  stage svc : fifo;
+  stage tool : delay;
+  stage link : fifo;
+
+  workload {
+    arrive closed(N);
+    init {
+      set K = 0; set cold = 1; set cls = program_class(); set p = resume_prob();
+      set mean_new = mean_new_tokens(); set mean_out = mean_output_tokens();
+      set tau = mean_tool_time();
     }
-    set staged = 0;
-    set stall = 0;
-    branch (cachedin(tier) > 0 && blocking == 0 && fetches()) {
-      run link (K / bw);
-      set staged = 1;
-      observe fetched = 1;
-      drop tier;
+    turn {
+      set n = cold ? initial_tokens() : new_tokens();
+      set o = output_tokens();
     }
-    set enqueued = now;
-    hold slot (1) {
-      observe wait = now - enqueued;
-      branch (cachedin(tier) > 0 && blocking == 1 && fetches()) {
-        set fetch_start = now;
-        run link (K / bw);
-        set stall = now - fetch_start;
+    session {
+      loop {
+        set t0 = now;
+        turn;
+        branch (rejected) { drop kv; drop tier; end; }
+        set K = K + n + o;
+        set cold = 0;
+        branch (K > maxctx) {
+          observe think = 0;
+          drop kv;
+          drop tier;
+          end;
+        }
+        set z = tool_time();
+        observe think = z;
+        run tool (cost(tool, z));
+        branch with (p) { } else { drop kv; drop tier; end; }
+      }
+    }
+  }
+
+  server {
+    set rejected = K + n + o > C;
+    branch (rejected) { observe truncated = 1; } else {
+      set staged = 0;
+      set stall = 0;
+      branch (cachedin(tier) > 0 && blocking == 0 && fetches()) {
+        run link (cost(link, K / bw));
         set staged = 1;
         observe fetched = 1;
         drop tier;
       }
-      branch (cachedin(tier) > 0 && !staged) { drop tier; }
-      hold kv (K + n + o) {
-        set hit = !cold && (cached >= K || staged);
-        set P = hit ? a * n + b * n * (K + n / 2)
-                    : a * (K + n) + b * (K + n) * (K + n) / 2;
-        set S = s0 + P + o * (d + dv * (K + n));
-        set recompute = !cold && !hit ? a * K + b * K * K / 2 : 0;
-        run svc (S);
-      } cache (K + n + o);
-      observe service = S + stall;
-      observe recompute_work = recompute;
-      observe stall = stall;
+      set enqueued = now;
+      hold slot (cost(slot, 1)) {
+        observe wait = now - enqueued;
+        branch (cachedin(tier) > 0 && blocking == 1 && fetches()) {
+          set fetch_start = now;
+          run link (cost(link, K / bw));
+          set stall = now - fetch_start;
+          set staged = 1;
+          observe fetched = 1;
+          drop tier;
+        }
+        branch (cachedin(tier) > 0 && !staged) { drop tier; }
+        hold kv (cost(kv, K + n + o)) {
+          set hit = !cold && (cached >= K || staged);
+          set P = hit ? a * n + b * n * (K + n / 2)
+          : a * (K + n) + b * (K + n) * (K + n) / 2;
+          set S = s0 + P + o * (d + dv * (K + n));
+          set recompute = !cold && !hit ? a * K + b * K * K / 2 : 0;
+          run svc (cost(svc, S));
+        } cache (cost(kv, K + n + o));
+        observe service = S + stall;
+        observe recompute_work = recompute;
+        observe stall = stall;
+      }
+      observe response = now - t0;
+      branch (!cold) { observe hit = hit; }
+
     }
-    observe response = now - t0;
-    branch (!cold) { observe hit = hit; }
-    set K = K + n + o;
-    set cold = 0;
-    branch (K > maxctx) {
-      observe think = 0;
-      drop kv;
-      drop tier;
-      end;
-    }
-    set z = tool_time();
-    observe think = z;
-    run tool (z);
-    branch with (p) { } else { drop kv; drop tier; end; }
   }
 }
-
-run { horizon 5500; warmup 500; seed 1; }

@@ -27,8 +27,8 @@ proves its queueing results from it, and uses one pinned serQ release:
 | `programs/replay_vllm.sq`, `validation/src/sim/replay_vllm.py` | §4.2's vLLM-rule replay; `scripts/exp/serq_replay42.py` runs LRU and finished-session ablations (`research/serq-replay42.md`) | pyserq; `.serq/bin/serq` for the ablations |
 | `scripts/exp/*serq*`, `diff_serq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.serq/bin/serq`, `.serq/src/examples`, `.serq/src/tools` |
 
-The pin is `v0.1.3` under `[tool.serq]` in `validation/pyproject.toml`, IR 11, and its
-pyserq, `pyserq==0.1.3` from PyPI, is the validation package's engine:
+The pin is `v0.1.4` under `[tool.serq]` in `validation/pyproject.toml`, IR 12, and its
+pyserq, `pyserq==0.1.4` from PyPI, is the validation package's engine:
 `tests/test_units.py` holds pyserq's version equal to the checkout's
 `[workspace.package] version` in `.serq/src/Cargo.toml` and to the
 `pyserq==` dependency, and, when a tag is pinned, the tag to `v{version}`.
@@ -41,7 +41,8 @@ expression `def`s, which the adapters give bodies with `defs=` (`--def`);
 the IR is the one the spliced text had. serQ's own examples do the same
 (#192): `pd_tandem` and `pd_open` name `prefill_work`, `decode_work`,
 `kv_tokens`, `routing` the four session laws, and `mg1` its `service` law and
-`servers` (a `let`, given by `sets=`). The one splice left is `mg1`'s
+`servers`. SQT owns configurable copies in `programs/models/`; their declared
+`args.number` inputs, rather than arbitrary constants, are bound by `sets=`. The one splice left is `mg1`'s
 `arrive poisson(lam)` → `arrive renewal(...)`, which changes the kind of the
 arrival declaration. IR 10 makes a hold's `cache` clause what
 consumes the session's own cached prefix (serQ #234: a hold without it
@@ -60,6 +61,75 @@ and renewal workloads outside its explicit-session fragment. `scripts/fetch_serq
 `.serq/src` and installs its CLI into `.serq/bin/serq` (gitignored); `uv sync` in
 `validation/` installs pyserq from PyPI, so the validation package needs no
 Rust (the CLI, for `scripts/exp`, still does).
+
+## Migration to v0.1.4 (IR 12)
+
+Python, CLI and Lean pin `v0.1.4`, commit
+`a99dd649e9353c326ef95311ecdaa3c99a242c85`. Workloads specify request
+sizes, servers convert them to resource-bound costs, and `turn;` completes
+one server invocation. Models have an explicit `fn main`; execution
+conditions belong to the caller. SQT owns configurable copies of the six
+release examples it uses, in `programs/models/`. Their `args.number`
+inputs replace the former ability to override arbitrary constants.
+
+Before (`programs/agentic.sq` at the previous SQT commit):
+
+```serq
+    turn;
+    set t0 = now;
+    hold slot (1) {
+      hold kv (K + n + o) {
+```
+
+After (`programs/agentic.sq`, executed by the model comparison tests):
+
+```serq
+    session {
+      loop {
+        turn;
+        set K = K + n + o;
+```
+
+The serving operations now reside in `server`, whose corresponding header is
+`hold slot (cost(slot, 1)) { hold kv (cost(kv, K + n + o)) { ... } }`.
+Each primitive resource operation converts its quantity at the original
+evaluation moment. A multi-pool hold's cache/reuse is one scalar joint
+cost; its reservation still targets only the reserved pool.
+
+`programs/executions.json` records the previous horizon, warmup and seed for
+each owned model. Tests select a configuration with `sim.serq.execution`;
+the lecture checker selects it by its explicit model path. The Python run
+wrapper never loads execution defaults. Testbed replay commands explicitly
+pass the release example's former horizon 6000, warmup 0 and seed 1.
+
+The independent Lindley comparison retains its pathwise `1e-8` bound and
+init-stream seed derivation. Short paired runs at seed 1, horizon 1000 and
+warmup 100 have identical reports apart from version for `agentic`,
+`agentic_model`, `batch_sampled` and `lecture_pd`. Price and open models
+previously had no turn boundary: their turn counts change from zero to
+completed requests. For `open_vllm` the same paired run changes mean ITL
+from 0.0782521 to 0.0590953 seconds; other serving/pool/observation results
+are unchanged. The interpreter measures token gaps only within the same
+turn, so explicit request boundaries exclude tool waits that the old
+all-turn-zero model included. This is simulated output, not measurement.
+
+Why did it happen? The old open model assumed that repeated server work
+implicitly created request boundaries. A generic loop does not express
+those boundaries. A language check cannot infer that every loop iteration
+is a request; the migration now states it with `turn`. Separately, array
+sizes are parsed before input binding, so `stage rep[J]` cannot take an
+input override even when J is four. The language already rejects this.
+Routing retains its fixed four-replica topology and existing adapter guard,
+and no longer sends J as a runtime input.
+
+Physical measurements are unchanged. Generated paper simulation tables remain
+the recorded v0.1.3 evidence. This migration updates executable models and their checks;
+it does not retroactively regenerate measurements or claim new testbed runs.
+
+Validation: 145 Lean theorems audited with only standard axioms, 51 unit
+and adapter tests, 35 named model checks and 21 lecture checks. The
+oversized-request regression exercises the rejected server response before
+any service or KV allocation. Paper and lecture PDFs compile.
 
 ## Migration to v0.1.3 (IR 11)
 

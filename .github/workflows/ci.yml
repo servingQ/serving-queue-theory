@@ -121,7 +121,7 @@ jobs:
           path: validation/validation-report.md
 
   lectures:
-    name: Unified lectures (serQ v0.1.3)
+    name: Unified lectures (serQ v0.1.4)
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +131,7 @@ jobs:
             | tar xz -C /usr/local/bin tectonic
       - name: Build the unified course
         run: make lectures
-      - name: Validate the lecture examples against serQ v0.1.3
+      - name: Validate the lecture examples against serQ v0.1.4
         run: make lecture-results
       - uses: actions/upload-artifact@v4
         with:

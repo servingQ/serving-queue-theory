@@ -1,9 +1,10 @@
 """Run serQ programs in process with pyserq and read their reports.
 
 `scripts/fetch_serq.sh` (`make serq`) checks out the release pinned in
-`validation/pyproject.toml` into `.serq/src`, whose `examples/` hold the
-general programs (`mg1`, `ps`, `closed`, `pd_tandem`, `pd_open`, `routing`,
-...); pyserq, from PyPI, is the same release. A run is
+`validation/pyproject.toml` into `.serq/src` for oracle vectors and the CLI.
+Configurable queueing models live in `programs/models/`, derived from that
+release's examples, with explicit `args.number` inputs. pyserq, from PyPI,
+is the same release. A run is
 `pyserq.compile` then `pyserq.run`, whose report has the fields of
 `serq run --json` by name. This module adds only what pyserq lacks: an
 observation's samples as numpy arrays.
@@ -11,6 +12,7 @@ observation's samples as numpy arrays.
 
 from __future__ import annotations
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
@@ -31,11 +33,17 @@ class SerqError(RuntimeError):
 
 
 def program_path(name: str) -> Path:
-    """`examples/<group>/<name>.sq` of the pinned serQ checkout."""
-    hits = sorted(EXAMPLES.glob(f"*/{name}.sq"))
-    if not hits:
-        raise FileNotFoundError(f"no {EXAMPLES}/*/{name}.sq (run `make serq`)")
-    return hits[0]
+    """Configurable SQT model derived from the pinned release's example."""
+    path = PROGRAMS / "models" / f"{name}.sq"
+    if not path.exists():
+        raise FileNotFoundError(f"no SQT model {path}")
+    return path
+
+
+def execution(path: Path | str) -> dict[str, int | float]:
+    """Explicitly select the recorded execution conditions for a model."""
+    key = str(Path(path).resolve().relative_to(REPO))
+    return json.loads((PROGRAMS / "executions.json").read_text())[key]
 
 
 class Observe:
@@ -93,9 +101,8 @@ def run(
     arrivals: int | None = None,
     trace: str | Path | None = None,
 ) -> Report:
-    """Run a program file, or program text (`source`), with `--set`
-    overrides (a numeric override is that number; a string is an
-    expression) and `--def` bodies of its expression definitions."""
+    """Run a program file, or program text (`source`), with declared `args.number`
+    inputs (a numeric input is that number; a string is an expression) and `--def` bodies of its expression definitions."""
     try:
         program = pyserq.compile(
             path,

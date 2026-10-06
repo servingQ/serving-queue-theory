@@ -98,7 +98,7 @@ def _defs(cfg: PdConfig) -> dict[str, str]:
 
 
 def _measured(r: serq.Report, cfg: PdConfig, horizon: float):
-    o = r.observe("latency")
+    o = r.observe("response")
     samples, times = o.samples, o.times
     start = min(cfg.warmup, len(samples))
     end = min(start + cfg.requests, len(samples))

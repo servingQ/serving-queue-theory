@@ -1,41 +1,42 @@
 // serQ v0.1.0: miss-price check; previous full-prompt gate retained.
-let Lambda = 1.0;      // turns per second
-let pmiss = 0.2;       // baseline miss share
-let delta = 0;         // forced misses
-let hitn = 512;        // tokens prefilled by a hit
-let missn = 5120;      // tokens prefilled by a miss
-let o = 8;             // output tokens
-let B = 64;            // batch cap
-let bs = 16;
-let a = 1.94e-4;       // s per prefill token
-let b = 6.51e-9;       // s per prefill token per context token
-let omega = 0.057;     // s per decode iteration
+use "std/args";
 
-pool slots { cap B; admit via engine; }
-pool kv { cap 1e12; block bs; preempt lifo; evict lru; }
-stage engine : step {
-  budget max(decoders, floor(omega / a));
-  cost max(omega, tokens * a + b * attention);
-  memory kv;
-}
+fn main() {
+  let Lambda = args.number("Lambda", 1.0);      // turns per second
+  let pmiss = args.number("pmiss", 0.2);       // baseline miss share
+  let delta = args.number("delta", 0);         // forced misses
+  let hitn = args.number("hitn", 512);        // tokens prefilled by a hit
+  let missn = args.number("missn", 5120);      // tokens prefilled by a miss
+  let o = args.number("o", 8);             // output tokens
+  let B = args.number("B", 64);            // batch cap
+  let bs = args.number("bs", 16);
+  let a = args.number("a", 1.94e-4);       // s per prefill token
+  let b = args.number("b", 6.51e-9);       // s per prefill token per context token
+  let omega = args.number("omega", 0.057);     // s per decode iteration
 
-workload {
-  arrive poisson(Lambda);
-  init { set u = ~uniform(0, 1); }
-}
-
-session {
-  set t0 = now;
-  set m = u < pmiss + delta ? missn : hitn;
-  observe work = a * m + b * m * m / 2;
-  hold slots (1), kv (min(m, budget_left(engine))) reserve (m) {
-    run engine prefill (m) growing kv;
-    observe ttft = now - t0;
-    run engine decode (o - 1) growing kv;
+  pool slots { cap B; admit via engine; }
+  pool kv { cap 1e12; block bs; preempt lifo; evict lru; }
+  stage engine : step {
+    budget max(decoders, floor(omega / a));
+    cost max(omega, tokens * a + b * attention);
+    memory kv;
   }
-  observe response = now - t0;
-  drop kv;
-  end;
-}
 
-run { horizon 200000; warmup 2000; seed 1; }
+  workload {
+    arrive poisson(Lambda);
+    init { set u = ~uniform(0, 1); }
+  }
+
+  server {
+    set t0 = now;
+    set m = u < pmiss + delta ? missn : hitn;
+    observe work = a * m + b * m * m / 2;
+    hold slots (cost(slots, 1)), kv (cost(kv, min(m, budget_left(engine)))) reserve (cost(kv, m)) {
+      prefill on engine (m) growing kv;
+      observe ttft = now - t0;
+      decode on engine (o - 1) growing kv;
+    }
+    observe response = now - t0;
+    drop kv;
+  }
+}

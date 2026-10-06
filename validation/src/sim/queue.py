@@ -107,7 +107,7 @@ def simulate(cfg: QueueConfig) -> QueueReport:
             assert deadline and attempts < 8, f"mg1.sq: {msg}"
         horizon *= 2.0
     waits, _ = _by_arrival(report.observe("wait"))
-    sojourns, completions = _by_arrival(report.observe("sojourn"))
+    sojourns, completions = _by_arrival(report.observe("response"))
     services, _ = _by_arrival(report.observe("service"))
     assert len(waits) >= total and len(sojourns) >= total and len(services) >= total, (
         "mg1.sq did not drain all requested arrivals"

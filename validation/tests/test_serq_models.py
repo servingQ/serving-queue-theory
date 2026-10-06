@@ -35,7 +35,12 @@ def ci(o: serq.Observe) -> Estimate:
 
 
 def program(name, sets, seed, horizon=None):
-    return serq.run(serq.program_path(name), sets=sets, seed=seed, horizon=horizon)
+    path = serq.program_path(name)
+    settings = serq.execution(path)
+    settings["seed"] = seed
+    if horizon is not None:
+        settings["horizon"] = horizon
+    return serq.run(path, sets=sets, **settings)
 
 
 # --------------------------------------------------------- closed forms --
@@ -44,7 +49,7 @@ def program(name, sets, seed, horizon=None):
 def test_mm1_sojourn_is_one_over_mu_minus_lambda():
     for i, lam in enumerate([0.5, 0.8, 0.9]):
         r = program("mg1", {"lam": lam, "law": 1}, 10 + i)
-        o = r.observe("sojourn")
+        o = r.observe("response")
         assert ci(o).agrees_with(mm1_wait(1.0, lam), 0.02)
         l = r.stage("svc").mean_number
         assert abs(l - lam * o.mean) / l < 0.03
@@ -71,7 +76,7 @@ def test_ps_mean_number_is_insensitive():
             warmup=250_000,
         )
         assert abs(r.stage("svc").mean_number - want) / want < 0.03
-        assert ci(r.observe("sojourn")).agrees_with(want / lam, 0.03)
+        assert ci(r.observe("response")).agrees_with(want / lam, 0.03)
 
 
 def test_finite_source_wait_matches_mva():
@@ -88,24 +93,31 @@ def test_finite_source_wait_matches_mva():
 
 STEP = """
 let a = 2e-5; let omega = 2e-4;
+fn main() {{
 stage engine : step {{ budget max(decoders, omega / a); cost max(omega, tokens * a); }}
 workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
-session {{ run engine {work}; observe {obs} = now - t0; end; }}
-run {{ horizon {h}; warmup {w}; seed {seed}; }}
+server {{ {work}; observe {obs} = now - t0; }}
+}}
 """
 
 
 def test_step_prefill_alone_is_md1():
     lam = 0.7
     r = serq.run(
-        source=STEP.format(lam=lam, work="prefill (1 / a)", obs="sojourn", h=3000, w=300, seed=8)
+        source=STEP.format(lam=lam, work="prefill on engine (1 / a)", obs="response"),
+        horizon=3000,
+        warmup=300,
+        seed=8,
     )
-    assert ci(r.observe("sojourn")).agrees_with(1.0 + lam / (2.0 * (1.0 - lam)), 0.03)
+    assert ci(r.observe("response")).agrees_with(1.0 + lam / (2.0 * (1.0 - lam)), 0.03)
 
 
 def test_step_decode_is_infinite_server_at_zero_context():
     r = serq.run(
-        source=STEP.format(lam=3.0, work="decode (500)", obs="response", h=2000, w=200, seed=9)
+        source=STEP.format(lam=3.0, work="decode on engine (500)", obs="response"),
+        horizon=2000,
+        warmup=200,
+        seed=9,
     )
     assert abs(r.observe("response").mean - 0.1) < 1e-3
     assert abs(r.stage("engine").mean_number - 0.3) < 0.02
@@ -124,7 +136,9 @@ def test_pd_tandem_capacity():
 def test_lecture_pd_program_runs():
     # the lecture's figure, kept here since serQ took it out of its examples
     # (servingQ/serQ#121): a KV transfer as a store-and-forward link
-    r = serq.run(serq.PROGRAMS / "lecture_pd.sq", sets={}, seed=1)
+    r = serq.run(
+        serq.PROGRAMS / "lecture_pd.sq", sets={}, **serq.execution(serq.PROGRAMS / "lecture_pd.sq")
+    )
     assert r.turns > 500
     p = r.stage("prefill")
     assert p.utilization < 0.95
@@ -137,12 +151,13 @@ def test_ps_capacity_matches_batch_ps_server():
     cfg = BatchConfig.poisson_turns(lam, exp(1.0), Ps(Saturating(0.0, 8)), 20000.0, 4)
     b = batch.simulate(cfg)
     src = f"""
+        fn main() {{
         stage svc : ps(min(present, 8));
         workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
-        session {{ run svc (~exp(1)); observe response = now - t0; end; }}
-        run {{ horizon 20000; warmup 1000; seed 4; }}
+        server {{ run svc (cost(svc, ~exp(1))); observe response = now - t0; }}
+        }}
     """
-    a = serq.run(source=src).observe("response").mean
+    a = serq.run(source=src, horizon=20000, warmup=1000, seed=4).observe("response").mean
     assert abs(a - b.response.mean()) / b.response.mean() < 0.05
 
 
@@ -209,7 +224,7 @@ def test_affinity_and_myopic_match_the_serq_example():
             ours = program("routing", {"policy": code, "rate": rate}, 1)
             a, b = ours.observe("response").mean, theirs.response.mean
             assert abs(a - b) / b < 0.12
-            assert abs(ours.observe("hitrate").mean - theirs.hit_rate) < 0.05
+            assert abs(ours.observe("hit").mean - theirs.hit_rate) < 0.05
 
 
 def test_routing_adapter_renders_distribution_samples_in_serq():
@@ -239,7 +254,7 @@ def test_agentic_programs_agree_statistically():
             o = serq.run(
                 serq.PROGRAMS / "agentic.sq",
                 sets={"N": programs, "C": kv, "maxctx": cfg.max_context},
-                seed=s,
+                **{**serq.execution(serq.PROGRAMS / "agentic.sq"), "seed": s},
             )
             ours.append(
                 (o.stage("svc").throughput, o.observe("hit").mean, o.observe("response").mean)
@@ -269,3 +284,20 @@ def test_trace_replay_with_zero_output_needs_no_decode(tmp_path):
     )
     assert r.observe("done").count == 1
     assert r.observe("done").mean == r.observe("ttft").mean
+
+
+def test_oversized_agentic_request_returns_rejection_before_resource_use():
+    source = (serq.PROGRAMS / "agentic_model.sq").read_text()
+    source = source.replace("arrive closed(N);", "arrive batch(1);")
+    r = serq.run(
+        source=source,
+        sets={"C": 1},
+        defs={"initial_tokens": "2", "output_tokens": "0"},
+        horizon=10,
+        warmup=0,
+        seed=1,
+    )
+    assert r.observe("truncated").count == 1
+    assert r.observe("response").count == 0
+    assert r.stage("svc").throughput == 0
+    assert r.pool("kv").mean_holders == 0
