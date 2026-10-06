@@ -87,11 +87,6 @@
       "expected": 0.04320376491937277
     },
     {
-      "check": "PD client TTFT seed 1",
-      "observed": 0.04864923354895775,
-      "expected": 0.048649233548957706
-    },
-    {
       "check": "PD decode service seed 2",
       "observed": 0.039389048522826896,
       "expected": 0.04
@@ -102,11 +97,6 @@
       "expected": 0.04390823886455985
     },
     {
-      "check": "PD client TTFT seed 2",
-      "observed": 0.049302152753599046,
-      "expected": 0.049302152753599046
-    },
-    {
       "check": "PD decode service seed 3",
       "observed": 0.03960431932997222,
       "expected": 0.04
@@ -115,11 +105,6 @@
       "check": "PD TTFT seed 3",
       "observed": 0.04358680739991842,
       "expected": 0.04358680739991847
-    },
-    {
-      "check": "PD client TTFT seed 3",
-      "observed": 0.04902363655223691,
-      "expected": 0.049023636552236995
     },
     {
       "check": "step-engine miss-price approximation",
