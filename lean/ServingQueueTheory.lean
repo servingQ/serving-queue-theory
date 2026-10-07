@@ -16,6 +16,7 @@ import ServingQueueTheory.Routing
 import ServingQueueTheory.MissPrice
 import ServingQueueTheory.DensityGreedy
 import ServingQueueTheory.BatchServer
+import ServingQueueTheory.DecodeScaling
 import ServingQueueTheory.Footprint
 import ServingQueueTheory.FiniteSource
 import ServingQueueTheory.MissFeedback

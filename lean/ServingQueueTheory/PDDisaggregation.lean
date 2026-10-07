@@ -17,6 +17,15 @@ aggregated deployment has capacity `N / (sP + sD)`.  A static split
 
 Hence "PD does not help agentic workloads" is regime-dependent, not a
 theorem.
+
+Scope (issue #28).  Every statement here is about *capacity*: the
+request rate a deployment sustains when each request costs fixed
+device-seconds `sP + sD`.  None is about the time a request spends in the
+system at a given throughput.  `pd_le_agg` therefore does not say that a
+split cannot shorten the decode sojourn or the time per output token at
+equal throughput; the conditional theory of that question, for the PS
+idealisation of the decode stage, is `DecodeScaling.lean`, and the
+step-engine comparison is simulated, not proved.
 -/
 import Mathlib.Tactic
 
