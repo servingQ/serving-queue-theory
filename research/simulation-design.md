@@ -18,7 +18,7 @@ gone. The paper's price, eviction/admission and WEKA replay scenarios run
 `validation/src/sim/{price,open,replay}_vllm.py`, with the testbed cost fit.
 The conditional theory checks run queue, PD and routing examples against
 closed forms. The Python migration reproduced the prior paper tables;
-`make sim` runs 35 named checks and `make tables` regenerates `paper/sim/`.
+`make sim` runs 39 named checks and `make tables` regenerates `paper/sim/`.
 
 Paper §4.1 contains workload measurements, §4.2 simulation evidence, and
 §4.3 serving measurements. Synthetic check details are in App. B; testbed
@@ -49,7 +49,7 @@ two, in two roles:
 | E4 eviction | end-to-end TTFT | cost/OPT is offline; end-to-end needs replay of identical arrivals |
 | E5 placement | inversion load | needs a fine load sweep and measured migration costs |
 | E6 faithfulness scoring | second model | score the calibrated simulator against held-out testbed runs |
-| PD follow-up | latency at equal capacity | outside the current paper; simulations remain for the follow-up and course |
+| PD follow-up | decode time at equal throughput | outside the current paper; the scalar FIFO tandem (`sim.pd`) gives the capacity and pooling baseline, the step engines (`sim.pd_batching`, serQ #208) the TPOT and TTFT comparison |
 
 ## 2. What exists
 
@@ -76,6 +76,7 @@ The modules are layers (`validation/README.md`, enforced by
 | `sim.queue` | serQ's `mg1.sq` as an open G/G/c FIFO queue; separate streams for arrivals and service |
 | `sim.agentic` | `programs/agentic_model.sq`: closed or open agent programs on one replica with a finite KV pool; eviction, offload and fetch-mode policies |
 | `sim.pd` | serQ's `pd_tandem.sq`, `pd_open.sq`: aggregated pool vs prefill → KV link → decode tandem |
+| `sim.pd_batching` | `programs/models/pd_ps.sq`, `pd_batching.sq`, adapted from serQ's examples (serQ #208): the PS idealisation of the decode stage and the step engines, 4 colocated vs 3P/1D on the same requests |
 | `sim.routing` | serQ's `routing.sq`: affinity, least-loaded, least-loaded with fetch, KV-aware myopic, lookahead with migration |
 | `sim.workload` | replayed real sessions (`TraceCorpus`, bundled `validation/data/weka-sessions.csv` from the cc-traces-weka corpus) |
 | `sim.price_vllm`, `sim.open_vllm`, `sim.replay_vllm` | the vLLM-rule replica: `programs/{price,open,replay}_vllm.sq` |
@@ -128,6 +129,7 @@ The simulator is trusted for a use only after the steps below it pass.
 | 2. M/G/1: PK for D, E4, H2, two-point service; ratio `(1+CV²)/2` (`eq:pk`, `eq:cv2`) | `pk_formula`, `variance_orders_delay`, `cache_reuse_lowers_delay`, `cv2_ratio` | pass |
 | 3. Closed network: `R = N/X − Z`; throughput non-decreasing in N with fixed demand, below `min(N/(D+Z), 1/D)` | `interactive_response_time_law`, `closed_throughput_nondecreasing_fixed_demand` | pass |
 | 4. PD capacity: saturated tandem matches `min(N_P g_P/s_P, N_D g_D/s_D, B/E[K])` (PD follow-up) | `pd_capacity_matches`, `pd_no_gain` | pass |
+| 4a. Decode scaling (PD follow-up, issue #28): at `pd_ps.sq` the pooled station keeps the colocated occupancy ρ/(1−ρ) and divides the decode time by N = 4 (in model); at `pd_batching.sq` the split keeps the output throughput, shortens the token-weighted TPOT and lengthens the TTFT at λ ∈ {20, 40, 60, 70}; with a 10 ms step the TPOT ratio is 1/(1−p) within 5 %; exclusive, mixed and chunked steps at the same prefill share give different TPOTs (beyond) | `pd_ps_scaling_identity`, `pd_step_split_tpot_at_equal_throughput`, `pd_step_long_step_matches_ps_share`, `pd_step_interruption_pattern`; observation `pd_step_limits` | pass |
 | 4b. Finite-source prefill queue: M/M/1//N exact wait vs simulation at ρ = 0.6, N ∈ {2,…,64}; open M/M/1 wait is above it, ratio 4.5 → 1.09 | `finite_source_wait_below_open` (`paper/sim/tab-finite.tex`) | pass |
 | 4c. Inversion load: M/M/1 node crosses the move cost at ρ* (in model); always-move vs affinity over 4 replicas and a shared link (beyond) | `inversion_load_closed_form`, `inversion_load_rises_with_move_cost` | pass |
 | 4d. Replayed production sessions: variance sources and PK overstatement | `trace_replay_variance_sources`; observation `trace_replay_miss_price` | pass |
