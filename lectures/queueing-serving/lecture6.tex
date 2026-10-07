@@ -156,7 +156,10 @@ variance of this work.
 the wait for prefill memory, the wait for the prefill server ($W_P$ is its mean), and
 the prefill work. Transfer and decode reach the TTFT only through memory, because a
 prefill slot is held until $e_k$. A client that sees its first token only after the
-handoff also waits for the link and the decode pool. No stage is stable unless
+handoff also waits for the link and the decode pool, so its TTFT is $\alpha'_k-a_k$; the
+executable example of \cref{app:serq} records both, and the transfer apart, so that a
+comparison of colocated and disaggregated serving uses the same first-token basis.
+No stage is stable unless
 \begin{equation}\label{L6:eq:stable}
   \rho_P=\lambda\,\E[S]<1,\qquad \rho_L=\lambda\,\E[X]<1,\qquad
   \lambda\,\E[D]<\max_{m\le m_D}\varphi(m),

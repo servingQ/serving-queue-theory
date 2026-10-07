@@ -58,7 +58,13 @@ comparison was run against that preceding release; no old-language
 exposition is retained in the course. The JSON is raw simulation evidence;
 `results.tex` is generated from it, not typed by hand. The current-only CI
 check writes `/tmp/sqt-lecture-check.json` and leaves the historical table
-intact. The runtime source suite was also run with
+intact. On 2026-10-01 (issue #28) `lecture_pd.sq` gained the observes
+`ttft_client` and `transfer`, and the checker three `PD client TTFT` checks
+(`ttft_client = ttft + transfer + memD wait`); the 24 current
+checks, these three included, are recorded from a current-only run on serQ
+v0.1.4 in `research/serq-0.1.4-lecture-results.json` (2026-10-06, when the
+PR was rebased onto the v0.1.4 migration). `research/lecture-results.json`
+keeps the release it measured and its rc0 baseline comparison. The runtime source suite was also run with
 `cargo test --release --locked -p serq`: **222 tests passed**, including
 recorded vLLM scheduler scenarios, prefix-cache, pool, PD-transfer and
 preemption cases. These are recorded oracle comparisons, not new GPU runs.

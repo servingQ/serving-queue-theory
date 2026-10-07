@@ -54,10 +54,17 @@ fn main() {
       set S = H ? a * n + b * n * (K + n / 2) : a * T + b * T * T / 2;
       observe miss = 1 - H;
       prefill S;
+      // the first token at the prefill instance (L6:eq:ttft): memory wait,
+      // queue wait and prefill work
       observe ttft = now - t0;
+      set t1 = now;
       run link (cost(link, x0 + kappa * T / Bw));
+      observe transfer = now - t1;
     } cache (cost(memP, kappa * T));
     hold memD (cost(memD, kappa * T)) {
+      // the first token a client sees only after the hand-over: the
+      // transfer and the wait for decode memory are inside it
+      observe ttft_client = now - t0;
       decode (o * w);
     }
     observe response = now - t0;

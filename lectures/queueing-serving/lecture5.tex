@@ -409,6 +409,14 @@ and which are modelling choices.
   question.
 \item \emph{Approximate:} one eviction is a transient event priced by a
   stationary comparison (Step~1 above).
+\item \emph{A modelling choice:} $\varphi$ is fixed by a step rule that
+  serves the decode batch at every step. An engine that gives a prefill a
+  step of its own stops its decodes for that step, so its decode capacity
+  falls with the prefill load; there a miss adds no decode demand but
+  shrinks the capacity, and a share $f\in(0,1]$ of the capacity at the same
+  demand is the load $\rho_D/f$, so a smaller share leaves more turns in
+  the batch (\cref{thm:L-mono}). \Cref{prop:decode-price,L2:cor:decode-hit} are about the
+  first kind of engine.
 \item \emph{Not in the queueing formula:} a turn whose KV does not fit
   waits for memory blocks before its prefill starts. That wait is set by
   the pool, not by the queue, and adds to the PK wait. The capacity

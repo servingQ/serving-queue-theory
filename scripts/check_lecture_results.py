@@ -124,8 +124,16 @@ def main():
         pool_wait = next(p for p in r['pools'] if p['name'] == 'memP')['mean_wait']
         expected = pool_wait + stages['prefill']['mean_wait'] + stages['prefill']['mean_service']
         close(ttft, expected, .01, f'PD TTFT seed {seed}')
+        # The client's first token comes after the transfer and the decode
+        # pool's admission: ttft_client = ttft + transfer + wait for memD.
+        client = r['observes']['ttft_client']['mean']
+        transfer = r['observes']['transfer']['mean']
+        wait_d = next(p for p in r['pools'] if p['name'] == 'memD')['mean_wait']
+        close(client, ttft + transfer + wait_d, .01, f'PD client TTFT seed {seed}')
         checks.append(dict(check=f'PD decode service seed {seed}', observed=service, expected=.04))
         checks.append(dict(check=f'PD TTFT seed {seed}', observed=ttft, expected=expected))
+        checks.append(dict(check=f'PD client TTFT seed {seed}', observed=client,
+                           expected=ttft + transfer + wait_d))
         if args.baseline:
             old = run(args.baseline, args.baseline_source / 'lecture_pd.seq', seed)
             comparisons.append(dict(seed=seed,
@@ -192,7 +200,7 @@ def main():
         rows = [r'\begin{center}\small', r'\begin{tabular}{@{}lrr@{}}',
                 r'\toprule', rf'Metric (seconds) & Previous runtime & serQ {current["release"]} \\', r'\midrule']
         if comparisons:
-            for key, label in [('ttft','TTFT'), ('response','Turn response')]:
+            for key, label in [('ttft','TTFT (prefill instance)'), ('response','Turn response')]:
                 before = sum(c['baseline'][key] for c in comparisons)/len(comparisons)
                 after = sum(c['current'][key] for c in comparisons)/len(comparisons)
                 rows.append(f'{label} & {before:.5f} & {after:.5f} '+r'\\')
