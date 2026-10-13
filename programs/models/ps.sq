@@ -1,4 +1,4 @@
-// Adapted from serQ v0.1.4 (a99dd649): explicit SQT experiment inputs.
+// Adapted from serQ v0.1.4 (a99dd649), ported to v0.1.5: explicit SQT experiment inputs.
 // M/G/1 processor sharing (paper `prop:decode`, insensitivity): the mean
 // number in the station is rho/(1-rho) whatever the service law.
 

@@ -151,7 +151,7 @@ def simulate(cfg: BatchConfig) -> BatchReport:
     tv = np.array([x[1] for x in ttfts])
     response_ci, p99 = _ci_and_p99(rv)
     ttft_ci, ttft_p99 = _ci_and_p99(tv)
-    batch, svc = r.pool("batch"), r.stage("svc")
+    batch, svc = r.pool("slots"), r.stage("svc")
     return BatchReport(
         turns=response.count,
         throughput=response.count / (cfg.horizon - cfg.warmup),

@@ -291,7 +291,7 @@ def trace_price_row(rate: float, delta: float) -> TracePriceRow:
     rho1_sum = live1_sum = lp_sum = fin_sum = 0.0
     for r0, r1 in zip(base, forced, strict=True):
         q0, q1 = queue(r0), queue(r1)
-        f, work, whit = by_turn(r1, "forced"), by_turn(r1, "work"), by_turn(r1, "whit")
+        f, work, whit = by_turn(r1, "forced_miss"), by_turn(r1, "work"), by_turn(r1, "whit")
         phi_sum = ds_sum = 0.0
         for k, fm in f.items():
             if fm < 1.0 or k not in work or k not in whit:

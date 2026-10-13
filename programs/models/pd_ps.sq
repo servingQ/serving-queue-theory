@@ -1,4 +1,4 @@
-// Adapted from serQ v0.1.4 (a99dd649): explicit SQT experiment inputs.
+// Adapted from serQ v0.1.4 (a99dd649), ported to v0.1.5: explicit SQT experiment inputs.
 // The idealisation pd_batching.sq is measured against (#208): decode as
 // processor sharing at a constant fraction of an engine. Colocated, each
 // of N engines gives its decodes the fraction f of its time and takes a
@@ -39,7 +39,7 @@ fn main() {
 
   server {
     set t0 = now;
-    branch (mode == 0) { run colo[k] (cost(colo, (o - 1) * tok)); } else { run dec (cost(dec, (o - 1) * tok)); }
+    if (mode == 0) { run colo[k] (cost(colo, (o - 1) * tok)); } else { run dec (cost(dec, (o - 1) * tok)); }
     observe decode_time = now - t0;
     observe tpot = (now - t0) / (o - 1);
     observe output_tokens = o;

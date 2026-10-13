@@ -7,15 +7,15 @@
 // research/serq-replay42.md compares it with the old validation model's rules.
 //
 // Engine rules, replacing the old validation model's:
-//  * the engine admits waiting turns at the start of an iteration with the
-//    budget its residents leave (`admit via engine`), never in an iteration
-//    that preempted, and serves residents in admission order (no `decode
+//  * the engine admits waiting turns in an iteration with the budget its
+//    residents leave (`pool slots on vllm`), never in an iteration that
+//    preempted, and serves residents in admission order (no `decode
 //    first`);
 //  * admission needs room for the whole prompt (`reserve`), but allocates only
 //    the reused prefix plus the first chunk, and the hold grows with every
-//    computed token (`growing kv`); a growth that does not fit preempts the
-//    most recently admitted turn (`preempt lifo`), which re-queues at the
-//    head and recomputes;
+//    computed token; a growth that does not fit preempts the most recently
+//    admitted turn (`preempt lifo`), which re-queues at the head, keeps its
+//    generated tokens and recomputes their KV (scheduler.py:1560-1561);
 //  * the KV pool is blocks of 16 tokens, evicted from an entry's tail; a
 //    turn reuses at most the full blocks of its previous context (below
 //    the last prompt token), the rest of its entry stays cached, dead;
@@ -25,8 +25,8 @@
 //    least recently released first (what vLLM does) instead of by price.
 // The first token comes from the prefill; decode computes the other
 // `max(out - 1, 0)` (the corpus also has zero-output turns). The prefill's
-// fixed overhead c0 is engine time spent before
-// the prompt's tokens (it grows no KV).
+// fixed overhead c0 is engine time of the iteration that admits the turn
+// (it grows no KV and takes no budget).
 
 use "std/args";
 
@@ -48,25 +48,39 @@ fn main() {
   let delta = args.number("delta", 0);         // share of follow-up turns forced to miss (§4.2's price table)
 
   pool live { cap cap; }
-  pool slots { cap B; admit via engine; }
-  pool kv {
-    cap C;
+  device gpu { kv cap C; }
+  // the time model of the paper's cost fit in real tokens: an iteration
+  // of ntok tokens and attention attn, admitting nadm turns, takes
+  // max(ω, a ntok + c0 nadm + b attn)
+  engine vllm on gpu {
+    slots cap B;
+    tokens cap max(running.decoding, floor(omega / a));   // whole tokens (ω/a = 293.8)
+    state newcomers = 0;   // the turns this iteration admitted
+    scheduler {
+      advance running;
+      // a slot and the reused prefix plus the first chunk, if the whole
+      // prompt fits; a turn reuses at most `hitmax`, and caches its context
+      // but the final token
+      admit waiting while (running.preempted == 0)
+        taking slots (1), kv (request.hit + min(request.known - request.hit, budget_left(vllm)))
+          reserve (request.known)
+        reuse (hitmax)
+        cache (prompt + out - 1);
+      set newcomers = waiting.admitted;
+    }
+    worker {
+      forward (max(omega, a * batch.tokens + c0 * newcomers + b * batch.attention));
+    }
+  }
+  pool slots on vllm { queue fifo; }
+  pool kv on gpu {
     block bs;
     preempt lifo;
     evict by (lru ? 0 : waiting,
     lru ? last
-    : (waiting ? 1 : p) * price(engine, c0, a * size + b * size * size / 2)
+    : (waiting ? 1 : p) * price(vllm, c0, a * size + b * size * size / 2)
     / (size * (waiting ? 1 : tau)));
   }
-  // the time model of the paper's cost fit in real tokens: an iteration
-  // of ntok tokens (the overhead counted in tokens of `a`) and attention attn
-  // takes max(ω, a ntok + b attn)
-  stage engine : step {
-    budget max(decoders, floor(omega / a));   // whole tokens (ω/a = 293.8)
-    cost max(omega, tokens * a + b * attention);
-    memory kv;
-  }
-  stage tool : delay;
 
   workload {
     arrive poisson(Lambda);
@@ -82,11 +96,11 @@ fn main() {
           turn;
           set K = prompt + out;
           set cold = 0;
-          branch (K > maxctx) {
+          if (K > maxctx) {
             observe trunc = 1;
-            branch (keep_cache) { end; } else { drop kv; end; }
+            if (keep_cache) { end; } else { drop kv; end; }
           }
-          branch (more) { run tool (cost(tool, think)); } else { branch (keep_cache) { end; } else { drop kv; end; } }
+          if (more) { tool (think); } else { if (keep_cache) { end; } else { drop kv; end; } }
         }
       }
     }
@@ -97,33 +111,26 @@ fn main() {
     set prompt = K + new;
     // reusable: the full blocks of the previous turn's computed tokens (K - 1:
     // the last output token is never computed into the KV)
-    set hm0 = cold ? 0 : floor(min(K - 1, prompt - 1) / bs) * bs;
+    set hm0 = cold ? 0 : floor(min(K - 1, prompt - 1), bs);
     // a forced miss (a nonce at the head of the prompt) reuses nothing; the
     // old blocks stay cached, dead
     set fm = cold ? 0 : ~bernoulli(delta);
     set hitmax = fm ? 0 : hm0;
-    hold slots (cost(slots, 1)), kv (cost(kv, min(cachedin(kv), hitmax)
-    + min(prompt - min(cachedin(kv), hitmax), budget_left(engine))))
-    reserve (cost(kv, prompt))
-    reuse (cost(slots, kv, hitmax)) {
-      set c = cached;
-      set m = prompt - c;
-      // 0 cold, 1 hit (the whole reusable prefix reused), 2 miss (partly or all)
-      set kind = cold ? 0 : (c >= hm0 ? 1 : 2);
-      observe kind = kind;
-      observe work = c0 + a * m + b * m * (c + m / 2);
-      prefill on engine (ceil(c0 / a));
-      prefill on engine (m) growing kv;
-      observe ttft = now - t0;
-      branch (!cold) {
-        observe hit = kind == 1;
-        observe reused = hm0 > 0 ? c / hm0 : 1;
-        observe forced = fm;
-        // the work had the turn reused its whole reusable prefix
-        observe whit = c0 + a * (prompt - hm0) + b * (prompt - hm0) * (hm0 + (prompt - hm0) / 2);
-      }
-      decode on engine (max(out - 1, 0)) growing kv;
-      observe done = now - t0;
-    } cache (cost(slots, kv, prompt + out - 1));
+    vllm (prompt, max(out, 1));   // the prefill samples the first token, of a zero-output turn too
+    set c = vllm.reused;
+    set m = prompt - c;
+    // 0 cold, 1 hit (the whole reusable prefix reused), 2 miss (partly or all)
+    set outcome = cold ? 0 : (c >= hm0 ? 1 : 2);
+    observe kind = outcome;
+    observe work = c0 + a * m + b * m * (c + m / 2);
+    observe ttft = vllm.first - t0;
+    if (!cold) {
+      observe hit = outcome == 1;
+      observe reused = hm0 > 0 ? c / hm0 : 1;
+      observe forced_miss = fm;
+      // the work had the turn reused its whole reusable prefix
+      observe whit = c0 + a * (prompt - hm0) + b * (prompt - hm0) * (hm0 + (prompt - hm0) / 2);
+    }
+    observe done = now - t0;
   }
 }

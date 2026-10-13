@@ -7,12 +7,13 @@ metastability (chapter 7; its tables, figures and macros, `metastability-*.tex` 
 do not edit them; `programs/metastable.sq` is its serQ program),
 and the executable examples (appendix A, `release-check.tex`). `notes.tex` is the sole lecture PDF entry point.
 
-The executable examples target **serQ v0.1.4**, IR v12,
-commit `a99dd649e9353c326ef95311ecdaa3c99a242c85` (the release pinned in
+The executable examples target **serQ v0.1.5**, IR v13,
+commit `8a578475b9447749ab8962c413175854886a19bc` (the release pinned in
 `validation/pyproject.toml`; `make lecture-results` runs them with its CLI).
-`vllm.sq`, `vllm-library.sq`, `mg1.sq`, `ps.sq`, `closed.sq`, and
-`pd_tandem.sq` were copied from v0.1.0's examples/library, with the
-vLLM import adjusted locally. The programs now declare an explicit `fn main`,
+`vllm.sq`, `mg1.sq`, `ps.sq`, `closed.sq`, and
+`pd_tandem.sq` were copied from v0.1.0's examples/library; since serQ v0.1.5
+reads no program file with `use`, `vllm.sq` and `metastable.sq` each write
+the vLLM engine out. The programs now declare an explicit `fn main`,
 read experiment inputs with `args.number`, and separate client sessions from
 server execution. `programs/executions.json` records their former execution
 conditions; the lecture checker selects them explicitly.

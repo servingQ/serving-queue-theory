@@ -18,7 +18,7 @@ fn main() {
   def tool_time() { ~det(0) }
   def capacity() { service_rate }
 
-  pool batch { cap B; }
+  pool slots { cap B; }
   stage svc : ps(capacity());
   stage tool : delay;
 
@@ -33,21 +33,20 @@ fn main() {
 
         turn;
         run tool (cost(tool, tool_time()));
-        branch with (p) { } else { end; }
+        if (~bernoulli(p)) { } else { end; }
       }
     }
   }
 
   server {
     set ready = now;
-    set work = prefill + decode;
-    hold batch (cost(batch, 1)) {
+    hold slots (cost(slots, 1)) {
       observe wait = now - ready;
       run svc (cost(svc, prefill));
       observe ttft = now - ready;
-      branch (decode > 0) { run svc (cost(svc, decode)); }
+      if (decode > 0) { run svc (cost(svc, decode)); }
     }
     observe response = now - ready;
-    observe work = work;
+    observe work = prefill + decode;
   }
 }

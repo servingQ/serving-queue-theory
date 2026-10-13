@@ -55,7 +55,8 @@ def one(job):
     with tempfile.TemporaryDirectory() as d:
         args = [SERQ, "run", os.path.join(ROOT, prog), "--seed", str(seed), "--horizon", "66000", "--warmup", "6000", "--json", "--dump", d]
         for s in sets:
-            args += ["--set", s]
+            name, value = s.split("=", 1)
+            args += [f"--{name}", value]
         rep = json.loads(subprocess.run(args, check=True, capture_output=True, text=True).stdout)
         hit, work = read(d, "hit"), read(d, "work")
     keys = [k for k in hit if k in work]

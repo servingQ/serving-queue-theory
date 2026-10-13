@@ -27,8 +27,8 @@ proves its queueing results from it, and uses one pinned serQ release:
 | `programs/replay_vllm.sq`, `validation/src/sim/replay_vllm.py` | §4.2's vLLM-rule replay; `scripts/exp/serq_replay42.py` runs LRU and finished-session ablations (`research/serq-replay42.md`) | pyserq; `.serq/bin/serq` for the ablations |
 | `scripts/exp/*serq*`, `diff_serq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.serq/bin/serq`, `.serq/src/examples`, `.serq/src/tools` |
 
-The pin is `v0.1.4` under `[tool.serq]` in `validation/pyproject.toml`, IR 12, and its
-pyserq, `pyserq==0.1.4` from PyPI, is the validation package's engine:
+The pin is `v0.1.5` under `[tool.serq]` in `validation/pyproject.toml`, IR 13, and its
+pyserq, `pyserq==0.1.5` from PyPI, is the validation package's engine:
 `tests/test_units.py` holds pyserq's version equal to the checkout's
 `[workspace.package] version` in `.serq/src/Cargo.toml` and to the
 `pyserq==` dependency, and, when a tag is pinned, the tag to `v{version}`.
@@ -61,6 +61,65 @@ and renewal workloads outside its explicit-session fragment. `scripts/fetch_serq
 `.serq/src` and installs its CLI into `.serq/bin/serq` (gitignored); `uv sync` in
 `validation/` installs pyserq from PyPI, so the validation package needs no
 Rust (the CLI, for `scripts/exp`, still does).
+
+## Migration to v0.1.5 (IR 13)
+
+Python, CLI and Lean pin `v0.1.5`, commit
+`8a578475b9447749ab8962c413175854886a19bc` (2026-10-13). A step stage is
+written only as an engine (`engine E on gpu { tokens cap …; scheduler { … }
+worker { forward (…); } }`), which keeps a request's state, admits it,
+and is called by the server, `E (input, output);`; the server no longer
+runs an engine's prefill or decode itself. `branch (e)` is `if (e)` and
+`branch with (p)` is `if (~bernoulli(p))`. `use` reads only `std/…`, so
+`lectures/queueing-serving/programs/vllm-library.sq` is inlined into
+`vllm.sq` and `metastable.sq` and deleted. A declaration may not share a
+name with the language or an attribute, nor an observation with an
+attribute, so programs rename `think` (`user`, `thinking`), `batch`
+(`slots`), `size` (`prompt_len`), `forced` (`forced_miss`), `engine`
+(`replica`, `vllm`), `service` (`service_time`) and the observed `think`
+(`think_time`). The CLI takes inputs as `--name value`; every script that
+ran it is changed.
+
+Numbers. serQ #493 mixes the seed before a session's serial: under v0.1.4
+seed `s` and session `i` drew from a stream close to `s + i`, so
+consecutive seeds were not independent replications, and every seed-1
+sample path changes. The ports were compared old against new with
+independent seeds (spaced 1,000,003 apart) and, for the vLLM family, with
+the draws replaced by deterministic functions of serial and turn.
+`programs/models/*`, `lecture_pd`, `agentic`, `agentic_model`,
+`batch_sampled`, `price_vllm` and the lecture `vllm.sq` agree within their
+intervals; deterministic runs without preemption are identical. Two
+programs change their model where the old form has no equivalent:
+
+- `open_vllm.sq`, `replay_vllm.sq`: the per-turn overhead `c0` was a
+  separate prefill run of `ceil(c0/a)` tokens issued by the server, which
+  took budget, grew no KV and, as a side effect, delayed each admitted
+  turn's KV growth by one iteration. It is now time in the admitting
+  iteration (`state newcomers; set newcomers = waiting.admitted;`, added
+  to `forward`). With `c0 = 0`, `open_vllm` matches v0.1.4 to the digit,
+  eviction and preemption included; with `c0`, TTFT moves by 0–6 %. In the
+  replay with a finite pool, the old one-iteration delay let `reserve`
+  admit turns against a low `used`; without it, preemptions fall (C = 1e6,
+  cap 4: 14.7 → 0.6) and the slots wait rises by 20–47 %. The paper's
+  §4.2 finite cells are generated tables and are not regenerated in this
+  migration.
+- `metastable.sq`: the library's hold consumed the session's whole cached
+  entry (`cache` without `reuse`). The engine prefills `known − cached`, so
+  the hit is bounded by `reuse (floor(request.known − 1, blocksize(kv)))`,
+  as serQ's `vllm.sq` does, and the excess stays a dead entry, as in vLLM.
+  Deterministic Z = 4: full-hit share 0.378 → 0.371, TTFT +3.6 %; Z = 1.5
+  identical.
+
+Under preemption only, serQ's engine differs from what the v0.1.4
+programs wrote: a preempted request keeps its generated tokens (#478),
+and per-admission observations (`hit`, `kind`, `work`) are made once per
+turn, from the last admission.
+
+Why did it happen? The v0.1.4 programs wrote vLLM's per-request steps in
+the server, so the overhead run and the whole-entry hit were rules a
+program could get wrong without the language noticing. serQ now keeps the
+request's state in the engine and refuses the server form. No check here
+applies; the port records the two changes of model above.
 
 ## Migration to v0.1.4 (IR 12)
 
@@ -206,7 +265,7 @@ historical.
    run `cd lean && lake update Serq`. The Lean pin may run ahead of the
    release only in `lean/` and docs: `scripts/check_lean.sh` fails if the
    pinned commit's `src/` or `tools/oracle/` differs from the release tag.
-   Today all three pins are the release v0.1.3 (`rev = "v0.1.3"`). The oracle theorems are
+   Today all three pins are the release v0.1.5 (`rev = "v0.1.5"`). The oracle theorems are
    regenerated in serQ (`scripts/gen_lean_oracle.py`, checked by its
    `make lean`), not here.
 

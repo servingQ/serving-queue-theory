@@ -17,11 +17,12 @@ replay** (E4), **placement test** (E5), **faithfulness scoring** (E6).
 The codes survive in directory names (`data/exp/e1`, `e2`, `e2b`),
 macros (`\eOne*`, `\eTwo*`, `\eTwob*`) and older review files.
 
-Current integration state as of 2026-10-06. Dated measurement entries below
+Current integration state as of 2026-10-13. Dated measurement entries below
 record the runs made at that time; they do not imply a server is still running.
 Keep this section current at the end of every work block.
 
 **Done.**
+- **serQ v0.1.5, IR 13 (2026-10-13).** Python, CLI and Lean pin the published release `8a57847`. Step stages are engines that keep a request's state; `if` replaces `branch`; a program is one file (the lecture `vllm-library.sq` is inlined); inputs are `--name value`. Seeds are independent replications (#493), so every seed-1 sample path moves; the ports agree with v0.1.4 over independent seeds. `open_vllm`/`replay_vllm` model the per-turn overhead `c0` as time in the admitting iteration, and `metastable.sq` bounds its hit by `reuse`, as vLLM does. Details and validation: `research/serq.md`.
 - **serQ v0.1.4, IR 12 (2026-10-06).** Python, CLI and Lean pin the published release `a99dd64`. Models declare named inputs, workloads own request sizes, and servers convert them to resource costs. Client `turn` completes server execution; previous execution settings are selected externally. Lindley's exact comparison and the existing statistical bounds are retained. Open-session ITL now excludes cross-turn tool waits; historical generated paper results remain recorded evidence. Details and validation: `research/serq.md`.
 - **serQ v0.1.3, IR 11 (2026-10-05).** Python, CLI and Lean pin the
   published release `d91ffa5`. Lindley's independent check follows the
@@ -156,8 +157,8 @@ Keep this section current at the end of every work block.
   regenerates `paper/sim/` (~7 min); `make sim` runs ruff, pytest and the
   report (~5 min).
 - **serQ integration (current).** The language is a separate project,
-  https://github.com/servingQ/serQ. This repository runs its pinned v0.1.4
-  release (IR 12) through pyserq and `.serq/bin/serq`, not a Cargo git
+  https://github.com/servingQ/serQ. This repository runs its pinned v0.1.5
+  release (IR 13) through pyserq and `.serq/bin/serq`, not a Cargo git
   dependency. `research/serq.md` documents the pin, upgrade procedure and CI
   access. The Lean model is serQ's `lean/` package (since 2026-10-01; it
   was `Serq{,Exec,Oracle,Serve}.lean` here), required by `lean/lakefile.toml`;
