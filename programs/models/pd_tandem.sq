@@ -1,4 +1,4 @@
-// Adapted from serQ v0.1.4 (a99dd649): explicit SQT experiment inputs.
+// Adapted from serQ v0.1.4 (a99dd649), ported to v0.1.5: explicit SQT experiment inputs.
 // Aggregated pool vs prefill -> KV link -> decode tandem
 // (`libqueuingsim::models::pd`, paper App. B, `prop:pd`). `jobs` requests
 // circulate (saturated load): the throughput is the capacity
@@ -39,7 +39,7 @@ fn main() {
       set sp = prefill_work();
       set sd = decode_work();
       set kv = kv_tokens();
-      branch (mode == 0) {
+      if (mode == 0) {
         run agg (cost(agg, sp + sd + I));
       } else {
         run prefill (cost(prefill, sp / gP));

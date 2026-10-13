@@ -31,7 +31,7 @@ def run(serq, seed, horizon, win, report=False, **settings):
         cmd = [str(serq), 'run', str(PROG), '--seed', str(seed), '--horizon', str(horizon),
                '--warmup', '0', '--dump', d, '--json']
         for k, v in settings.items():
-            cmd += ['--set', f'{k}={v}']
+            cmd += [f'--{k}', str(v)]
         rep = json.loads(subprocess.check_output(cmd, text=True))
         bins = np.arange(0, horizon + win, win)
 
@@ -63,8 +63,8 @@ def main():
     rows = []
     for Z in [4, 1.5]:
         h, _, rep = run(args.serq, 1, 4000, 100, report=True, Z=Z)
-        eng = next(x for x in rep['stages'] if x['name'] == 'engine')
-        thk = next(x for x in rep['stages'] if x['name'] == 'think')
+        eng = next(x for x in rep['stages'] if x['name'] == 'vllm')
+        thk = next(x for x in rep['stages'] if x['name'] == 'thinking')
         rows.append((tail_mean(h, 20), eng['utilization'] / thk['throughput']))
     (h1, e1), (h2, e2) = rows
     s_miss = (e1 * h2 - e2 * h1) / (h2 - h1)

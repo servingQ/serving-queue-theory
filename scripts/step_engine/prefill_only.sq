@@ -14,9 +14,21 @@ fn main() {
   let a = args.number("a", 5.1527e-5);
   let b = args.number("b", 4.0196e-9);
 
-  pool reqs { cap max_seqs; admit via engine; }
-  pool kv { cap 1e12; block bs; evict lru; preempt lifo; }
-  stage engine : step { budget B; cost c_it + a * prefilled + b * attention; memory kv; }
+  device gpu { kv cap 1e12; }
+  engine vllm on gpu {
+    reqs cap max_seqs;
+    tokens cap B;
+    scheduler {
+      advance running;
+      admit waiting while (running.preempted == 0)
+        taking reqs (1), kv (min(request.known, budget_left(vllm))) reserve (request.known);
+    }
+    worker {
+      forward (c_it + a * batch.prefilled + b * batch.attention);
+    }
+  }
+  pool reqs on vllm { queue fifo; }
+  pool kv on gpu { block bs; evict lru; preempt lifo; }
 
   workload {
     arrive poisson(Lambda);
@@ -27,11 +39,9 @@ fn main() {
     set t0 = now;
     set m = u < p_long ? n_long : n_short;
     observe arr = t0;
-    observe size = m;
-    hold reqs (cost(reqs, 1)), kv (cost(kv, min(m, budget_left(engine)))) reserve (cost(kv, m)) {
-      prefill (m) growing kv;
-      observe ttft = now - t0;
-    }
+    observe prompt_len = m;
+    vllm (m, 1);   // the prefill samples the one output token
+    observe ttft = vllm.first - t0;
     drop kv;
   }
 }

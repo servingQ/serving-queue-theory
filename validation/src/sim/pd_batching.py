@@ -14,9 +14,9 @@ made inputs):
   prefill and `N - NP` decode engines with a free hand-over, vLLM's
   admission and KV rules without a prefix cache. The baseline is exclusive
   prefill steps, memory that never binds, a free transfer, no
-  specialisation; a variation is a `--set` (`omega`, `chunk_cap`, `Bw`,
+  specialisation; a variation is an input (`omega`, `chunk_cap`, `Bw`,
   `x0`, `blocksD`, `blocksE`, `gP`) or one of two lines of the program
-  (`serve exclusive prefill;` deleted, `let NP = 3;`), which the adapter
+  (`exclusive prefill` read as `advance running`, `let NP = 3;`), which the adapter
   edits in the text it compiles, as serQ's `tools/pd_batching/sweep.py`
   does. The prompt law is the program's (`floor(~uniform(1000, 3000))`)
   unless `prompt_len` gives another, such as the sweep's `fixed` case
@@ -41,9 +41,10 @@ import numpy as np
 from fmt import fold_max
 from sim import serq
 
-EXCLUSIVE_LINE = "      serve exclusive prefill;\n"
+EXCLUSIVE_LINE = "        exclusive prefill each at most (chunk_cap);\n"
+MIXED_LINE = "        advance running each at most (chunk_cap);\n"
 NP_LINE = "let NP = 3;"
-ENGINES = 4  # `N` of both programs: the size of their station arrays, which a `--set` cannot change
+ENGINES = 4  # `N` of both programs: the size of their station arrays, which an input cannot change
 SATURATED = 0.99  # a prefill capacity busy more than this share of the time is at saturation
 
 
@@ -159,8 +160,8 @@ class StepConfig:
     """`pd_batching.sq`: 4 colocated engines or `prefill_engines` prefill
     + the rest decode, at `rate` requests per second; `prompt_len` and
     `output` replace the laws' bodies (serQ expressions) when given;
-    `sets` the program's constants; `exclusive` keeps or deletes
-    `serve exclusive prefill;`."""
+    `sets` the program's constants; `exclusive` keeps
+    `exclusive prefill` or reads it as `advance running`."""
 
     split: bool
     rate: float
@@ -210,7 +211,7 @@ def _program_text(cfg: StepConfig) -> str:
     text = serq.program_path("pd_batching").read_text()
     if not cfg.exclusive:
         assert text.count(EXCLUSIVE_LINE) == 2, "pd_batching.sq: two exclusive-step lines expected"
-        text = text.replace(EXCLUSIVE_LINE, "")
+        text = text.replace(EXCLUSIVE_LINE, MIXED_LINE)
     if cfg.prefill_engines != 3:
         assert text.count(NP_LINE) == 1
         text = text.replace(NP_LINE, f"let NP = {cfg.prefill_engines};")

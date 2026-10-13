@@ -36,9 +36,9 @@ fn main() {
         turn;
         set K = K + n + o;
         set cold = 0;
-        branch (K > maxctx) { drop kv; end; }
+        if (K > maxctx) { drop kv; end; }
         run tool (cost(tool, ~exp(Z)));
-        branch with (p) { } else { drop kv; end; }
+        if (~bernoulli(p)) { } else { drop kv; end; }
       }
     }
   }
@@ -49,15 +49,15 @@ fn main() {
     set t0 = now;
     hold slot (cost(slot, 1)) {
       hold kv (cost(kv, K + n + o)) {
-        set hit = !cold && cached >= K;
+        set warm = !cold && cached >= K;
         set S = s0 + o * d
-        + (hit ? a * n + b * n * (K + n / 2)
+        + (warm ? a * n + b * n * (K + n / 2)
         : a * (K + n) + b * (K + n) * (K + n) / 2);
         run svc (cost(svc, S));
       } cache (cost(kv, K + n + o));
     }
     observe response = now - t0;
     observe service = S;
-    branch (!cold) { observe hit = hit; }
+    if (!cold) { observe hit = warm; }
   }
 }

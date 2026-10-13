@@ -1,12 +1,10 @@
 // Metastability of the wait-loss feedback (lecture 7) on vLLM v1's engine
-// rules (`vllm-library.sq`): N sessions in a closed loop, each with a fixed
+// rules (`vllm.sq`'s engine): N sessions in a closed loop, each with a fixed
 // context of K0 tokens that its next turn reuses if its blocks survive, plus
 // n new tokens per turn. The KV pool holds fewer tokens than all contexts
 // together, so a waiting turn's cached blocks are evictable while it waits.
 // The think time is Zwarm before twarm (a light preconditioning load that
 // fills the cache with hits), Zb inside the burst [t1, t1 + B), Z otherwise.
-use "vllm-library.sq";
-
 use "std/args";
 
 fn main() {
@@ -28,22 +26,36 @@ fn main() {
   let napp = args.number("napp", 500);        // new tokens per turn
   let nout = args.number("nout", 200);        // output tokens per turn
 
-  pool kv { cap blocks * bs; block bs; evict lru; preempt lifo; }
-  pool reqs { cap max_seqs; }
-
-  stage engine : step {
-    budget Bt;
-    cost max(omega + beta * (kv_decode + kv_prefill), tokens * a);
-    memory kv;
+  device gpu {
+    compute (t) = t * a;
+    hbm (k) = omega + beta * k;
+    kv cap blocks * bs;
   }
-  stage think : delay;
+  // `vllm.sq`'s engine without a chunk cap: the hit is looked up when the
+  // request is admitted, at most the full blocks below its last token, and
+  // the admission takes it plus the chunk the budget allows
+  engine vllm on gpu {
+    tokens cap Bt;
+    scheduler {
+      advance running;
+      admit waiting while (running.preempted == 0)
+        taking kv (min(request.known, request.hit + budget_left(vllm)))
+        reuse (floor(request.known - 1, blocksize(kv)))
+        cache (request.input + request.output);
+    }
+    worker {
+      forward (max(hbm(batch.kv_decode + batch.kv_prefill), compute(batch.tokens)));
+    }
+  }
+  pool kv on gpu { block bs; evict lru; preempt lifo; }
+  pool reqs { cap max_seqs; }   // taken as soon as one is free, around the request
+  stage thinking : delay;
 
   workload {
     arrive closed(N);
     session {
       loop {
-
-        run think (cost(think, ~exp(now < twarm ? Zwarm : (now >= t1 && now < t1 + B ? Zb : Z))));
+        run thinking (cost(thinking, ~exp(now < twarm ? Zwarm : (now >= t1 && now < t1 + B ? Zb : Z))));
         set t0 = now;
         set K = K0;
         set prompt = K0 + ceil(~exp(napp));
@@ -54,8 +66,10 @@ fn main() {
   }
 
   server {
-    vllm_request(reqs, kv, engine, prompt, o, t0);
+    hold reqs (cost(reqs, 1)) { vllm (prompt, o); }
+    observe ttft = vllm.first - t0;
+    observe hit = vllm.reused > 0;
     observe response = now - t0;
-    observe full_hit = c >= K0;   // the whole context reused (the library's `hit` counts any reuse)
+    observe full_hit = vllm.reused >= K0;   // the whole context reused (`hit` counts any reuse)
   }
 }

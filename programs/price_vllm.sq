@@ -28,13 +28,21 @@ fn main() {
   let b = args.number("b", 6.51e-9);       // s per prefill token per context token
   let omega = args.number("omega", 0.057);     // s per decode iteration
 
-  pool slots { cap B; admit via engine; }
-  pool kv { cap 1e12; block bs; preempt lifo; evict lru; }
-  stage engine : step {
-    budget max(decoders, floor(omega / a));
-    cost max(omega, tokens * a + b * attention);
-    memory kv;
+  device gpu { kv cap 1e12; }
+  engine vllm on gpu {
+    slots cap B;
+    tokens cap max(running.decoding, floor(omega / a));
+    scheduler {
+      advance running;
+      admit waiting while (running.preempted == 0)
+        taking slots (1), kv (min(request.known, budget_left(vllm))) reserve (request.known);
+    }
+    worker {
+      forward (max(omega, batch.tokens * a + b * batch.attention));
+    }
   }
+  pool slots on vllm { queue fifo; }
+  pool kv on gpu { block bs; preempt lifo; evict lru; }
 
   workload {
     arrive poisson(Lambda);
@@ -45,11 +53,8 @@ fn main() {
     set t0 = now;
     set m = u < pmiss + delta ? missn : hitn;
     observe work = a * m + b * m * m / 2;
-    hold slots (cost(slots, 1)), kv (cost(kv, min(m, budget_left(engine)))) reserve (cost(kv, m)) {
-      prefill on engine (m) growing kv;
-      observe ttft = now - t0;
-      decode on engine (o - 1) growing kv;
-    }
+    vllm (m, o);
+    observe ttft = vllm.first - t0;
     observe response = now - t0;
     drop kv;
   }

@@ -27,7 +27,8 @@ def run(binary, path, seed, settings=(), *, horizon=None, warmup=None):
     if warmup is not None:
         cmd += ['--warmup', str(warmup)]
     for setting in settings:
-        cmd += ['--set', setting]
+        name, value = setting.split('=', 1)
+        cmd += [f'--{name}', value]
     return json.loads(subprocess.check_output(cmd, text=True))
 
 
@@ -71,7 +72,7 @@ def main():
     args = ap.parse_args()
     assert bool(args.baseline) == bool(args.baseline_source)
     ir = json.loads(subprocess.check_output([str(args.serq), 'ir', str(PROGRAMS / 'mg1.sq'), '--horizon', '250000', '--warmup', '25000'], text=True))
-    assert ir['version'] == 12, f"expected IR v12, got {ir['version']}"
+    assert ir['version'] == 13, f"expected IR v13, got {ir['version']}"
     checks, comparisons = [], []
     for path in PROGRAMS.glob('*.sq'):
         if path.name.endswith('library.sq'):

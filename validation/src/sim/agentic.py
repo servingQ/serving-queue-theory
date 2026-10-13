@@ -307,7 +307,7 @@ def simulate(cfg: AgenticConfig) -> AgenticReport:
         return o.samples
 
     responses, waits, service = values("response"), values("wait"), values("service")
-    think, hits = values("think"), values("hit")
+    think, hits = values("think_time"), values("hit")
     recompute, stall = values("recompute_work"), values("stall")
     span = cfg.horizon - cfg.warmup
     kv, slot, link = r.pool("kv"), r.pool("slot"), r.stage("link")

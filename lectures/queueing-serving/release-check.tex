@@ -1,8 +1,8 @@
 \appendix
 \chapter{Executable Examples in serQ}\label{app:serq}
 
-The examples accompanying these notes are programs in serQ v0.1.4 (IR version 12,
-commit \texttt{a99dd64}). A serQ program declares memory pools, service stages, a
+The examples accompanying these notes are programs in serQ v0.1.5 (IR version 13,
+commit \texttt{8a57847}). A serQ program declares memory pools, service stages, a
 workload and a server block. Running it simulates the deployment; it does not measure
 a real serving system. Each stage kind is one of the queues of the notes.
 \begin{center}\small
@@ -13,16 +13,18 @@ serQ & Queue & Where \\
 \texttt{stage s : fifo;} & single FIFO server & \cref{sec:L3} \\
 \texttt{stage s : ps(f);} & processor sharing with capacity $f$ & \cref{sec:L2} \\
 \texttt{stage s : delay;} & delay station & \cref{sec:L4} \\
-\texttt{stage s : step \{\dots\}} & engine iterations with a token budget & \cref{sec:L5} \\
+\texttt{engine E \{\dots\}} & engine iterations with a token budget & \cref{sec:L5} \\
 \texttt{hold}, \texttt{reserve} & a pool allocation and its admission gate & \cref{L2:sec:mmm} \\
 \texttt{transfer} & KV transfer over a link & \cref{sec:L6} \\
 \bottomrule
 \end{tabular}
 \end{center}
 For example, \texttt{stage decode : ps(min(present, 16));} is a batch whose capacity
-grows with the number \texttt{present} of turns up to $16$. A step stage schedules
-tokens per iteration with a \texttt{budget}, a \texttt{cost} and a \texttt{serve} order;
-a FIFO prefill order must be chosen there, since chunking alone does not give it.
+grows with the number \texttt{present} of turns up to $16$. An engine schedules
+tokens per iteration: its \texttt{scheduler} advances the running requests and admits
+waiting ones within a token \texttt{cap}, in an order it states, and its \texttt{worker}
+gives the iteration's time (\texttt{forward}); a FIFO prefill order must be chosen
+there, since chunking alone does not give it.
 
 The programs follow engine rules that the analytical models leave out. The
 executable \texttt{transfer} reserves the destination before it releases the source,
@@ -37,7 +39,7 @@ remove its cached blocks.
 at the prefill instance (\texttt{ttft}, \cref{L6:eq:ttft}), the TTFT a client sees
 after the hand-over (\texttt{ttft\_client}: the transfer and the wait for decode memory
 lie between the two) and the transfer itself;
-\texttt{programs/vllm.sq} implements a step engine with vLLM's rules. From the
+\texttt{programs/vllm.sq} implements an engine with vLLM's rules. From the
 repository root, \texttt{make lecture-results} runs the course checks, which compare
 simulations with Pollaczek--Khinchine, PS insensitivity, mean value analysis, the
 disaggregated bottlenecks, the equilibria of \cref{L6:ex:bistable}, and the price

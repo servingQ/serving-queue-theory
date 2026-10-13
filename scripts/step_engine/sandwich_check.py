@@ -9,9 +9,9 @@ def load(d,n):
 def run(lam, p_long, n_short, n_long, horizon=3000, seed=1):
     d=os.path.join(tempfile.mkdtemp(prefix='sandwich-'), f'd_{lam}_{p_long}_{n_short}_{n_long}')
     subprocess.run([SERQ,'run',PROG,'--dump',d,'--seed',str(seed),'--horizon',str(horizon),
-        '--set',f'Lambda={lam}','--set',f'p_long={p_long}','--set',f'n_short={n_short}','--set',f'n_long={n_long}'],
+        '--Lambda',str(lam),'--p_long',str(p_long),'--n_short',str(n_short),'--n_long',str(n_long)],
         check=True,capture_output=True)
-    A=load(d,'arr'); M=load(d,'size'); T=load(d,'ttft')
+    A=load(d,'arr'); M=load(d,'prompt_len'); T=load(d,'ttft')
     ks=sorted(T, key=lambda k:(A[k],k))
     S=lambda m: a*m+b*m*m/2
     Sup=lambda m: S(m)+c_it*(1+m/B)

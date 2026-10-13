@@ -41,30 +41,43 @@ fn main() {
   let keep_cache = args.number("keep_cache", 1);          // 0: drop a finished session's blocks
 
   pool live { cap cap; }
-  pool slots { cap B; admit via engine; }
-  pool kv {
-    cap C;
+  device gpu { kv cap C; }
+  // an iteration of ntok tokens and attention attn, admitting nadm turns,
+  // takes max(ω, a ntok + c0 nadm + b attn)
+  engine vllm on gpu {
+    slots cap B;
+    tokens cap max(running.decoding, floor(omega / a));   // whole tokens
+    state newcomers = 0;   // the turns this iteration admitted
+    scheduler {
+      advance running;
+      admit waiting while (running.preempted == 0)
+        taking slots (1), kv (request.hit + min(request.known - request.hit, budget_left(vllm)))
+          reserve (request.known)
+        reuse (hm0)
+        cache (prompt + o - 1);
+      set newcomers = waiting.admitted;
+    }
+    worker {
+      forward (max(omega, a * batch.tokens + c0 * newcomers + b * batch.attention));
+    }
+  }
+  pool slots on vllm { queue fifo; }
+  pool kv on gpu {
     block bs;
     preempt lifo;
     evict by (policy == 5 ? 0 : waiting,
     policy == 0 ? size
     : policy == 1 ? (waiting ? 1 : p) * (a * size + b * size * size / 2) / size
     : policy == 2 ? (waiting ? 1 : p)
-    * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2) / size
+    * price(vllm, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2) / size
     : policy == 3 ? (waiting ? 1 : p)
-    * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2)
+    * price(vllm, c0 + a * nm + b * nm * (size + nm / 2), a * size + b * size * size / 2)
     / (size * (waiting ? 1 : Z))
     : policy == 4 ? (waiting ? 1 : p)
-    * price(engine, c0 + a * nm + b * nm * (size + nm / 2), a * bs + b * bs * (size - bs / 2))
+    * price(vllm, c0 + a * nm + b * nm * (size + nm / 2), a * bs + b * bs * (size - bs / 2))
     / (bs * (waiting ? 1 : Z))
     : last);
   }
-  stage engine : step {
-    budget max(decoders, floor(omega / a));   // whole tokens
-    cost max(omega, tokens * a + b * attention);
-    memory kv;
-  }
-  stage tool : delay;
 
   workload {
     arrive poisson(Lambda);
@@ -87,9 +100,9 @@ fn main() {
           turn;
           set K = prompt + o;
           set cold = 0;
-          branch (K > maxctx) { branch (keep_cache) { end; } else { drop kv; end; } }
-          run tool (cost(tool, ~exp(Z)));
-          branch with (p) { } else { branch (keep_cache) { end; } else { drop kv; end; } }
+          if (K > maxctx) { if (keep_cache) { end; } else { drop kv; end; } }
+          tool (~exp(Z));
+          if (~bernoulli(p)) { } else { if (keep_cache) { end; } else { drop kv; end; } }
         }
       }
     }
@@ -98,22 +111,14 @@ fn main() {
   server {
     set t0 = now;
     set prompt = K + n;
-    set hm0 = cold ? 0 : floor(min(K - 1, prompt - 1) / bs) * bs;
-    hold slots (cost(slots, 1)), kv (cost(kv, min(cachedin(kv), hm0)
-    + min(prompt - min(cachedin(kv), hm0), budget_left(engine))))
-    reserve (cost(kv, prompt))
-    reuse (cost(slots, kv, hm0)) {
-      set c = cached;
-      set m = prompt - c;
-      prefill on engine (ceil(c0 / a));
-      prefill on engine (m) growing kv;
-      observe ttft = now - t0;
-      branch (!cold) {
-        observe hit = c >= hm0;
-        observe reused = hm0 > 0 ? c / hm0 : 1;
-      }
-      decode on engine (o - 1) growing kv;
-    } cache (cost(slots, kv, prompt + o - 1));
+    set hm0 = cold ? 0 : floor(min(K - 1, prompt - 1), bs);
+    vllm (prompt, o);
+    set c = vllm.reused;
+    observe ttft = vllm.first - t0;
+    if (!cold) {
+      observe hit = c >= hm0;
+      observe reused = hm0 > 0 ? c / hm0 : 1;
+    }
     observe response = now - t0;
   }
 }

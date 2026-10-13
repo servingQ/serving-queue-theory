@@ -95,7 +95,12 @@ def test_finite_source_wait_matches_mva():
 STEP = """
 let a = 2e-5; let omega = 2e-4;
 fn main() {{
-stage engine : step {{ budget max(decoders, omega / a); cost max(omega, tokens * a); }}
+device gpu {{ }}
+engine replica on gpu {{
+  tokens cap max(running.decoding, omega / a);
+  scheduler {{ advance running; admit waiting while (running.preempted == 0); }}
+  worker {{ forward (max(omega, batch.tokens * a)); }}
+}}
 workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
 server {{ {work}; observe {obs} = now - t0; }}
 }}
@@ -105,7 +110,7 @@ server {{ {work}; observe {obs} = now - t0; }}
 def test_step_prefill_alone_is_md1():
     lam = 0.7
     r = serq.run(
-        source=STEP.format(lam=lam, work="prefill on engine (1 / a)", obs="response"),
+        source=STEP.format(lam=lam, work="replica (1 / a, 1)", obs="response"),
         horizon=3000,
         warmup=300,
         seed=8,
@@ -115,13 +120,13 @@ def test_step_prefill_alone_is_md1():
 
 def test_step_decode_is_infinite_server_at_zero_context():
     r = serq.run(
-        source=STEP.format(lam=3.0, work="decode on engine (500)", obs="response"),
+        source=STEP.format(lam=3.0, work="replica (0, 500)", obs="response"),
         horizon=2000,
         warmup=200,
         seed=9,
     )
     assert abs(r.observe("response").mean - 0.1) < 1e-3
-    assert abs(r.stage("engine").mean_number - 0.3) < 0.02
+    assert abs(r.stage("replica").mean_number - 0.3) < 0.02
 
 
 def test_pd_tandem_capacity():

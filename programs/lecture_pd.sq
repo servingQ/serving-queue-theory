@@ -1,4 +1,4 @@
-// serQ v0.1.0: the analytical tandem of the unified lecture notes:
+// serQ v0.1.5: the analytical tandem of the unified lecture notes:
 // a turn waits for KV memory at the prefill instance, is prefilled one at a
 // time in arrival order, ships its KV over a link whose bandwidth concurrent
 // transfers share, waits for memory at the decode instance, decodes in a
@@ -41,7 +41,7 @@ fn main() {
       loop {
         turn;
         set K = T;
-        branch with (p) { tool Z; } else { end; }
+        if (~bernoulli(p)) { tool Z; } else { end; }
       }
     }
   }
@@ -53,7 +53,7 @@ fn main() {
       set H = cached >= kappa * K;
       set S = H ? a * n + b * n * (K + n / 2) : a * T + b * T * T / 2;
       observe miss = 1 - H;
-      prefill S;
+      run prefill (cost(prefill, S));
       // the first token at the prefill instance (L6:eq:ttft): memory wait,
       // queue wait and prefill work
       observe ttft = now - t0;
@@ -65,7 +65,7 @@ fn main() {
       // the first token a client sees only after the hand-over: the
       // transfer and the wait for decode memory are inside it
       observe ttft_client = now - t0;
-      decode (o * w);
+      run decode (cost(decode, o * w));
     }
     observe response = now - t0;
   }

@@ -8,19 +8,26 @@ from fmt import fmax
 from theory.dist import Dist
 
 
-def _init_rng(seed: int, serial: int) -> Rng:
-    """IR 11's init stream: SplitMix64(seed, serial, turn=0, kind=1).
+def _mix(x: int) -> int:
+    """One SplitMix64 step (serQ `src/engine/interp.rs::mix`)."""
+    mask = (1 << 64) - 1
+    x = (x + 0x9E37_79B9_7F4A_7C15) & mask
+    x = ((x ^ (x >> 30)) * 0xBF58_476D_1CE4_E5B9) & mask
+    x = ((x ^ (x >> 27)) * 0x94D0_49BB_1331_11EB) & mask
+    return x ^ (x >> 31)
 
-    serQ v0.1.3, src/engine/interp.rs::substream. Reproduce only the seed
+
+def _init_rng(seed: int, serial: int) -> Rng:
+    """A session's init stream: SplitMix64 over (seed, serial, turn=0, kind=1),
+    the seed mixed alone first.
+
+    serQ v0.1.5, src/engine/interp.rs::substream (#493 mixes the seed first,
+    so that seeds are independent replications). Reproduce only the seed
     derivation here; waiting times still come from Lindley's recursion.
     """
-    mask = (1 << 64) - 1
-    x = seed
+    x = _mix(seed)
     for v in (serial, 0, 1):
-        x = (x + 0x9E37_79B9_7F4A_7C15 + v) & mask
-        x = ((x ^ (x >> 30)) * 0xBF58_476D_1CE4_E5B9) & mask
-        x = ((x ^ (x >> 27)) * 0x94D0_49BB_1331_11EB) & mask
-        x ^= x >> 31
+        x = _mix(x ^ v)
     return Rng(x)
 
 
@@ -30,7 +37,7 @@ def lindley_waits(
     """Waiting times of a single-server FIFO queue by Lindley's recursion
     `W_{n+1} = max(0, W_n + S_n - A_{n+1})`, drawing from the streams serQ's
     `mg1.sq` uses: arrivals from `seed`, service from each session's init
-    stream (IR 11), with the first `warmup` of `warmup + customers` dropped.
+    stream (`_init_rng`), with the first `warmup` of `warmup + customers` dropped.
     An independent check of the event engine: for one server the two agree
     to rounding."""
     arr = Rng(seed)

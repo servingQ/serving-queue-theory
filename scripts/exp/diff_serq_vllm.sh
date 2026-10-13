@@ -4,7 +4,7 @@
 # N sessions of a trace, with a constant step cost so that both timelines
 # are identical if and only if the scheduling and caching decisions are.
 #
-#   bash scripts/exp/diff_serq_vllm.sh N BLOCKS SPACING [OUTDIR] [EXTRA serQ --set ...]
+#   bash scripts/exp/diff_serq_vllm.sh N BLOCKS SPACING [OUTDIR] [EXTRA serQ --name value ...]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 N=$1; BLOCKS=$2; SP=$3; D=${4:-data/exp/seq/diff}; shift 4 || shift $#
@@ -16,7 +16,7 @@ if [ "${COST:-const}" = real ]; then
   OARGS="--cost sum --c-step 0.013939 --d 4.1053e-5 --beta 1.3786e-7 --a 5.1527e-5 --b 4.0196e-9 --c0 0.02524"; RARGS=()
 else
   OARGS="--cost sum --c-step 0.03 --d 0 --beta 0 --a 0 --b 0 --c0 0"
-  RARGS=(--set c_it=0.03 --set d=0 --set e=0 --set a=0 --set b=0 --set c0=0)
+  RARGS=(--c_it 0.03 --d 0 --e 0 --a 0 --b 0 --c0 0)
 fi
 TRACE=${TRACE:-short_base}; FORCED=${FORCED:-}
 export HF_HOME=/mnt/shared_data/users/jinhwan.suk/.cache/huggingface VLLM_CACHE_ROOT=/mnt/shared_data/users/jinhwan.suk/.cache/vllm VLLM_PLUGINS=
@@ -24,8 +24,8 @@ mkdir -p "$D"
 timeout 1200 ~/vllm-rbln-dynkv/.venv/bin/python .serq/src/tools/vllm_replay_oracle.py \
   --trace data/exp/traces/$TRACE.jsonl $FORCED --spacing "$SP" --max-sessions "$N" --blocks "$BLOCKS" \
   $OARGS --out "$D/oracle.csv" 2>&1 | grep -v "^INFO\|WARNING\|Triton\|Model Runner\|SSM" | tail -2
-P=(.serq/src/examples/replay/vllm_replay.sq --horizon 6000 --warmup 0 --seed 1 --set N="$N" --set blocks="$BLOCKS" "${RARGS[@]}"
-   --set spacing="$SP" "$@" --trace .serq/src/examples/replay/data/$TRACE.csv)
+P=(.serq/src/examples/replay/vllm_replay.sq --horizon 6000 --warmup 0 --seed 1 --N "$N" --blocks "$BLOCKS" "${RARGS[@]}"
+   --spacing "$SP" "$@" --trace .serq/src/examples/replay/data/$TRACE.csv)
 .serq/bin/serq ir "${P[@]}" > "$D/program.ir.json"      # what ran, as IR
 .serq/bin/serq run "${P[@]}" --dump "$D/serq" > "$D/serq.txt"
 python3 - "$D" <<'EOF'
