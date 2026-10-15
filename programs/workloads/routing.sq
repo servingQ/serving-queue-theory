@@ -1,0 +1,42 @@
+// The sessions of `models/routing.sq`: Poisson sessions, a skewed initial
+// placement (`hot` of them on replica 0), a first prompt and appended
+// tokens by the laws below, and a tool call then a next turn with
+// probability p.
+use "std/args";
+
+let J = 4;             // the deployment's replicas
+let rate = args.number("rate", 0.9);      // sessions per second
+let hot = args.number("hot", 0.5);
+let p = args.number("p", 0.9);
+let Z = args.number("Z", 2.0);
+
+// the laws, by name (`--def new_tokens='~erlang(2, 500)'`)
+def initial_tokens() { ~uniform(5000, 15000) }
+def new_tokens() { ~exp(500) }
+def output_tokens() { ~exp(200) }
+def tool_time() { ~exp(Z) }
+
+stage tool : delay;
+
+workload {
+  arrive poisson(rate);
+  init {
+    set initial_home = ~bernoulli(hot) ? 0 : floor(~uniform(0, J));
+    set K = 0;
+    set first = 1;
+  }
+  turn {
+    set n = first ? initial_tokens() : new_tokens();
+    set o = output_tokens();
+  }
+  send (n, o, K, first, initial_home);
+  // the conversation: a request per turn, then a tool call or the end
+  session {
+    loop {
+      turn;
+      set first = 0;
+      set K = K + n + o;
+      if (~bernoulli(p)) { run tool (cost(tool, tool_time())); } else { end; }
+    }
+  }
+}

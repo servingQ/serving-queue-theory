@@ -918,6 +918,31 @@ def _fmax(xs):
     return fold_max(xs)
 
 
+def _cells(n: int) -> str:
+    return "cell" if n == 1 else "cells"
+
+
+def _pk_claim(n_fin: int, n_inf: int) -> str:
+    """§4.2's sentence on the PK wait against the observed one, in the
+    variant the counts of bounded and unbounded cells call for."""
+    pk = r"The PK wait from the measured $\lambda$, $\E[S]$ and $\E[S^2]$"
+    must = r"as Proposition~\ref{prop:finite} says it must be for exponential work"
+    ratio = r"\simTracePkRatioMin{} to \simTracePkRatioMax{} times"
+    if n_inf == 0:
+        return f"{pk} is above the observed wait in every cell, by {ratio}, {must}."
+    if n_fin == 0:
+        return (
+            f"In every cell a seed's prefill load reaches one, so {pk[0].lower()}{pk[1:]}"
+            " has no bound."
+        )
+    return (
+        f"{pk} is above the observed wait in every cell, {must}: by {ratio}"
+        rf" in the \simTracePkFiniteCells{{}} {_cells(n_fin)} whose prefill load stays below"
+        rf" one in every seed, and without bound in the other"
+        rf" \simTracePkUnboundedCells{{}}, where a seed's load reaches one."
+    )
+
+
 def macros(all_checks, open_rows, trace_rows, price_rows, offload_ok, offload_cells) -> str:
     passed = sum(1 for c in all_checks if c.passed)
     pd_check = next(c for c in all_checks if c.id == "pd_win_condition_decisions")
@@ -961,7 +986,12 @@ def macros(all_checks, open_rows, trace_rows, price_rows, offload_ok, offload_ce
     cmd("simOffloadOk", offload_ok)
     cmd("simOffloadCells", offload_cells)
     corpus = workload.weka()
-    ratio_ = [r.pk_wait.mean / r.wait.mean for r in trace_rows]
+    # PK bounds the wait only where every seed's measured prefill load stays
+    # below one; where a seed's load reaches one its PK wait, and so the mean
+    # over seeds, is infinite, and a ratio would read "inf"
+    bounded = [r for r in trace_rows if math.isfinite(r.pk_wait.mean)]
+    ratio_ = [r.pk_wait.mean / r.wait.mean for r in bounded]
+    assert all(x > 1.0 for x in ratio_), "the PK wait is below the observed wait in a cell"
     tight = [
         r for r in trace_rows
         if math.isfinite(r.kv) and r.cap == replay_vllm.trace_cap(corpus, r.kv, TRACE_CAP_FACTORS[0])
@@ -971,8 +1001,12 @@ def macros(all_checks, open_rows, trace_rows, price_rows, offload_ok, offload_ce
         if math.isfinite(r.kv) and r.cap == replay_vllm.trace_cap(corpus, r.kv, TRACE_CAP_FACTORS[1])
     ]  # fmt: skip
     open_ = [r for r in trace_rows if not math.isfinite(r.kv)]
-    cmd("simTracePkRatioMin", fixed(_fmin(ratio_), 0))
-    cmd("simTracePkRatioMax", fixed(_fmax(ratio_), 0))
+    cmd("simTracePkRatioMin", fixed(_fmin(ratio_), 0) if ratio_ else "--")
+    cmd("simTracePkRatioMax", fixed(_fmax(ratio_), 0) if ratio_ else "--")
+    n_fin, n_inf = len(bounded), len(trace_rows) - len(bounded)
+    cmd("simTracePkFiniteCells", n_fin)
+    cmd("simTracePkUnboundedCells", n_inf)
+    cmd("simTracePkClaim", _pk_claim(n_fin, n_inf))
     cmd("simTraceOpenCvMin", fixed(_fmin(r.cv2.mean for r in open_), 0))
     cmd("simTraceOpenCvMax", fixed(_fmax(r.cv2.mean for r in open_), 0))
     cmd("simTraceOpenTtftMin", fixed(_fmin(r.ttft.mean for r in open_), 0))

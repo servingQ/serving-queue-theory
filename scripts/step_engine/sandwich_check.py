@@ -3,12 +3,13 @@ import pathlib
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 SERQ=str(ROOT/'.serq/bin/serq')
 PROG=str(pathlib.Path(__file__).with_name('prefill_only.sq'))
+WORKLOAD=str(pathlib.Path(__file__).parent/'workloads'/'prefill_only.sq')  # programs/pairs.json
 c_it=0.004; a=5.1527e-5; b=4.0196e-9; B=512
 def load(d,n):
     return {int(r['session']):float(r['value']) for r in csv.DictReader(open(f'{d}/{n}.csv'))}
 def run(lam, p_long, n_short, n_long, horizon=3000, seed=1):
     d=os.path.join(tempfile.mkdtemp(prefix='sandwich-'), f'd_{lam}_{p_long}_{n_short}_{n_long}')
-    subprocess.run([SERQ,'run',PROG,'--dump',d,'--seed',str(seed),'--horizon',str(horizon),
+    subprocess.run([SERQ,'run',PROG,'--workload',WORKLOAD,'--dump',d,'--seed',str(seed),'--horizon',str(horizon),
         '--Lambda',str(lam),'--p_long',str(p_long),'--n_short',str(n_short),'--n_long',str(n_long)],
         check=True,capture_output=True)
     A=load(d,'arr'); M=load(d,'prompt_len'); T=load(d,'ttft')

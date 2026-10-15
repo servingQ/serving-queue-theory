@@ -1,0 +1,9 @@
+// `jobs` requests that circulate for ever (`models/pd_tandem.sq` runs it:
+// its server loops), a saturated load.
+use "std/args";
+
+let jobs = args.number("jobs", 320);
+
+workload {
+  arrive closed(jobs);
+}

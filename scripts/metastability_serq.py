@@ -20,6 +20,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 PROG = ROOT / 'lectures/queueing-serving/programs/metastable.sq'
+WORKLOAD = ROOT / 'lectures/queueing-serving/programs/workloads/metastable.sq'  # programs/pairs.json
 SEEDS = [1, 2, 3, 4, 5]
 WARM = dict(Zwarm=200, twarm=300)   # a light first 300 s fills the cache with hits
 
@@ -28,7 +29,7 @@ def run(serq, seed, horizon, win, report=False, **settings):
     """Full-reuse hit rate and mean TTFT in windows of `win` seconds (and the
     run's JSON report if asked)."""
     with tempfile.TemporaryDirectory() as d:
-        cmd = [str(serq), 'run', str(PROG), '--seed', str(seed), '--horizon', str(horizon),
+        cmd = [str(serq), 'run', str(PROG), '--workload', str(WORKLOAD), '--seed', str(seed), '--horizon', str(horizon),
                '--warmup', '0', '--dump', d, '--json']
         for k, v in settings.items():
             cmd += [f'--{k}', str(v)]

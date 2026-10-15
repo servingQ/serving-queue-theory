@@ -1,15 +1,14 @@
-// serQ v0.1.5: the analytical tandem of the unified lecture notes:
+// serQ v0.1.6: the analytical tandem of the unified lecture notes:
 // a turn waits for KV memory at the prefill instance, is prefilled one at a
 // time in arrival order, ships its KV over a link whose bandwidth concurrent
 // transfers share, waits for memory at the decode instance, decodes in a
 // batch that shares the instance's throughput, and after a tool call
 // comes back for the next turn, a hit if its prefix is still cached.
+// The sessions are `workloads/lecture_pd.sq`.
 use "std/args";
 
 fn main() {
-  let Lambda = args.number("Lambda", 0.5);     // sessions per second
-  let p = args.number("p", 0.8);          // continue after a turn
-  let kappa = args.number("kappa", 1.0);      // memory units per context token
+  let kappa = args.number("kappa", 1);        // memory units per context token (whole)
   let MP = args.number("MP", 4e5);         // prefill-instance pool
   let MD = args.number("MD", 4e5);         // decode-instance pool
   let a = args.number("a", 2e-5);         // prefill (s/token)
@@ -25,28 +24,8 @@ fn main() {
   stage prefill : fifo;
   stage link : ps(1);
   stage decode : ps(min(present, phi_cap));
-  stage tool : delay;
 
-  workload {
-    arrive poisson(Lambda);
-    init { set K = 0; }
-    turn {
-      // the next turn's new tokens contain the previous output (n' >= o)
-      set n = K == 0 ? ~uniform(2000, 6000) : o + ~exp(500);
-      set o = ~exp(200);
-      set Z = ~exp(3);
-      set T = K + n;
-    }
-    session {
-      loop {
-        turn;
-        set K = T;
-        if (~bernoulli(p)) { tool Z; } else { end; }
-      }
-    }
-  }
-
-  server {
+  server (K, n, o, T) {
     set t0 = now;
     hold memP (cost(memP, kappa * T)) {
       // the hit indicator is decided at admission: the cached memory covers the prefix

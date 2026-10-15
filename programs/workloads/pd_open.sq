@@ -1,0 +1,9 @@
+// Poisson requests at rate Lambda (`models/pd_open.sq` runs it); the
+// server draws each request's work.
+use "std/args";
+
+let Lambda = args.number("Lambda", 1.0);
+
+workload {
+  arrive poisson(Lambda);
+}

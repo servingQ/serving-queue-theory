@@ -14,6 +14,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROGRAMS = ROOT / 'lectures/queueing-serving/programs'
+# a program is the deployment; its workload is a file of its own, given when
+# it runs (serQ v0.1.6): programs/pairs.json pairs them
+PAIRS = json.loads((ROOT / 'programs/pairs.json').read_text())
+
+
+def workload(path):
+    """`--workload W` for a deployment of this repository (none for a baseline's file)."""
+    key = str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else None
+    return ['--workload', str(ROOT / PAIRS[key])] if key in PAIRS else []
 
 
 def run(binary, path, seed, settings=(), *, horizon=None, warmup=None):
@@ -21,7 +30,7 @@ def run(binary, path, seed, settings=(), *, horizon=None, warmup=None):
         execution = json.loads((ROOT / 'programs/executions.json').read_text())[str(path.relative_to(ROOT))]
         horizon = execution['horizon'] if horizon is None else horizon
         warmup = execution.get('warmup', 0) if warmup is None else warmup
-    cmd = [str(binary), 'run', str(path), '--seed', str(seed), '--json']
+    cmd = [str(binary), 'run', str(path), *workload(path), '--seed', str(seed), '--json']
     if horizon is not None:
         cmd += ['--horizon', str(horizon)]
     if warmup is not None:
@@ -71,13 +80,14 @@ def main():
     ap.add_argument('--out', type=Path, default=ROOT / 'research/lecture-results.json')
     args = ap.parse_args()
     assert bool(args.baseline) == bool(args.baseline_source)
-    ir = json.loads(subprocess.check_output([str(args.serq), 'ir', str(PROGRAMS / 'mg1.sq'), '--horizon', '250000', '--warmup', '25000'], text=True))
-    assert ir['version'] == 13, f"expected IR v13, got {ir['version']}"
+    mg1 = PROGRAMS / 'mg1.sq'
+    ir = json.loads(subprocess.check_output([str(args.serq), 'ir', str(mg1), *workload(mg1), '--horizon', '250000', '--warmup', '25000'], text=True))
+    assert ir['version'] == 14, f"expected IR v14, got {ir['version']}"
     checks, comparisons = [], []
     for path in PROGRAMS.glob('*.sq'):
         if path.name.endswith('library.sq'):
             continue
-        subprocess.run([str(args.serq), 'check', str(path)], check=True, capture_output=True)
+        subprocess.run([str(args.serq), 'check', str(path), *workload(path)], check=True, capture_output=True)
     # PK: deterministic, exponential, Erlang-4, H2 at common mean 1.
     for law, m2 in [(0, 1), (1, 2), (2, 1.25), (3, 5)]:
         r = run(args.serq, PROGRAMS / 'mg1.sq', 3, [f'law={law}', 'cv2=4'])

@@ -7,9 +7,13 @@ metastability (chapter 7; its tables, figures and macros, `metastability-*.tex` 
 do not edit them; `programs/metastable.sq` is its serQ program),
 and the executable examples (appendix A, `release-check.tex`). `notes.tex` is the sole lecture PDF entry point.
 
-The executable examples target **serQ v0.1.5**, IR v13,
-commit `8a578475b9447749ab8962c413175854886a19bc` (the release pinned in
+The executable examples target **serQ v0.1.6**, IR v14,
+commit `5d7d984a39528b67062ace7a71a6fc17efbbc21d` (the release pinned in
 `validation/pyproject.toml`; `make lecture-results` runs them with its CLI).
+Since v0.1.6 a program is the deployment and its workload a file of its own,
+given when it runs: `programs/workloads/NAME.sq` here, paired in the
+repository's `programs/pairs.json`
+(`serq run programs/vllm.sq --workload programs/workloads/vllm.sq`).
 `vllm.sq`, `mg1.sq`, `ps.sq`, `closed.sq`, and
 `pd_tandem.sq` were copied from v0.1.0's examples/library; since serQ v0.1.5
 reads no program file with `use`, `vllm.sq` and `metastable.sq` each write

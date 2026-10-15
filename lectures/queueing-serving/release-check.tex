@@ -1,9 +1,10 @@
 \appendix
 \chapter{Executable Examples in serQ}\label{app:serq}
 
-The examples accompanying these notes are programs in serQ v0.1.5 (IR version 13,
-commit \texttt{8a57847}). A serQ program declares memory pools, service stages, a
-workload and a server block. Running it simulates the deployment; it does not measure
+The examples accompanying these notes are programs in serQ v0.1.6 (IR version 14,
+commit \texttt{5d7d984}). A serQ program is a deployment, which declares memory pools,
+service stages and a server block, run under a workload, a file of its own (in
+\texttt{programs/workloads/}) that declares the sessions and what each request sends. Running it simulates the deployment; it does not measure
 a real serving system. Each stage kind is one of the queues of the notes.
 \begin{center}\small
 \begin{tabular}{@{}lll@{}}

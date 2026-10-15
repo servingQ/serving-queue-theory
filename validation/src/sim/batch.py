@@ -101,7 +101,7 @@ def _ci_and_p99(xs: np.ndarray) -> tuple[Estimate, float]:
 
 
 def _replace(src: str, a: str, b: str) -> str:
-    assert a in src, f"batch_sampled.sq lacks {a}"
+    assert a in src, f"batch_sampled.sq or its workload lacks {a}"
     return src.replace(a, b, 1)
 
 
@@ -109,9 +109,10 @@ def simulate(cfg: BatchConfig) -> BatchReport:
     """Run the sampled-work session model in serQ."""
     assert len(cfg.classes) == 1, "sampled-work check has one class"
     cls = cfg.classes[0]
-    src = (serq.PROGRAMS / "batch_sampled.sq").read_text()
+    path = serq.PROGRAMS / "batch_sampled.sq"
+    src, workload = path.read_text(), serq.workload_path(path).read_text()
     if isinstance(cfg.population, Closed):
-        src = _replace(src, "arrive poisson(Lambda);", "arrive closed(N);")
+        workload = _replace(workload, "arrive poisson(Lambda);", "arrive closed(N);")
     defs = {
         "prefill_work": laws.expr(cfg.prefill),
         "decode_work": laws.expr(cfg.decode),
@@ -143,7 +144,13 @@ def simulate(cfg: BatchConfig) -> BatchReport:
         "service_rate": rate,
     }
     r = serq.run(
-        source=src, sets=sets, defs=defs, seed=cfg.seed, warmup=cfg.warmup, horizon=cfg.horizon
+        source=src,
+        workload_source=workload,
+        sets=sets,
+        defs=defs,
+        seed=cfg.seed,
+        warmup=cfg.warmup,
+        horizon=cfg.horizon,
     )
     response, ttft = r.observe("response"), r.observe("ttft")
     responses, ttfts = _ordered(response), _ordered(ttft)

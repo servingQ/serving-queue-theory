@@ -68,10 +68,7 @@ hit/miss mixture supplies only
 \simTraceTightMixMin--\simTraceTightMixMax\,\% of the variance of
 follow-up prefill work. At the larger $N$ the replica thrashes (hit
 rate at most \simTraceLooseHitMax, mean TTFT above
-\simTraceLooseTtftMin\,s). The PK wait from the measured $\lambda$,
-$\E[S]$ and $\E[S^2]$ is above the observed wait in every cell, by
-\simTracePkRatioMin{} to \simTracePkRatioMax{} times, as
-Proposition~\ref{prop:finite} says it must for exponential work. For
+\simTraceLooseTtftMin\,s). \simTracePkClaim{} For
 the price itself, Table~\ref{tab:sim-trace-price} forces a share
 $\delta$ of follow-up turns to reuse nothing, as a nonce at the head of
 the prompt would, and compares the rise of

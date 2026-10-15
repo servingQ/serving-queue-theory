@@ -1,0 +1,31 @@
+// Sessions of sampled work (`batch_sampled.sq` runs it). The adapter
+// (sim.batch) gives the defs their bodies (`defs=`) and splices
+// `arrive closed(N);` for a closed population.
+use "std/args";
+
+let Lambda = args.number("Lambda", 0.7);
+let N = args.number("N", 16);
+let p = args.number("p", 0);
+
+// the work of a turn and the tool time
+def prefill_work() { ~exp(1) }
+def decode_work() { ~det(0) }
+def tool_time() { ~det(0) }
+
+stage tool : delay;
+
+workload {
+  arrive poisson(Lambda);
+  turn {
+    set prefill = prefill_work();
+    set decode = decode_work();
+  }
+  send (prefill, decode);
+  session {
+    loop {
+      turn;
+      run tool (cost(tool, tool_time()));
+      if (~bernoulli(p)) { } else { end; }
+    }
+  }
+}

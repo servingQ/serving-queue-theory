@@ -1,4 +1,4 @@
-// Adapted from serQ v0.1.4 (a99dd649), ported to v0.1.5: explicit SQT experiment inputs.
+// Adapted from serQ v0.1.4 (a99dd649), ported to v0.1.6: explicit SQT experiment inputs.
 // Routing follow-up turns across replicas (paper §3.2, `prop:routing`;
 // `libqueuingsim::models::routing`): J FIFO replicas with unbounded KV; a
 // session's KV lives on the replica that served its last turn. New sessions
@@ -10,57 +10,25 @@
 //          2 least loaded, fetch over the link when cheaper than a recompute
 //          3 myopic: min_j W_j + S_j
 //          4 lookahead: min_j W_j + S_j with migrate-or-recompute off home
+// The sessions are `../workloads/routing.sq`.
 
 use "std/args";
 
 fn main() {
   let J = 4;
-  let rate = args.number("rate", 0.9);      // sessions per second
-  let hot = args.number("hot", 0.5);
   let policy = args.number("policy", 0);
   let s0 = args.number("s0", 0.005);
   let a = args.number("a", 2e-5);
   let b = args.number("b", 2e-9);
   let d = args.number("d", 2e-4);
-  let p = args.number("p", 0.9);
-  let Z = args.number("Z", 2.0);
   let bw = args.number("bw", 2e6);        // migration link, tokens/s
   let dv = args.number("dv", 0.0);        // decode KV-read cost, seconds/token^2
 
-  // the laws, by name (`--def new_tokens='~erlang(2, 500)'`)
-  def initial_tokens() { ~uniform(5000, 15000) }
-  def new_tokens() { ~exp(500) }
-  def output_tokens() { ~exp(200) }
-  def tool_time() { ~exp(Z) }
-
   stage rep[4] : fifo;
   stage link : fifo;
-  stage tool : delay;
-
-  workload {
-    arrive poisson(rate);
-    init {
-      set initial_home = ~bernoulli(hot) ? 0 : floor(~uniform(0, J));
-      set K = 0;
-      set first = 1;
-    }
-    turn {
-      set n = first ? initial_tokens() : new_tokens();
-      set o = output_tokens();
-    }
-    // the conversation: a request per turn, then a tool call or the end
-    session {
-      loop {
-        turn;
-        set first = 0;
-        set K = K + n + o;
-        if (~bernoulli(p)) { run tool (cost(tool, tool_time())); } else { end; }
-      }
-    }
-  }
 
   // the router and the replicas: where a turn is served, and the KV's new home
-  server {
+  server (n, o, K, first, initial_home) {
     set t0 = now;
     // the service time on a hit, and on a miss
     set S_hit = s0 + a * n + b * n * (K + n / 2) + o * (d + dv * (K + n));

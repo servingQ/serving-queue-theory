@@ -196,7 +196,7 @@ def _class_expr(cfg: AgenticConfig, law) -> str:
 
 
 def _replace(src: str, a: str, b: str) -> str:
-    assert a in src, f"agentic_model.sq lacks {a}"
+    assert a in src, f"agentic_model.sq or its workload lacks {a}"
     return src.replace(a, b, 1)
 
 
@@ -205,11 +205,12 @@ _HIT = "(s0 + a * mean_new + b * mean_new * (size + mean_new / 2) + mean_out * (
 _TRANSFER = "(work(link) + size / bw)"
 
 
-def _program(cfg: AgenticConfig) -> tuple[str, dict[str, str]]:
-    """`agentic_model.sq`, and the bodies of its defs for `cfg`."""
-    src = (serq.PROGRAMS / "agentic_model.sq").read_text()
+def _program(cfg: AgenticConfig) -> tuple[str, str, dict[str, str]]:
+    """`agentic_model.sq`, its workload, and the bodies of their defs for `cfg`."""
+    path = serq.PROGRAMS / "agentic_model.sq"
+    src, workload = path.read_text(), serq.workload_path(path).read_text()
     if isinstance(cfg.population, Open):
-        src = _replace(src, "arrive closed(N);", "arrive poisson(Lambda);")
+        workload = _replace(workload, "arrive closed(N);", "arrive poisson(Lambda);")
     weights = [c.weight for c in cfg.classes]
     wsum = ssum(weights)
     class_law = (
@@ -272,7 +273,7 @@ def _program(cfg: AgenticConfig) -> tuple[str, dict[str, str]]:
     else:
         fetch = "work(link) + K / bw < price(svc, s0 + a * mean_new + b * mean_new * (K + mean_new / 2) + mean_out * (d + dv * (K + mean_new)), a * K + b * K * K / 2)"
     defs["fetches"] = fetch
-    return src, defs
+    return src, workload, defs
 
 
 def simulate(cfg: AgenticConfig) -> AgenticReport:
@@ -296,9 +297,15 @@ def simulate(cfg: AgenticConfig) -> AgenticReport:
         "bw": cfg.tier_bandwidth,
         "blocking": 1.0 if cfg.fetch == FetchMode.Blocking else 0.0,
     }
-    src, defs = _program(cfg)
+    src, workload, defs = _program(cfg)
     r = serq.run(
-        source=src, sets=sets, defs=defs, seed=cfg.seed, warmup=cfg.warmup, horizon=cfg.horizon
+        source=src,
+        workload_source=workload,
+        sets=sets,
+        defs=defs,
+        seed=cfg.seed,
+        warmup=cfg.warmup,
+        horizon=cfg.horizon,
     )
 
     def values(name):

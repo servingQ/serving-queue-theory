@@ -11,7 +11,9 @@
 // append Exp(800) per turn; documents resume with p = 0.3 after Exp(2 s),
 // start from 15-30k tokens and append Exp(500); every turn decodes
 // Exp(300) tokens. The different tool times let the byte-second price and
-// the per-token price order the two classes differently.
+// the per-token price order the two classes differently. The sessions are
+// `workloads/open_vllm.sq`; a request carries its class's p, Z and nm,
+// which the priced keys read, and whether it is the session's last.
 //
 // Eviction (`policy`), in 16-token blocks from the tail of a context,
 // sessions in a tool call before waiting ones except under LRU, with
@@ -27,20 +29,16 @@
 use "std/args";
 
 fn main() {
-  let Lambda = args.number("Lambda", 0.02);     // sessions per second
-  let cap = args.number("cap", 24);          // live sessions (entry queue beyond)
   let B = args.number("B", 8);             // batch cap
   let C = args.number("C", 6e5);           // KV pool, tokens
-  let maxctx = args.number("maxctx", 0.5 * C);  // a session whose context passes this ends
   let bs = args.number("bs", 16);           // block size (tokens)
   let c0 = args.number("c0", 0.044);        // s per request (prefill overhead)
   let a = args.number("a", 1.94e-4);       // s per prefill token
   let b = args.number("b", 6.51e-9);       // s per prefill token per context token
   let omega = args.number("omega", 0.057);     // s per decode iteration
   let policy = args.number("policy", 3);
-  let keep_cache = args.number("keep_cache", 1);          // 0: drop a finished session's blocks
+  let keep_cache = args.number("keep_cache", 1);          // 0: drop a finished session's blocks (the end known)
 
-  pool live { cap cap; }
   device gpu { kv cap C; }
   // an iteration of ntok tokens and attention attn, admitting nadm turns,
   // takes max(ω, a ntok + c0 nadm + b attn)
@@ -79,36 +77,7 @@ fn main() {
     : last);
   }
 
-  workload {
-    arrive poisson(Lambda);
-    init {
-      set doc = ~bernoulli(0.5);          // class: 0 agent, 1 document
-      set p = doc ? 0.3 : 0.95;
-      set Z = doc ? 2 : 6;
-      set nm = doc ? 500 : 800;           // mean append (the price's S^hit)
-    }
-    session {
-      set t_arr = now;
-      hold live (cost(live, 1)) {
-        observe entry_wait = now - t_arr;
-        set K = 0;
-        set cold = 1;
-        loop {
-          set n = cold ? ceil(doc ? ~uniform(15000, 30000) : ~uniform(4000, 8000))
-          : ceil(doc ? ~exp(500) : ~exp(800));
-          set o = ceil(~exp(300));
-          turn;
-          set K = prompt + o;
-          set cold = 0;
-          if (K > maxctx) { if (keep_cache) { end; } else { drop kv; end; } }
-          tool (~exp(Z));
-          if (~bernoulli(p)) { } else { if (keep_cache) { end; } else { drop kv; end; } }
-        }
-      }
-    }
-  }
-
-  server {
+  server (K, n, o, cold, p, Z, nm, final) {
     set t0 = now;
     set prompt = K + n;
     set hm0 = cold ? 0 : floor(min(K - 1, prompt - 1), bs);
@@ -120,5 +89,6 @@ fn main() {
       observe reused = hm0 > 0 ? c / hm0 : 1;
     }
     observe response = now - t0;
+    if (final && keep_cache == 0) { drop kv; }
   }
 }
