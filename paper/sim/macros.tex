@@ -16,7 +16,10 @@
 \newcommand{\simOffloadOk}{6}
 \newcommand{\simOffloadCells}{6}
 \newcommand{\simTracePkRatioMin}{7}
-\newcommand{\simTracePkRatioMax}{inf}
+\newcommand{\simTracePkRatioMax}{15}
+\newcommand{\simTracePkFiniteCells}{6}
+\newcommand{\simTracePkUnboundedCells}{2}
+\newcommand{\simTracePkClaim}{The PK wait from the measured $\lambda$, $\E[S]$ and $\E[S^2]$ is above the observed wait in every cell, as Proposition~\ref{prop:finite} says it must be for exponential work: by \simTracePkRatioMin{} to \simTracePkRatioMax{} times in the \simTracePkFiniteCells{} cells whose prefill load stays below one in every seed, and without bound in the other \simTracePkUnboundedCells{}, where a seed's load reaches one.}
 \newcommand{\simTraceOpenCvMin}{27}
 \newcommand{\simTraceOpenCvMax}{38}
 \newcommand{\simTraceOpenTtftMin}{63}

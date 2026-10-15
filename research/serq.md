@@ -188,7 +188,14 @@ load reaches 1, so the PK mean over seeds is infinite, and
 `paper/simulation.tex` would read "7 to inf times". That is a property of
 the v0.1.5 sample paths (the parent commit's tables regenerated at v0.1.5
 read the same), not of this migration; the sentence needs the generator to
-report the finite cells, which is left for a separate change.
+report the finite cells. The commit after the migration does that
+(`fix(report)`): the ratio is over the cells whose load stays below one in
+every seed, the macros `\simTracePkFiniteCells` (6) and
+`\simTracePkUnboundedCells` (2) count them, and the generator writes the
+sentence (`\simTracePkClaim`) in the variant the counts call for, so the
+paper reads "by 7 to 15 times in the 6 cells whose prefill load stays below
+one in every seed, and without bound in the other 2", where it would have
+read "by 7 to inf times". No other macro or table moved.
 
 Why did it happen? The request interface and the paired file make explicit
 what the programs here left implicit: which attributes a request carries
