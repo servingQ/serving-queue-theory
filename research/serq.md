@@ -24,27 +24,36 @@ proves its queueing results from it, and uses one pinned serQ release:
 | `lean/lakefile.toml` (`[[require]] Serq`) | serQ's Lean package at a pinned commit: `Serq/Core` (syntax, pool semantics, invariant), `Serq/Exec` (executable semantics, ℕ step clock), `Serq/Serve` (serving order, cited in §2.2), `Serq/Oracle` (the vLLM scenarios as theorems, generated in serQ from `tools/oracle/*.ir.json`) | serQ `lean/`; its own `make lean` builds and audits it |
 | `lean/ServingQueueTheory/Deployments.lean` | the paper's two replicas as serQ programs | `Serq.Core` |
 | `validation/` | the validation package: every simulation of the paper as a serQ program (`src/sim/`), checked against closed forms that never import serQ (`src/theory/`); `tests/test_serq_models.py` checks serQ programs against closed forms | pyserq (PyPI, the pinned release), `.serq/src/examples` |
+| `programs/pairs.json`, `programs/workloads/` (and the lecture programs' `workloads/`) | each program is a deployment; its workload is a file of its own, given when it runs, and `pairs.json` pairs them as serQ's `examples/pairs.json` does its examples | the paired-file form (`--workload`, pyserq `workload=`/`workload_source=`) |
 | `programs/replay_vllm.sq`, `validation/src/sim/replay_vllm.py` | §4.2's vLLM-rule replay; `scripts/exp/serq_replay42.py` runs LRU and finished-session ablations (`research/serq-replay42.md`) | pyserq; `.serq/bin/serq` for the ablations |
 | `scripts/exp/*serq*`, `diff_serq_vllm.sh`, `first_divergence.sh` | testbed comparisons and calibration; each run passes the trace with `--trace` and records what ran as IR (`program.ir.json`) | `.serq/bin/serq`, `.serq/src/examples`, `.serq/src/tools` |
 
-The pin is `v0.1.5` under `[tool.serq]` in `validation/pyproject.toml`, IR 13, and its
-pyserq, `pyserq==0.1.5` from PyPI, is the validation package's engine:
+The pin is `v0.1.6` under `[tool.serq]` in `validation/pyproject.toml`, IR 14, and its
+pyserq, `pyserq==0.1.6` from PyPI, is the validation package's engine:
 `tests/test_units.py` holds pyserq's version equal to the checkout's
 `[workspace.package] version` in `.serq/src/Cargo.toml` and to the
 `pyserq==` dependency, and, when a tag is pinned, the tag to `v{version}`.
 `sim/serq.py` uses pyserq's
-report objects and adds only numpy arrays of the samples,
+report objects and adds only numpy arrays of the samples and the pairing:
+`run(path)` runs the workload `programs/pairs.json` gives the deployment,
+unless the caller passes `workload=` or `workload_source=`;
 `sim/workload.py` reads a trace with `pyserq.read_trace`, and `theory`
 draws from `pyserq.Rng` (rand 0.9's `StdRng`). `agentic_model.sq` and
 `batch_sampled.sq` name their laws, class parameters and policy keys as
 expression `def`s, which the adapters give bodies with `defs=` (`--def`);
-the IR is the one the spliced text had. serQ's own examples do the same
+the IR is the one the spliced text had. Since v0.1.6 `sim.serq.run` splices
+the bodies into the text itself (`_inline_defs`, a stopgap): in a paired
+program serQ renames each file's names apart and does not rename a `--def`
+body, so a body that reads a `let` (`a * size`) does not link ("unknown
+name `a`"). serQ's own examples do the same
 (#192): `pd_tandem` and `pd_open` name `prefill_work`, `decode_work`,
 `kv_tokens`, `routing` the four session laws, and `mg1` its `service` law and
 `servers`. SQT owns configurable copies in `programs/models/`; their declared
 `args.number` inputs, rather than arbitrary constants, are bound by `sets=`. The one splice left is `mg1`'s
 `arrive poisson(lam)` → `arrive renewal(...)`, which changes the kind of the
-arrival declaration. IR 10 makes a hold's `cache` clause what
+arrival declaration; since v0.1.6 it is made in the workload's text
+(`workload_source=`), as are `agentic_model`'s and `batch_sampled`'s
+`arrive closed(N)` / `arrive poisson(Lambda)`. IR 10 makes a hold's `cache` clause what
 consumes the session's own cached prefix (serQ #234: a hold without it
 leaves the entry where it is, so a reservation written around the
 request's hold on the same pool no longer costs it its hit; `cache (0)` is
@@ -61,6 +70,140 @@ and renewal workloads outside its explicit-session fragment. `scripts/fetch_serq
 `.serq/src` and installs its CLI into `.serq/bin/serq` (gitignored); `uv sync` in
 `validation/` installs pyserq from PyPI, so the validation package needs no
 Rust (the CLI, for `scripts/exp`, still does).
+
+## Migration to v0.1.6 (IR 14)
+
+Python, CLI and Lean pin `v0.1.6`, commit
+`5d7d984a39528b67062ace7a71a6fc17efbbc21d` (2026-10-15), `pyserq==0.1.6`
+from PyPI, Lean `rev = "v0.1.6"`. `lean/` needed no change: `make lean`
+builds against the new `Serq` and audits 163 theorems with the standard
+axioms only, and the pinned commit's interpreter and oracle IR are the
+release's.
+
+What changed in serQ, and what it changed here:
+
+- **A program is the deployment; the workload is a file of its own**, given
+  when it runs (`serq run D --workload W`, pyserq `compile(path,
+  workload=…)` or `workload_source=`; serQ `docs/design/paired-workload.md`).
+  A `workload` in `fn main` and a server run with no workload are refused.
+  Every one of the 24 programs here is split. The layout mirrors serQ's
+  (`examples/workloads/`, `examples/pairs.json`): the workloads of
+  `programs/*.sq` and `programs/models/*.sq` are `programs/workloads/NAME.sq`,
+  those of the lecture programs `lectures/queueing-serving/programs/workloads/`,
+  that of `scripts/step_engine/prefill_only.sq` `scripts/step_engine/workloads/`,
+  and `programs/pairs.json` maps each deployment (path from the repository
+  root) to its workload. `sim.serq.run(path)` reads it; the lecture checker,
+  `metastability_serq.py`, `sandwich_check.py` and `serq_replay42.py` pass
+  `--workload`; the scripts that run serQ's own `examples/replay/vllm_replay.sq`
+  (`diff_serq_vllm.sh`, `first_divergence.sh`, `calibrate_serq.py`,
+  `serq_vs_vllm.py`) take its workload from `.serq/src/examples/pairs.json`.
+  The text splices of the adapters (`mg1`'s renewal arrival, `agentic_model`'s
+  and `batch_sampled`'s arrival kind) moved to the workload's text.
+- **The server's request interface** (serQ `docs/design/request-interface.md`):
+  `server (P, hidden Q) reply (R)`, the workload's `send (…)` and `reply.R`.
+  The server and the scheduler's expressions read only the parameters, the
+  workload only what it keeps and the reply. Every program sends its
+  attributes as they are (`send (K, n, o, cold)`), which keeps the IR; the
+  eviction keys of `open_vllm` and `agentic_model` read the class's `p`, `Z`,
+  `nm` (`p`, `tau`, `mean_new`, `mean_out`), now parameters. `hidden o` moved
+  into the signature (`pd_batching`, the lecture `vllm.sq`). Where the
+  session read what the server set (`prompt` in `open_vllm`, `replay_vllm`,
+  the lecture `vllm.sq`) it sums its own (`K + n + o`); `agentic_model`'s
+  session reads `reply.rejected`; `metastable.sq` sends its `K` (= `K0`),
+  since an input is declared in one file only.
+- **Each file reads its own names, and declares an input once.** A
+  workload's limit that defaulted to the deployment's pool (`maxctx`: `C / 2`
+  in `agentic`, `agentic_model`, `0.5 C` in `open_vllm`, `0.9 C` in
+  `replay_vllm`) is the workload's own input with the default's value; the
+  adapters that set `C` also set `maxctx` (they did in `sim.agentic`;
+  `sim.replay_vllm` and `serq_replay42.py` now pass `0.9 C`). A live-session
+  cap (`pool live`) is the workload's pool.
+- **A session's `drop kv` is the server's**: the workload sends `final`, and
+  the server `if (final) { drop kv; }`. See Numbers.
+- **`agg`**: `pd_batching`'s colocated engine `queue E[N] : decode` with a
+  local `decode (prompt)` is `: agg` (no IR change).
+- **Whole token counts** (serQ `docs/design/whole-tokens.md`): a KV pool's
+  units, `cache`/`reuse`/`prefix`, an engine request's input and output must
+  be provably whole. `agentic`, `agentic_model`, `lecture_pd` (both copies)
+  and the lecture `vllm.sq` drew real token counts; their draws are rounded
+  up, `ceil(…)` (the lecture `vllm.sq`'s output `ceil(~exp(200)) + 1`, which
+  runs the decode steps the fractional `~exp(200) + 1` ran). `open_vllm`,
+  `replay_vllm`, `metastable` and the step programs were whole already. The
+  inline step program of `tests/test_serq_models.py` writes
+  `floor(omega / a)` and `ceil(1 / a)` (`1 / a` is 49999.99999999999 in
+  floating point; its 5000 iterations are unchanged).
+- **IR 14**: a run's latency is its own wait, not a delay stage (#612). In
+  `pd_batching` with `x0 > 0` the `D.nic.latency` stage is gone and its wait
+  is in `D.nic`'s and `P.nic`'s; no observation moves.
+
+Numbers. Each split program was run old (v0.1.5 CLI, the old single file)
+against new (v0.1.6, the pair) with the same seed and inputs, `serq run
+--json`. Identical, field for field: `batch_sampled` (open and closed),
+`price_vllm`, `replay_vllm` (price and LRU keys, `keep_cache = 0`, `delta`),
+`open_vllm` (default), `programs/models/*` (`mg1` with a `--def` law and two
+servers, `pd_*` in both modes), the lecture `closed`, `mg1`, `ps`,
+`pd_tandem`, `price`, `metastable` (with a burst), and `prefill_only`.
+With the old file's draws rounded the same way, `agentic`, `agentic_model`,
+both `lecture_pd` and the lecture `vllm.sq` are identical too, apart from
+the drop below: the split, the signatures and the reordered draws move no
+sample path. What moves:
+
+- **Rounding** (by design; 10 seeds, the recorded executions). `lecture_pd`:
+  TTFT 0.042942 → 0.042975 s (+0.08 %), response 0.088284 → 0.088419 s
+  (+0.15 %), decode service 0.039935 → 0.040035 s (+0.25 %: `E[ceil(Exp(200))]`
+  is 200.5). Lecture `vllm.sq`: TTFT 0.015899 → 0.015923 s, response
+  0.062835 → 0.062871 s, hit 0.8930 → 0.8929, client TPOT 2.527e-4 →
+  2.507e-4 s. `agentic` (N = 16–48, C = 3e5, 4e5): within the seeds'
+  standard error (hit ±0.002, response ±1 %).
+- **A finished session's KV is dropped at the end of its last request,
+  before its last tool call**, where `agentic` and `agentic_model` dropped
+  it after (`open_vllm` with the end known likewise; `replay_vllm` and the
+  `!more` path of every program dropped right after the turn and do not
+  move). The workload draws the tool time and whether it goes on before the
+  request, in the order it drew them after, so the sample path is the
+  same; only the dead entry's lifetime moves. `agentic`, 10 seeds, horizon
+  5500: N = 16, C = 4e5, hit 0.679 → 0.729, response 5.47 → 4.83 s,
+  throughput 1.895 → 2.056 turn/s; N = 16, C = 3e5, hit 0.454 → 0.478; at
+  N ≥ 32 the hit rises by 0.002–0.006 and the response is unchanged within
+  noise; the evicted entries fall by about 10–18 % (the dead ones). `open_vllm`,
+  `keep_cache = 0`, Λ = 0.05, 8 seeds: hit 0.747 → 0.749, TTFT 41.55 →
+  41.24 s, within noise.
+
+`paper/sim/` is regenerated (`make tables`, `make figs`; Linux x86-64,
+Python 3.13.16). Against the same tables generated on this machine at
+v0.1.5 (the parent commit, pyserq 0.1.5), only the agentic tables and the
+end-known open-session cells move, by the drop above: `tab-closed`
+(N = 32: hit 0.50 → 0.52, work CV² 0.97 → 1.11; N = 16: hit 0.99 → 1.00),
+`tab-offload` (hit and response by at most 0.07), the non-starred rows of
+`tab-evict-dyn` and the rows of `tab-admission` (TTFT within ±0.4 s at
+Λ = 0.05, the bold ties reshuffle), and `\simEvictLruRatioMax` 1.9 → 1.8.
+Every other table and macro is identical to v0.1.5. The committed tables
+were last generated at v0.1.3 (macOS arm64; v0.1.4 and v0.1.5 did not
+regenerate them), so the diff against the parent commit also carries
+those releases' sample paths: e.g. `\simEvictLruRatioMin` 1.0 → 1.7,
+`\simEndKnownHit` 1.00 → 0.97, `\simEndUnknownHit` 0.59 → 0.54,
+`\simTracePkRatioMin` 4 → 7, and `\simTracePkRatioMax` 12 → `inf`: in two
+finite-pool trace cells (C = 4e6 cap 16, C = 2e6 cap 8) a seed's prefill
+load reaches 1, so the PK mean over seeds is infinite, and
+`paper/simulation.tex` would read "7 to inf times". That is a property of
+the v0.1.5 sample paths (the parent commit's tables regenerated at v0.1.5
+read the same), not of this migration; the sentence needs the generator to
+report the finite cells, which is left for a separate change.
+
+Why did it happen? The request interface and the paired file make explicit
+what the programs here left implicit: which attributes a request carries
+and which side owns a pool. The one change of model is the drop: a
+deployment's KV is the server's to drop, and the server knows the session
+ended only when its last request says so. The old timing, a dead entry
+kept through a last tool call, is not expressible without a request after
+that call; the validation package's rule ("frees a finished session's
+KV") holds either way. The rounding is serQ's whole-token check finding
+fractional counts the programs drew; the ceilings are the rounding the
+engine applied to a fractional output's last token anyway.
+
+The `--def` stopgap (`sim.serq._inline_defs`) is the one place this
+repository works around v0.1.6; the change it waits for is serQ renaming a
+`--def` body with its def's file in a pair.
 
 ## Migration to v0.1.5 (IR 13)
 
@@ -265,7 +408,7 @@ historical.
    run `cd lean && lake update Serq`. The Lean pin may run ahead of the
    release only in `lean/` and docs: `scripts/check_lean.sh` fails if the
    pinned commit's `src/` or `tools/oracle/` differs from the release tag.
-   Today all three pins are the release v0.1.5 (`rev = "v0.1.5"`). The oracle theorems are
+   Today all three pins are the release v0.1.6 (`rev = "v0.1.6"`). The oracle theorems are
    regenerated in serQ (`scripts/gen_lean_oracle.py`, checked by its
    `make lean`), not here.
 
