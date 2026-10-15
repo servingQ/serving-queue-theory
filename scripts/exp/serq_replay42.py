@@ -23,6 +23,13 @@ from concurrent.futures import ProcessPoolExecutor
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 SERQ = os.path.join(ROOT, ".serq", "bin", "serq")
+
+
+def workload(prog):
+    """The workload file a deployment runs (programs/pairs.json; serQ v0.1.6)."""
+    return json.load(open(os.path.join(ROOT, "programs", "pairs.json")))[prog]
+
+
 VARIANTS = [
     ("vllm", "programs/replay_vllm.sq", ["lru=0"]),
     ("vllm-lru", "programs/replay_vllm.sq", ["lru=1"]),
@@ -51,9 +58,10 @@ def read(d, name):
 def one(job):
     variant, prog, extra, cell, seed = job
     pool = float("inf") if cell["pool"] == "inf" else float(cell["pool"])
-    sets = [f"Lambda={cell['rate']}", f"cap={cell['cap']}", f"C={1e15 if math.isinf(pool) else pool}"] + extra
+    kv = 1e15 if math.isinf(pool) else pool
+    sets = [f"Lambda={cell['rate']}", f"cap={cell['cap']}", f"C={kv}", f"maxctx={0.9 * kv}"] + extra
     with tempfile.TemporaryDirectory() as d:
-        args = [SERQ, "run", os.path.join(ROOT, prog), "--seed", str(seed), "--horizon", "66000", "--warmup", "6000", "--json", "--dump", d]
+        args = [SERQ, "run", os.path.join(ROOT, prog), "--workload", os.path.join(ROOT, workload(prog)), "--seed", str(seed), "--horizon", "66000", "--warmup", "6000", "--json", "--dump", d]
         for s in sets:
             name, value = s.split("=", 1)
             args += [f"--{name}", value]

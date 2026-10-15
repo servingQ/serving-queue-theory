@@ -5,11 +5,10 @@
 // together, so a waiting turn's cached blocks are evictable while it waits.
 // The think time is Zwarm before twarm (a light preconditioning load that
 // fills the cache with hits), Zb inside the burst [t1, t1 + B), Z otherwise.
+// The sessions are `workloads/metastable.sq`.
 use "std/args";
 
 fn main() {
-  let N = args.number("N", 40);            // sessions
-  let K0 = args.number("K0", 16000);        // context per session (tokens)
   let blocks = args.number("blocks", 34000);    // num_gpu_blocks
   let bs = args.number("bs", 16);
   let Bt = args.number("Bt", 8192);         // max_num_batched_tokens
@@ -17,14 +16,6 @@ fn main() {
   let a = args.number("a", 2e-5);          // s per scheduled token
   let omega = args.number("omega", 2e-4);      // s per iteration
   let beta = args.number("beta", 2e-9);       // s per iteration per resident context token
-  let Z = args.number("Z", 4.0);           // normal think time (s)
-  let Zwarm = args.number("Zwarm", 1e9);       // preconditioning think time (s); 1e9: none
-  let twarm = args.number("twarm", 0);
-  let Zb = args.number("Zb", 10.0);         // burst think time (s)
-  let t1 = args.number("t1", 1e9);          // burst start (s)
-  let B = args.number("B", 0);             // burst length (s)
-  let napp = args.number("napp", 500);        // new tokens per turn
-  let nout = args.number("nout", 200);        // output tokens per turn
 
   device gpu {
     compute (t) = t * a;
@@ -49,27 +40,12 @@ fn main() {
   }
   pool kv on gpu { block bs; evict lru; preempt lifo; }
   pool reqs { cap max_seqs; }   // taken as soon as one is free, around the request
-  stage thinking : delay;
 
-  workload {
-    arrive closed(N);
-    session {
-      loop {
-        run thinking (cost(thinking, ~exp(now < twarm ? Zwarm : (now >= t1 && now < t1 + B ? Zb : Z))));
-        set t0 = now;
-        set K = K0;
-        set prompt = K0 + ceil(~exp(napp));
-        set o = ceil(~exp(nout)) + 1;
-        turn;
-      }
-    }
-  }
-
-  server {
+  server (prompt, o, t0, K) {
     hold reqs (cost(reqs, 1)) { vllm (prompt, o); }
     observe ttft = vllm.first - t0;
     observe hit = vllm.reused > 0;
     observe response = now - t0;
-    observe full_hit = vllm.reused >= K0;   // the whole context reused (`hit` counts any reuse)
+    observe full_hit = vllm.reused >= K;   // the whole context reused (`hit` counts any reuse)
   }
 }

@@ -104,12 +104,14 @@ class Cell:
 
 
 def _run(c: Cell, seed: int) -> serq.Report:
+    kv = c.kv if math.isfinite(c.kv) else 1e15
     return serq.run(
         PROGRAM,
         sets={
             "Lambda": c.rate,
             "cap": float(c.cap),
-            "C": c.kv if math.isfinite(c.kv) else 1e15,
+            "C": kv,
+            "maxctx": 0.9 * kv,  # the workload's context limit, 0.9 of the pool
             "delta": c.delta,
             "p": c.p,
             "tau": c.tau,

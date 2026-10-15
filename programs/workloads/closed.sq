@@ -1,0 +1,22 @@
+// N sessions in a closed loop (`models/closed.sq` runs it): work
+// Exp(1/mu), then a think time Exp(Z).
+use "std/args";
+
+let N = args.number("N", 8);
+let mu = args.number("mu", 1.0);
+let Z = args.number("Z", 4.0);
+
+stage user : delay;
+
+workload {
+  arrive closed(N);
+  send (s, t0);
+  session {
+    loop {
+      set t0 = now;
+      set s = ~exp(1 / mu);
+      turn;
+      run user (cost(user, ~exp(Z)));
+    }
+  }
+}

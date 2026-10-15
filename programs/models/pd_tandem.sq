@@ -1,8 +1,9 @@
-// Adapted from serQ v0.1.4 (a99dd649), ported to v0.1.5: explicit SQT experiment inputs.
+// Adapted from serQ v0.1.4 (a99dd649), ported to v0.1.6: explicit SQT experiment inputs.
 // Aggregated pool vs prefill -> KV link -> decode tandem
 // (`libqueuingsim::models::pd`, paper App. B, `prop:pd`). `jobs` requests
 // circulate (saturated load): the throughput is the capacity
 // N/(s_P + s_D + I) aggregated, min(N_P g_P/s_P, N_D g_D/s_D, B/K) split.
+// The jobs are `../workloads/pd_tandem.sq`.
 
 use "std/args";
 
@@ -16,7 +17,6 @@ fn main() {
   let gD = args.number("gD", 1.0);
   let bnet = args.number("bnet", 1000.0);
   let K = args.number("K", 1.0);
-  let jobs = args.number("jobs", 320);
   let mode = args.number("mode", 1);   // 0 aggregated, 1 disaggregated
 
   // the laws, by name (`--def prefill_work='~erlang(4, sP)'`)
@@ -28,10 +28,6 @@ fn main() {
   stage prefill : fifo(max(NP, 1));
   stage link : fifo;
   stage decode : fifo(max(N - NP, 1));
-
-  workload {
-    arrive closed(jobs);
-  }
 
   server {
     loop {

@@ -92,25 +92,27 @@ def test_finite_source_wait_matches_mva():
 
 # ------------------------------------------------------ replica and PD --
 
+# a deployment and its workload (serQ v0.1.6), token counts whole
 STEP = """
 let a = 2e-5; let omega = 2e-4;
 fn main() {{
 device gpu {{ }}
 engine replica on gpu {{
-  tokens cap max(running.decoding, omega / a);
+  tokens cap max(running.decoding, floor(omega / a));
   scheduler {{ advance running; admit waiting while (running.preempted == 0); }}
   worker {{ forward (max(omega, batch.tokens * a)); }}
 }}
-workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
-server {{ {work}; observe {obs} = now - t0; }}
+server (t0) {{ {work}; observe {obs} = now - t0; }}
 }}
 """
+POISSON = "workload {{ arrive poisson({lam}); init {{ set t0 = now; }} send (t0); }}"
 
 
 def test_step_prefill_alone_is_md1():
     lam = 0.7
     r = serq.run(
-        source=STEP.format(lam=lam, work="replica (1 / a, 1)", obs="response"),
+        source=STEP.format(work="replica (ceil(1 / a), 1)", obs="response"),
+        workload_source=POISSON.format(lam=lam),
         horizon=3000,
         warmup=300,
         seed=8,
@@ -120,7 +122,8 @@ def test_step_prefill_alone_is_md1():
 
 def test_step_decode_is_infinite_server_at_zero_context():
     r = serq.run(
-        source=STEP.format(lam=3.0, work="replica (0, 500)", obs="response"),
+        source=STEP.format(work="replica (0, 500)", obs="response"),
+        workload_source=POISSON.format(lam=3.0),
         horizon=2000,
         warmup=200,
         seed=9,
@@ -156,14 +159,15 @@ def test_ps_capacity_matches_batch_ps_server():
     lam = 2.0
     cfg = BatchConfig.poisson_turns(lam, exp(1.0), Ps(Saturating(0.0, 8)), 20000.0, 4)
     b = batch.simulate(cfg)
-    src = f"""
-        fn main() {{
+    src = """
+        fn main() {
         stage svc : ps(min(present, 8));
-        workload {{ arrive poisson({lam}); init {{ set t0 = now; }} }}
-        server {{ run svc (cost(svc, ~exp(1))); observe response = now - t0; }}
-        }}
+        server (t0) { run svc (cost(svc, ~exp(1))); observe response = now - t0; }
+        }
     """
-    a = serq.run(source=src, horizon=20000, warmup=1000, seed=4).observe("response").mean
+    workload = POISSON.format(lam=lam)
+    a = serq.run(source=src, workload_source=workload, horizon=20000, warmup=1000, seed=4)
+    a = a.observe("response").mean
     assert abs(a - b.response.mean()) / b.response.mean() < 0.05
 
 
@@ -293,10 +297,13 @@ def test_trace_replay_with_zero_output_needs_no_decode(tmp_path):
 
 
 def test_oversized_agentic_request_returns_rejection_before_resource_use():
-    source = (serq.PROGRAMS / "agentic_model.sq").read_text()
-    source = source.replace("arrive closed(N);", "arrive batch(1);")
+    path = serq.PROGRAMS / "agentic_model.sq"
+    workload = serq.workload_path(path).read_text()
+    assert "arrive closed(N);" in workload
+    workload = workload.replace("arrive closed(N);", "arrive batch(1);")
     r = serq.run(
-        source=source,
+        path,
+        workload_source=workload,
         sets={"C": 1},
         defs={"initial_tokens": "2", "output_tokens": "0"},
         horizon=10,

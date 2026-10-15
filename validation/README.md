@@ -169,11 +169,14 @@ leaves every layer may use. `tests/test_layers.py` enforces the directions.
 3. Keep seeds fixed and tolerances explicit in `expected`. If a check
    needs a wide tolerance to pass, report it as an `Observation` instead.
 
-The current pin is **serQ v0.1.5, IR 13**, for Python, CLI and Lean.
+The current pin is **serQ v0.1.6, IR 14**, for Python, CLI and Lean.
+A program is a deployment run under a workload file of its own;
+`programs/pairs.json` pairs each one (`programs/workloads/`), and
+`sim.serq.run` takes the workload from it unless given one.
 `programs/models/` holds SQT's configurable release models: external inputs
 are declared with `args.number`, workloads own sizes, and resource operations
 convert those sizes with `cost`. `programs/executions.json` records named
 execution conditions extracted from the previous sources. Callers select them
 explicitly with `sim.serq.execution(path)`; `sim.serq.run` does not load defaults.
-The init-stream derivation follows serQ v0.1.5, which mixes the seed before
+The init-stream derivation follows serQ v0.1.5 (unchanged in v0.1.6), which mixes the seed before
 a session's serial (#493); `theory.queue._init_rng` reproduces it.

@@ -63,12 +63,12 @@ def _by_arrival(o: serq.Observe) -> tuple[np.ndarray, np.ndarray]:
     return o.samples[order], o.times[order]
 
 
-def _source(cfg: QueueConfig) -> str:
-    """`mg1.sq` with renewal arrivals of the configured law: the one splice
-    left, since it changes the kind of the arrival declaration (Poisson to
-    renewal), which neither `sets=` nor `defs=` can."""
-    src = serq.program_path("mg1").read_text()
-    assert "arrive poisson(lam);" in src, "mg1.sq arrival declaration changed"
+def _workload(cfg: QueueConfig) -> str:
+    """`mg1.sq`'s workload with renewal arrivals of the configured law: the
+    one splice left, since it changes the kind of the arrival declaration
+    (Poisson to renewal), which neither `sets=` nor `defs=` can."""
+    src = serq.workload_path(serq.program_path("mg1")).read_text()
+    assert "arrive poisson(lam);" in src, "mg1.sq's workload arrival declaration changed"
     return src.replace("arrive poisson(lam);", f"arrive renewal({laws.expr(cfg.interarrival)});")
 
 
@@ -77,7 +77,7 @@ def simulate(cfg: QueueConfig) -> QueueReport:
     of `warmup + customers` arrivals, drained before the report."""
     assert cfg.servers >= 1 and cfg.customers >= 20
     total = cfg.warmup + cfg.customers
-    source = _source(cfg)
+    workload = _workload(cfg)
     rho = cfg.offered_load()
     if rho < 1.0:
         drain = 20.0 * cfg.service.mean() / max(1.0 - rho, 0.01)
@@ -89,7 +89,8 @@ def simulate(cfg: QueueConfig) -> QueueReport:
     while True:
         try:
             report = serq.run(
-                source=source,
+                serq.program_path("mg1"),
+                workload_source=workload,
                 sets={"servers": cfg.servers},
                 defs={"service": laws.expr(cfg.service)},
                 seed=cfg.seed,

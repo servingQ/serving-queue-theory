@@ -12,7 +12,8 @@
 // decodes; when no block is free the most recently admitted request is
 // preempted (its blocks freed to the cache, it re-enters the waiting queue
 // at the head and recomputes what was lost). See docs/language.md
-// §"vLLM" for the line-by-line correspondence.
+// §"vLLM" for the line-by-line correspondence. The sessions are
+// `workloads/vllm.sq`.
 use "std/args";
 
 fn main() {
@@ -25,9 +26,6 @@ fn main() {
   let omega = args.number("omega", 2e-4);      // weights read per iteration (s)
   let beta = args.number("beta", 2e-9);       // KV read per iteration per resident context token (s)
   let c0 = args.number("c0", 0);            // fixed cost per iteration (s)
-  let Lambda = args.number("Lambda", 0.3);      // sessions per second
-  let p = args.number("p", 0.9);           // continue after a turn
-  let Z = args.number("Z", 3.0);           // tool time (s)
 
   device gpu {
     compute (t) = t * a;
@@ -60,31 +58,9 @@ fn main() {
   // request, which then waits for its blocks
   pool reqs { cap max_seqs; }
 
-  // --8<-- [start:workload]
-  // The client: sessions arrive, each turn brings a prompt of n new tokens
-  // on a context of K and wants o tokens back, and after a turn the session
-  // calls a tool and comes back with probability p. Nothing here is vLLM.
-  workload {
-    arrive poisson(Lambda);
-    hidden o;              // the scheduler knows max_tokens, not the length (sched/utils.py:98-119)
-    init { set K = 0; }
-    turn {
-      set n = K == 0 ? ~uniform(1000, 3000) : ~exp(500);
-      set o = ~exp(200) + 1;
-      set more = ~bernoulli(p);
-    }
-    session {
-      loop {
-        turn;
-        set K = prompt + o;
-        if (more) { tool (~exp(Z)); } else { end; }
-      }
-    }
-  }
-  // --8<-- [end:workload]
-
-  // The engine: what vLLM does with one request.
-  server {
+  // The engine: what vLLM does with one request; the scheduler knows
+  // max_tokens, not the length (sched/utils.py:98-119)
+  server (K, n, hidden o) {
     set t0 = now;
     set prompt = K + n;
     hold reqs (cost(reqs, 1)) { vllm (prompt, o); }

@@ -2,6 +2,7 @@
 // (the bottleneck check of the lecture notes, appendix A). `jobs` requests
 // circulate (saturated load): the throughput is the capacity
 // N/(s_P + s_D + I) aggregated, min(N_P g_P/s_P, N_D g_D/s_D, B/K) split.
+// The jobs are `workloads/pd_tandem.sq`.
 use "std/args";
 
 fn main() {
@@ -14,17 +15,12 @@ fn main() {
   let gD = args.number("gD", 1.0);
   let bnet = args.number("bnet", 1000.0);
   let K = args.number("K", 1.0);
-  let jobs = args.number("jobs", 320);
   let mode = args.number("mode", 1);   // 0 aggregated, 1 disaggregated
 
   stage agg : fifo(max(N, 1));
   stage prefill : fifo(max(NP, 1));
   stage link : fifo;
   stage decode : fifo(max(N - NP, 1));
-
-  workload {
-    arrive closed(jobs);
-  }
 
   server {
     loop {

@@ -1,0 +1,38 @@
+// N closed agent programs (`agentic.sq` runs it): a cold first turn of
+// 10-30k tokens, then Exp(1000) appended per turn, Exp(300) output, a tool
+// call of Exp(Z) and a resume with probability p. A session whose context
+// passes `maxctx` ends.
+use "std/args";
+
+let N = args.number("N", 16);
+let maxctx = args.number("maxctx", 2e5);   // the deployment's C / 2
+let p = args.number("p", 0.9);      // resume probability
+let Z = args.number("Z", 3.0);      // mean tool time (s)
+
+stage tool : delay;
+
+workload {
+  arrive closed(N);
+  init { set K = 0; set cold = 1; }
+  turn {
+    // token counts are whole numbers: a draw is rounded up
+    set n = ceil(cold ? ~uniform(1e4, 3e4) : ~exp(1000));
+    set o = ceil(~exp(300));
+  }
+  send (K, n, o, cold, final: K + n + o > maxctx || !more);
+  session {
+    loop {
+      // the tool time and whether the session goes on, drawn before the
+      // request (in the order they were drawn after it), so that it knows
+      // whether it is the session's last
+      set z = ~exp(Z);
+      set more = ~bernoulli(p);
+      turn;
+      set K = K + n + o;
+      set cold = 0;
+      if (K > maxctx) { end; }
+      run tool (cost(tool, z));
+      if (more) { } else { end; }
+    }
+  }
+}

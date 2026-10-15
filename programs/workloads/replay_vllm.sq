@@ -1,0 +1,37 @@
+// The production sessions of the WEKA corpus (`replay_vllm.sq` runs them):
+// Poisson session arrivals, each session the turns of one trace session
+// (`new`, `out`, `think`, `more`), at most `cap` of them live (the
+// client's cap; an entry queue beyond). A session whose context passes
+// `maxctx` ends; the adapters set it to 0.9 of the deployment's pool C.
+use "std/args";
+
+let Lambda = args.number("Lambda", 0.001);
+let cap = args.number("cap", 24);
+let maxctx = args.number("maxctx", 9e14);   // 0.9 C at the deployment's default C = 1e15
+
+pool live { cap cap; }
+
+workload {
+  arrive poisson(Lambda);
+  trace "../../validation/data/weka-sessions.csv";
+  send (K, new, out, cold, final: K + new + out > maxctx || !more);
+  session {
+    set t_arr = now;
+    hold live (cost(live, 1)) {
+      observe entry_wait = now - t_arr;
+      set K = 0;
+      set cold = 1;
+
+      loop {
+        turn;
+        set K = K + new + out;
+        set cold = 0;
+        if (K > maxctx) {
+          observe trunc = 1;
+          end;
+        }
+        if (more) { tool (think); } else { end; }
+      }
+    }
+  }
+}

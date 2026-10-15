@@ -45,8 +45,11 @@ def model(run, spacing, hi, c_it, c0, tmp):
         trace += "_s1"
     csv = os.path.abspath(os.path.join(ROOT, ".serq", "src", "examples", "replay", "data", trace + ".csv"))
     prog = os.path.join(ROOT, ".serq", "src", "examples", "replay", "vllm_replay.sq")
+    # its workload, from serQ's examples/pairs.json (serQ v0.1.6: a program is the deployment)
+    pairs = json.load(open(os.path.join(ROOT, ".serq", "src", "examples", "pairs.json")))
+    workload = os.path.join(ROOT, ".serq", "src", pairs["examples/replay/vllm_replay.sq"])
     d = os.path.join(tmp, "d")
-    subprocess.run([os.path.join(ROOT, ".serq", "bin", "serq"), "run", prog, "--trace", csv,
+    subprocess.run([os.path.join(ROOT, ".serq", "bin", "serq"), "run", prog, "--workload", workload, "--trace", csv,
                     "--spacing", str(spacing), "--c_it", str(c_it), "--c0", str(c0),
                     "--horizon", "6000", "--warmup", "0", "--seed", "1", "--dump", d], check=True, stdout=subprocess.DEVNULL)
 

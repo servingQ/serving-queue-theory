@@ -1,0 +1,18 @@
+// Poisson requests of an output of at least two tokens, each sent to a
+// random one of the colocated engines (`models/pd_ps.sq` runs it).
+use "std/args";
+
+let engines = 4;       // the deployment's colocated engines, N
+let Lambda = args.number("Lambda", 15.0);     // requests per second (load Lambda E[o - 1] tok / (N f) = 0.6)
+
+// the law, by name (`--def output='201'`)
+def output() { floor(~exp(200)) + 2 }
+
+workload {
+  arrive poisson(Lambda);
+  init {
+    set o = output();
+    set k = floor(~uniform(0, engines));   // a Poisson stream split at random is Poisson
+  }
+  send (k, o);
+}

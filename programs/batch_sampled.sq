@@ -1,44 +1,22 @@
 // Paper's open/closed sampled-work queue with session feedback. The adapter
-// (sim.batch) chooses the arrival kind and the server kind, gives the defs
-// below their bodies (`defs=`) and sets the exact batch cap.
+// (sim.batch) chooses the server kind, gives the defs their bodies (`defs=`)
+// and sets the exact batch cap; the workload (`workloads/batch_sampled.sq`)
+// draws each turn's work, and the adapter chooses its arrival kind.
 use "std/args";
 
 fn main() {
-  let Lambda = args.number("Lambda", 0.7);
-  let N = args.number("N", 16);
-  let p = args.number("p", 0);
   let B = args.number("B", inf);
   let beta = args.number("beta", 0);
   let phi_cap = args.number("phi_cap", inf);
   let service_rate = args.number("service_rate", 1);
 
-  // the work of a turn, the tool time, and the PS capacity at `present` turns
-  def prefill_work() { ~exp(1) }
-  def decode_work() { ~det(0) }
-  def tool_time() { ~det(0) }
+  // the PS capacity at `present` turns
   def capacity() { service_rate }
 
   pool slots { cap B; }
   stage svc : ps(capacity());
-  stage tool : delay;
 
-  workload {
-    arrive poisson(Lambda);
-    turn {
-      set prefill = prefill_work();
-      set decode = decode_work();
-    }
-    session {
-      loop {
-
-        turn;
-        run tool (cost(tool, tool_time()));
-        if (~bernoulli(p)) { } else { end; }
-      }
-    }
-  }
-
-  server {
+  server (prefill, decode) {
     set ready = now;
     hold slots (cost(slots, 1)) {
       observe wait = now - ready;

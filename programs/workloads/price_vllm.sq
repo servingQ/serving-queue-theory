@@ -1,0 +1,11 @@
+// Poisson requests, each with one uniform draw `u` that its server reads
+// (`price_vllm.sq` runs it).
+use "std/args";
+
+let Lambda = args.number("Lambda", 1.0);      // turns per second
+
+workload {
+  arrive poisson(Lambda);
+  init { set u = ~uniform(0, 1); }
+  send (u);
+}

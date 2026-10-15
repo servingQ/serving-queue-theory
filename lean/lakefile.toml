@@ -20,5 +20,5 @@ name = "ServingQueueTheory"
 [[require]]
 name = "Serq"
 git = "https://github.com/servingQ/serQ"
-rev = "v0.1.5"
+rev = "v0.1.6"
 subDir = "lean"

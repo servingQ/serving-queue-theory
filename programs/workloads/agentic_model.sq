@@ -1,0 +1,59 @@
+// The programs of the paper's agentic queue (`agentic_model.sq` runs it).
+// The adapter (sim.agentic) gives the defs below their bodies (`defs=`): a
+// new program's class, each class's resume probability, mean work and
+// laws; it splices `arrive poisson(Lambda);` for an open population.
+use "std/args";
+
+let N = args.number("N", 16);
+let Lambda = args.number("Lambda", 0.05);
+let maxctx = args.number("maxctx", 2e5);   // the deployment's C / 2
+
+// a new program's class, and each class's resume probability and mean work
+def program_class() { 0 }
+def resume_prob() { 0.9 }
+def mean_new_tokens() { 1000 }
+def mean_output_tokens() { 300 }
+def mean_tool_time() { 3 }
+// a class's laws (they may read `cls`); a token count is rounded up
+def initial_tokens() { ~uniform(1e4, 3e4) }
+def new_tokens() { ~exp(1000) }
+def output_tokens() { ~exp(300) }
+def tool_time() { ~exp(3) }
+
+stage tool : delay;
+
+workload {
+  arrive closed(N);
+  init {
+    set K = 0; set cold = 1; set cls = program_class(); set p = resume_prob();
+    set mean_new = mean_new_tokens(); set mean_out = mean_output_tokens();
+    set tau = mean_tool_time();
+  }
+  turn {
+    set n = ceil(cold ? initial_tokens() : new_tokens());
+    set o = ceil(output_tokens());
+  }
+  send (K, n, o, cold, t0, p, tau, mean_new, mean_out,
+        final: K + n + o > maxctx || !more);
+  session {
+    loop {
+      // the tool time and whether the session goes on, drawn before the
+      // request (in the order they were drawn after it), so that it knows
+      // whether it is the session's last
+      set z = tool_time();
+      set more = ~bernoulli(p);
+      set t0 = now;
+      turn;
+      if (reply.rejected) { end; }
+      set K = K + n + o;
+      set cold = 0;
+      if (K > maxctx) {
+        observe think_time = 0;
+        end;
+      }
+      observe think_time = z;
+      run tool (cost(tool, z));
+      if (more) { } else { end; }
+    }
+  }
+}

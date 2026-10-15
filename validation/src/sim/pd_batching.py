@@ -230,6 +230,7 @@ def _simulate_step(cfg: StepConfig) -> StepReport:
         defs["output"] = cfg.output
     r = serq.run(
         source=_program_text(cfg),
+        workload=serq.workload_path(serq.program_path("pd_batching")),
         sets={"mode": 1.0 if cfg.split else 0.0, "Lambda": cfg.rate, **cfg.sets},
         defs=defs,
         seed=cfg.seed,

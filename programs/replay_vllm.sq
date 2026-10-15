@@ -27,15 +27,16 @@
 // `max(out - 1, 0)` (the corpus also has zero-output turns). The prefill's
 // fixed overhead c0 is engine time of the iteration that admits the turn
 // (it grows no KV and takes no budget).
+//
+// The sessions, their live-session cap and context limit are
+// `workloads/replay_vllm.sq`; a request carries the context K, the trace's
+// `new` and `out`, whether it is the session's first and whether its last.
 
 use "std/args";
 
 fn main() {
-  let Lambda = args.number("Lambda", 0.001);
-  let cap = args.number("cap", 24);
   let B = args.number("B", 8);
   let C = args.number("C", 1e15);
-  let maxctx = args.number("maxctx", 0.9 * C);
   let bs = args.number("bs", 16);           // block size (tokens)
   let c0 = args.number("c0", 0.044);
   let a = args.number("a", 1.94e-4);
@@ -47,7 +48,6 @@ fn main() {
   let keep_cache = args.number("keep_cache", 1);          // 0: drop a finished session's blocks (ablation of vLLM's rule)
   let delta = args.number("delta", 0);         // share of follow-up turns forced to miss (§4.2's price table)
 
-  pool live { cap cap; }
   device gpu { kv cap C; }
   // the time model of the paper's cost fit in real tokens: an iteration
   // of ntok tokens and attention attn, admitting nadm turns, takes
@@ -82,31 +82,7 @@ fn main() {
     / (size * (waiting ? 1 : tau)));
   }
 
-  workload {
-    arrive poisson(Lambda);
-    trace "../validation/data/weka-sessions.csv";
-    session {
-      set t_arr = now;
-      hold live (cost(live, 1)) {
-        observe entry_wait = now - t_arr;
-        set K = 0;
-        set cold = 1;
-
-        loop {
-          turn;
-          set K = prompt + out;
-          set cold = 0;
-          if (K > maxctx) {
-            observe trunc = 1;
-            if (keep_cache) { end; } else { drop kv; end; }
-          }
-          if (more) { tool (think); } else { if (keep_cache) { end; } else { drop kv; end; } }
-        }
-      }
-    }
-  }
-
-  server {
+  server (K, new, out, cold, final) {
     set t0 = now;
     set prompt = K + new;
     // reusable: the full blocks of the previous turn's computed tokens (K - 1:
@@ -132,5 +108,6 @@ fn main() {
       observe whit = c0 + a * (prompt - hm0) + b * (prompt - hm0) * (hm0 + (prompt - hm0) / 2);
     }
     observe done = now - t0;
+    if (final && keep_cache == 0) { drop kv; }
   }
 }

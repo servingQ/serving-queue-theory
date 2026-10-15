@@ -1,0 +1,29 @@
+// The lecture notes' sessions (`lecture_pd.sq` runs it): Poisson sessions,
+// a first prompt of 2000-6000 tokens, then the previous output and
+// Exp(500) new tokens per turn, Exp(200) output, Exp(3 s) tool calls, and
+// a next turn with probability p.
+use "std/args";
+
+let Lambda = args.number("Lambda", 0.5);     // sessions per second
+let p = args.number("p", 0.8);          // continue after a turn
+
+workload {
+  arrive poisson(Lambda);
+  init { set K = 0; }
+  turn {
+    // the next turn's new tokens contain the previous output (n' >= o);
+    // token counts are whole numbers: a draw is rounded up
+    set n = ceil(K == 0 ? ~uniform(2000, 6000) : o + ~exp(500));
+    set o = ceil(~exp(200));
+    set Z = ~exp(3);
+    set T = K + n;
+  }
+  send (K, n, o, T);
+  session {
+    loop {
+      turn;
+      set K = T;
+      if (~bernoulli(p)) { tool Z; } else { end; }
+    }
+  }
+}

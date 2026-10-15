@@ -16,7 +16,6 @@
 use "std/args";
 
 fn main() {
-  let Lambda = args.number("Lambda", 1.0);      // turns per second
   let pmiss = args.number("pmiss", 0.2);       // baseline miss share
   let delta = args.number("delta", 0);         // forced misses
   let hitn = args.number("hitn", 512);        // tokens prefilled by a hit
@@ -44,12 +43,7 @@ fn main() {
   pool slots on vllm { queue fifo; }
   pool kv on gpu { block bs; preempt lifo; evict lru; }
 
-  workload {
-    arrive poisson(Lambda);
-    init { set u = ~uniform(0, 1); }
-  }
-
-  server {
+  server (u) {
     set t0 = now;
     set m = u < pmiss + delta ? missn : hitn;
     observe work = a * m + b * m * m / 2;

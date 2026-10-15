@@ -1,0 +1,50 @@
+// The two-class open sessions of the eviction and admission experiment
+// (`open_vllm.sq` runs it). Poisson sessions, two classes of equal weight.
+// Agents resume with p = 0.95 after tool calls of Exp(6 s), start from
+// 4-8k tokens and append Exp(800) per turn; documents resume with p = 0.3
+// after Exp(2 s), start from 15-30k tokens and append Exp(500); every turn
+// decodes Exp(300) tokens. At most `cap` sessions are live (the client's
+// cap; an entry queue beyond), and a session whose context passes
+// `maxctx` ends.
+use "std/args";
+
+let Lambda = args.number("Lambda", 0.02);     // sessions per second
+let cap = args.number("cap", 24);          // live sessions (entry queue beyond)
+let maxctx = args.number("maxctx", 3e5);   // a session whose context passes this ends (the deployment's 0.5 C)
+
+pool live { cap cap; }
+
+workload {
+  arrive poisson(Lambda);
+  init {
+    set doc = ~bernoulli(0.5);          // class: 0 agent, 1 document
+    set p = doc ? 0.3 : 0.95;
+    set Z = doc ? 2 : 6;
+    set nm = doc ? 500 : 800;           // mean append (the price's S^hit)
+  }
+  send (K, n, o, cold, p, Z, nm, final: K + n + o > maxctx || !more);
+  session {
+    set t_arr = now;
+    hold live (cost(live, 1)) {
+      observe entry_wait = now - t_arr;
+      set K = 0;
+      set cold = 1;
+      loop {
+        set n = cold ? ceil(doc ? ~uniform(15000, 30000) : ~uniform(4000, 8000))
+        : ceil(doc ? ~exp(500) : ~exp(800));
+        set o = ceil(~exp(300));
+        // the tool time and whether the session goes on, drawn before the
+        // request (in the order they were drawn after it), so that it
+        // knows whether it is the session's last
+        set z = ~exp(Z);
+        set more = ~bernoulli(p);
+        turn;
+        set K = K + n + o;
+        set cold = 0;
+        if (K > maxctx) { end; }
+        tool (z);
+        if (more) { } else { end; }
+      }
+    }
+  }
+}
